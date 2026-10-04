@@ -17,7 +17,7 @@ Puebla la base de datos PostgreSQL con datos de prueba que simulan el entorno re
 - PostgreSQL 16+
 - Entorno virtual activo (`venv/`)
 
-## Instalación
+## Instalación y ejecucion
 
 Desde la raíz del proyecto:
 
