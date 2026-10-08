@@ -1,14 +1,14 @@
 import os
+
 from sqlalchemy import text
 
-from seeds.config import MODE, VOLUMES
+from seeds.config import MODE, VOLUMES, DEFECT_PERCENTAGE
 from seeds.db import get_session, engine
 from seeds.models import Base
 from seeds.generators.users import generar_usuarios
 from seeds.generators.devices import generar_dispositivos
 from seeds.generators.merchants import generar_comercios
 from seeds.generators.restricted_lists import generar_listas
-
 
 def reset_tablas():
     """Borra todas las tablas antes de insertar. Solo si SEED_RESET=true."""
@@ -25,6 +25,7 @@ def reset_tablas():
 def main():
     print(f"Modo: {MODE}")
     print(f"Volúmenes: {VOLUMES[MODE]}")
+    print(f"Porcentaje de defectos: {DEFECT_PERCENTAGE}%")
 
     # Reset opcional
     reset = os.getenv("SEED_RESET", "false").lower() == "true"
@@ -41,8 +42,11 @@ def main():
         vol = VOLUMES[MODE]
 
         print("Generando usuarios...")
-        usuarios = generar_usuarios(session, vol["users"])
-
+        usuarios = generar_usuarios(
+            session,
+            vol["users"],
+            DEFECT_PERCENTAGE
+        )
         print("Generando dispositivos...")
         generar_dispositivos(session, usuarios, vol["devices_per_user"])
 

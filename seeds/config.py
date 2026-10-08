@@ -5,6 +5,7 @@ load_dotenv()
 
 SEED = int(os.getenv("SEED", 42))
 MODE = os.getenv("SEED_MODE", "dev")
+DEFECT_PERCENTAGE = float(os.getenv("SEED_DEFECT_PERCENTAGE", 0))
 
 VOLUMES = {
     "dev": {
