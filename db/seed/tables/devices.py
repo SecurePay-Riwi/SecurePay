@@ -2,7 +2,7 @@ import random
 import uuid
 from faker import Faker
 from sqlalchemy.dialects.postgresql import insert
-from seeds.models import Dispositivo
+from shared.models import Dispositivo
 
 NAMESPACE = uuid.UUID("12345678-1234-5678-1234-567812345678")
 

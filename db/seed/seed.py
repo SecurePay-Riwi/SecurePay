@@ -3,20 +3,20 @@ import os
 
 from sqlalchemy import text
 
-from seeds.config import (
+from db.seed.config import (
     MODE,
     VOLUMES,
     DEFECT_PERCENTAGE,
     TRANSACTION_FRAUD_PERCENTAGE,
     SEED,
 )
-from seeds.db import get_session, engine
-from seeds.models import Base
-from seeds.generators.users import generar_usuarios
-from seeds.generators.devices import generar_dispositivos
-from seeds.generators.merchants import generar_comercios
-from seeds.generators.restricted_lists import generar_listas
-from seeds.generators.transactions import generar_transacciones
+from shared.db import get_session, engine
+from shared.models import Base
+from db.seed.tables.users import generar_usuarios
+from db.seed.tables.devices import generar_dispositivos
+from db.seed.tables.merchants import generar_comercios
+from db.seed.tables.restricted_lists import generar_listas
+from generators.transactions import generar_transacciones
 
 
 def reset_tablas():

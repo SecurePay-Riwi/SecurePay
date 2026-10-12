@@ -13,8 +13,14 @@ Puebla la base de datos PostgreSQL con datos de prueba que simulan el entorno re
 
 ## Requisitos
 
-- Python 3.10+
-- PostgreSQL 16+
-- Entorno virtual activo (`venv/`)
+- Las del README principal (uv y PostgreSQL 16+)
+
+## Cómo se ejecuta
+
+Desde la raíz del repositorio:
+
+```bash
+uv run python -m db.seed.seed
+```
 
 

@@ -7,7 +7,7 @@ from decimal import Decimal
 
 from sqlalchemy.dialects.postgresql import insert
 
-from seeds.models import Transaccion
+from shared.models import Transaccion
 
 
 NAMESPACE = uuid.UUID("12345678-1234-5678-1234-567812345678")

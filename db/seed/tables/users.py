@@ -4,8 +4,8 @@ import uuid
 from faker import Faker
 from sqlalchemy.dialects.postgresql import insert
 
-from seeds.models import Usuario
-from seeds.defects.injector import (
+from shared.models import Usuario
+from db.seed.defects.injector import (
     inyectar_defectos_usuarios,
     guardar_reporte_defectos,
 )

@@ -1,7 +1,7 @@
 import uuid
 from faker import Faker
 from sqlalchemy.dialects.postgresql import insert
-from seeds.models import ListaRestrictiva
+from shared.models import ListaRestrictiva
 
 NAMESPACE = uuid.UUID("12345678-1234-5678-1234-567812345678")
 
