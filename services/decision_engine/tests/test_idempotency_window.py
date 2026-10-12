@@ -1,11 +1,11 @@
 
 from datetime import datetime, timedelta, timezone
 
-from api.services.decision_service import (
+from services.decision_engine.decision_service import (
     IDEMPOTENCY_WINDOW_SECONDS,
     _is_within_idempotency_window,
 )
-from seeds.models import Transaccion
+from shared.models import Transaccion
 
 
 def test_decision_is_reusable_at_exact_window_boundary():

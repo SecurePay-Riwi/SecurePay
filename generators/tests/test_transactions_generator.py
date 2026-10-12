@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from seeds.generators.transactions import generar_transacciones
+from generators.transactions import generar_transacciones
 
 
 class FakeSession:

@@ -5,9 +5,9 @@ from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from seeds.db import get_session
-from api.schemas import TransactionRequest, TransactionResponse
-from api.services.decision_service import process_transaction
+from shared.db import get_session
+from services.decision_engine.schemas import TransactionRequest, TransactionResponse
+from services.decision_engine.decision_service import process_transaction
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse

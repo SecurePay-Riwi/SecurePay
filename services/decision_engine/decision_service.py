@@ -6,14 +6,14 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from seeds.models import (
+from shared.models import (
     Comercio,
     Dispositivo,
     ListaRestrictiva,
     Transaccion,
     Usuario,
 )
-from api.schemas import Decision, TransactionRequest
+from services.decision_engine.schemas import Decision, TransactionRequest
 
 
 IDEMPOTENCY_WINDOW_SECONDS = int(

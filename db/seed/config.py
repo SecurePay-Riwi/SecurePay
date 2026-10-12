@@ -32,8 +32,3 @@ VOLUMES = {
         "transactions": int(os.getenv("SEED_TRANSACTIONS", 100_000)),
     },
 }
-
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://pagoseguro:pagoseguro@localhost:5432/pagoseguro"
-)

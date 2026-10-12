@@ -7,12 +7,12 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from api.main import app
-from seeds.db import get_session
-from seeds.models import Usuario, Dispositivo, Comercio, Transaccion
+from services.decision_engine.main import app
+from shared.db import get_session
+from shared.models import Usuario, Dispositivo, Comercio, Transaccion
 import pytest
 
-from seeds.models import (
+from shared.models import (
     Usuario,
     Dispositivo,
     Comercio,
@@ -20,7 +20,7 @@ from seeds.models import (
     ListaRestrictiva,
 )
 
-from api.services.decision_service import HIGH_AMOUNT_THRESHOLD
+from services.decision_engine.decision_service import HIGH_AMOUNT_THRESHOLD
 
 
 client = TestClient(app)
@@ -486,7 +486,7 @@ def test_business_decisions_are_persisted(
 
 def test_database_error_returns_500():
     from sqlalchemy.exc import SQLAlchemyError
-    from api.main import get_db
+    from services.decision_engine.main import get_db
 
     class FailingSession:
         rolled_back = False

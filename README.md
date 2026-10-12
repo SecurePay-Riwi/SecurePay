@@ -11,6 +11,24 @@ proyecto construye una plataforma antifraude basada en reglas
 configurables, con flujo de revisión de casos y conciliación diaria con
 socios de pago.
 
+## Estructura del repositorio
+
+Monorepo: una carpeta por cada pieza que se despliega por separado.
+
+```
+services/
+  decision_engine/   motor de decisión (FastAPI, POST /transactions) y sus pruebas
+shared/              modelos de SQLAlchemy y conexión a PostgreSQL, usados por todos
+generators/          generador de transacciones con fraude y sus pruebas
+db/
+  seed/              seed de PostgreSQL: usuarios, dispositivos, comercios y listas
+```
+
+Las carpetas se nombran con guion bajo (`decision_engine`) porque Python
+no puede importar módulos con guion. Más adelante se agregan los
+consumidores, las APIs y las tareas programadas dentro de `services/`,
+`jobs/` para PySpark e `infra/` para Terraform.
+
 ## Requisitos
 
 -   [uv](https://docs.astral.sh/uv/getting-started/installation/) (gestor de paquetes y entornos de Python)
@@ -98,7 +116,7 @@ DATABASE_URL=postgresql://pagoseguro:pagoseguro@localhost:5432/pagoseguro
 ### Paso 6 --- Ejecutar el seed
 
 ``` bash
-uv run python -m seeds.seed
+uv run python -m db.seed.seed
 ```
 
 Debería generar:
@@ -136,7 +154,7 @@ uv run pytest
 ### Paso 9 --- Levantar la API
 
 ``` bash
-uv run uvicorn api.main:app --reload
+uv run uvicorn services.decision_engine.main:app --reload
 ```
 
 La API queda en http://localhost:8000 y la documentación interactiva
@@ -154,7 +172,7 @@ Ejemplo con 10%:
 ``` powershell
 $env:SEED_DEFECT_PERCENTAGE="10"
 $env:SEED_RESET="true"
-uv run python -m seeds.seed
+uv run python -m db.seed.seed
 ```
 
 ### Ejecutar sin defectos
@@ -164,7 +182,7 @@ Por defecto el porcentaje es `0%`:
 ``` powershell
 $env:SEED_DEFECT_PERCENTAGE="0"
 $env:SEED_RESET="true"
-uv run python -m seeds.seed
+uv run python -m db.seed.seed
 ```
 
 ### Tipos de defectos
