@@ -13,7 +13,8 @@ socios de pago.
 
 ## Requisitos
 
--   Python 3.10 o superior
+-   [uv](https://docs.astral.sh/uv/getting-started/installation/) (gestor de paquetes y entornos de Python)
+-   Python 3.12 (uv lo instala solo si no lo tienes)
 -   PostgreSQL 16 o superior
 -   Git
 
@@ -30,31 +31,18 @@ git clone https://github.com/SecurePay-Riwi/SecurePay.git
 cd SecurePay
 ```
 
-### Paso 2 --- Crear el entorno virtual
+### Paso 2 --- Instalar dependencias
 
 En terminal:
 
 ``` bash
-python -m venv venv
+uv sync
 ```
 
-Windows:
-
-``` bash
-venv\Scripts\activate
-```
-
-macOS/Linux:
-
-``` bash
-source venv/bin/activate
-```
-
-Instalar dependencias:
-
-``` bash
-pip install -r requirements.txt
-```
+`uv sync` crea el entorno virtual `.venv` e instala exactamente las
+versiones fijadas en `uv.lock`, incluidas las de desarrollo (pytest).
+No hace falta activar el entorno: los comandos se ejecutan con
+`uv run`.
 
 ### Paso 3 --- Descargar PostgreSQL
 
@@ -99,19 +87,18 @@ Copiar `.env.example` a `.env`:
 cp .env.example .env
 ```
 
-Contenido:
+Ajustar `DATABASE_URL` con el usuario y la contraseña de tu base local.
+El resto de variables de `.env.example` tienen valores por defecto
+válidos para desarrollo.
 
 ``` env
 DATABASE_URL=postgresql://pagoseguro:pagoseguro@localhost:5432/pagoseguro
-SEED_MODE=dev
-SEED=42
-SEED_RESET=false
 ```
 
 ### Paso 6 --- Ejecutar el seed
 
 ``` bash
-python -m seeds.seed
+uv run python -m seeds.seed
 ```
 
 Debería generar:
@@ -120,6 +107,7 @@ Debería generar:
 -   \~146 dispositivos
 -   50 comercios
 -   20 listas restrictivas
+-   100 transacciones
 
 ### Paso 7 --- Verificar
 
@@ -136,6 +124,24 @@ SELECT COUNT(*) FROM usuarios;
 
 Debería devolver `100`.
 
+### Paso 8 --- Ejecutar las pruebas
+
+Requiere haber ejecutado el seed, porque las pruebas de la API leen
+usuarios y comercios de la base.
+
+``` bash
+uv run pytest
+```
+
+### Paso 9 --- Levantar la API
+
+``` bash
+uv run uvicorn api.main:app --reload
+```
+
+La API queda en http://localhost:8000 y la documentación interactiva
+en http://localhost:8000/docs.
+
 ## HU-04 --- Inyección de defectos
 
 Permite generar datos de prueba con un porcentaje configurable de
@@ -148,7 +154,7 @@ Ejemplo con 10%:
 ``` powershell
 $env:SEED_DEFECT_PERCENTAGE="10"
 $env:SEED_RESET="true"
-python -m seeds.seed
+uv run python -m seeds.seed
 ```
 
 ### Ejecutar sin defectos
@@ -158,7 +164,7 @@ Por defecto el porcentaje es `0%`:
 ``` powershell
 $env:SEED_DEFECT_PERCENTAGE="0"
 $env:SEED_RESET="true"
-python -m seeds.seed
+uv run python -m seeds.seed
 ```
 
 ### Tipos de defectos
