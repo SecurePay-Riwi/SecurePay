@@ -1,0 +1,57 @@
+# Entorno local: PostgreSQL, Valkey y LocalStack (SNS, SQS y S3).
+#
+# Base de la historia del Compose de un solo comando: el seed y el motor
+# como servicios se agregan en esa historia (ver la guía de Docker).
+#
+#   docker compose up -d      levantar
+#   docker compose ps         todo debe quedar "healthy"
+#   docker compose down       apagar (los datos de PostgreSQL se conservan)
+#   docker compose down -v    apagar y borrar los datos
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pagoseguro}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pagoseguro}
+      POSTGRES_DB: ${POSTGRES_DB:-pagoseguro}
+    ports:
+      - "5433:5432"   # 5433 afuera para no chocar con un PostgreSQL instalado
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 10
+
+  valkey:
+    image: valkey/valkey:8
+    ports:
+      - "6379:6379"   # el mismo puerto que el contenedor suelto pagoseguro-valkey
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  localstack:
+    # Versión fija para que todo el equipo use la misma. Desde marzo de 2026
+    # las versiones nuevas piden cuenta y token (el plan Hobby es gratis).
+    image: localstack/localstack:2026.09.1
+    environment:
+      SERVICES: sns,sqs,s3
+      AWS_DEFAULT_REGION: us-east-2
+      LOCALSTACK_AUTH_TOKEN: ${LOCALSTACK_AUTH_TOKEN:?Falta LOCALSTACK_AUTH_TOKEN en el .env}
+    ports:
+      - "4566:4566"
+    volumes:
+      # Lo que haya aquí se ejecuta cuando LocalStack está listo:
+      # crea el tema, las colas y el bucket.
+      - ./infra/localstack/init:/etc/localstack/init/ready.d:ro
+    healthcheck:
+      # "ready" solo cuando terminaron los scripts de init.
+      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/init/ready | grep -q '\"completed\": true'"]
+      interval: 5s
+      retries: 30
+
+volumes:
+  pgdata:
