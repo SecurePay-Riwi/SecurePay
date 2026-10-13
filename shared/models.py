@@ -63,6 +63,29 @@ class Dispositivo(Base):
     fecha_asociacion = Column(DateTime, nullable=False)
 
 
+class DispositivoCuenta(Base):
+    """Un dispositivo usado en una cuenta desde una fecha.
+
+    Permite que un mismo dispositivo aparezca en varias cuentas, que es
+    lo que mide la regla de dispositivo compartido.
+    """
+
+    __tablename__ = "dispositivo_cuenta"
+
+    dispositivo_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("dispositivos.id"),
+        primary_key=True,
+    )
+    cuenta_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("cuentas.id"),
+        primary_key=True,
+        index=True,
+    )
+    fecha_asociacion = Column(DateTime, nullable=False)
+
+
 class Comercio(Base):
     __tablename__ = "comercios"
 

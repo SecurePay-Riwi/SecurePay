@@ -33,6 +33,7 @@ def reset_tablas():
                     usuarios,
                     cuentas,
                     dispositivos,
+                    dispositivo_cuenta,
                     comercios,
                     listas_restrictivas
                 CASCADE
@@ -76,13 +77,15 @@ def main():
         )
 
         print("Generando cuentas...")
-        generar_cuentas(session, usuarios)
+        cuentas = generar_cuentas(session, usuarios)
 
         print("Generando dispositivos...")
         dispositivos = generar_dispositivos(
             session,
             usuarios,
+            cuentas,
             vol["devices_per_user"],
+            vol["shared_devices"],
         )
 
         print("Generando comercios...")
