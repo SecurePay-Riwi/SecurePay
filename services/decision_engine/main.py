@@ -1,14 +1,20 @@
 
 from collections.abc import Generator
 
+import valkey
 from fastapi import Depends, FastAPI, HTTPException
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from shared.db import get_session
 from services.decision_engine.schemas import TransactionRequest, TransactionResponse
-from services.decision_engine.decision_service import process_transaction
+from services.decision_engine.decision_service import (
+    ReferenciaInvalida,
+    process_transaction,
+)
+from services.decision_engine.idempotency import EnProceso, IdReutilizado
 from fastapi import Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
@@ -26,7 +32,9 @@ async def validation_exception_handler(
         status_code=400,
         content={
             "detail": "La solicitud contiene datos inválidos.",
-            "errors": exc.errors(),
+            # Los errores del validador traen la excepción original,
+            # que JSONResponse no sabe convertir por sí solo.
+            "errors": jsonable_encoder(exc.errors()),
         },
     )
 
@@ -53,27 +61,32 @@ def evaluate_transaction(
     session: Session = Depends(get_db),
 ):
     try:
-        transaction, replay = process_transaction(session, payload)
+        resultado, replay = process_transaction(session, payload)
 
-        return TransactionResponse(
-            transaction_id=transaction.id,
-            decision=transaction.decision,
-            decision_reason=transaction.decision_reason,
-            processed_at=transaction.processed_at,
-            idempotent_replay=replay,
-        )
+        return TransactionResponse(**resultado, idempotent_replay=replay)
 
-    except ValueError as exc:
+    except EnProceso as exc:
         raise HTTPException(
             status_code=409,
+            detail="La transacción con este id todavía se está procesando.",
+        ) from exc
+
+    except IdReutilizado as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="El id ya se usó con otro contenido.",
+        ) from exc
+
+    except ReferenciaInvalida as exc:
+        raise HTTPException(
+            status_code=422,
             detail=str(exc),
         ) from exc
 
-    except IntegrityError as exc:
-        session.rollback()
+    except valkey.exceptions.ConnectionError as exc:
         raise HTTPException(
-            status_code=409,
-            detail="Conflicto al guardar la transacción.",
+            status_code=503,
+            detail="El servicio de idempotencia no está disponible.",
         ) from exc
 
     except SQLAlchemyError as exc:
