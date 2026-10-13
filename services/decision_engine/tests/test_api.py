@@ -1,29 +1,106 @@
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
+from decimal import Decimal
 from threading import Barrier
 from time import perf_counter
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from sqlalchemy import func
 
 from services.decision_engine.main import app
 from shared.db import get_session
-from shared.models import Usuario, Dispositivo, Comercio, Transaccion
-import pytest
-
 from shared.models import (
-    Usuario,
-    Dispositivo,
     Comercio,
-    Transaccion,
+    Cuenta,
+    DispositivoCuenta,
     ListaRestrictiva,
+    Usuario,
 )
-
-from services.decision_engine.decision_service import HIGH_AMOUNT_THRESHOLD
 
 
 client = TestClient(app)
+
+# El documento del usuario con solo dígitos, como lo guarda la lista.
+DOCUMENTO_NORMALIZADO = func.regexp_replace(Usuario.documento, r"\D", "", "g")
+
+
+def _cuenta_del_seed(en_lista: bool) -> Cuenta:
+    """Una cuenta activa del seed cuyo titular está o no en la lista."""
+    session = get_session()
+
+    try:
+        consulta = (
+            session.query(Cuenta)
+            .join(Usuario, Usuario.id == Cuenta.user_id)
+            .outerjoin(
+                ListaRestrictiva,
+                ListaRestrictiva.documento == DOCUMENTO_NORMALIZADO,
+            )
+            .join(DispositivoCuenta, DispositivoCuenta.cuenta_id == Cuenta.id)
+            .filter(Cuenta.estado == "activa", Cuenta.saldo >= 100)
+        )
+
+        if en_lista:
+            consulta = consulta.filter(ListaRestrictiva.id.isnot(None))
+        else:
+            consulta = consulta.filter(ListaRestrictiva.id.is_(None))
+
+        cuenta = consulta.order_by(Cuenta.id).first()
+
+        assert cuenta is not None, (
+            "Se necesita el seed cargado: no hay una cuenta activa "
+            f"con titular {'en' if en_lista else 'fuera de'} la lista."
+        )
+
+        session.expunge(cuenta)
+        return cuenta
+    finally:
+        session.close()
+
+
+def _payload_qr(cuenta: Cuenta, amount: str | None = None) -> dict:
+    """Un pago QR válido desde la cuenta, con un id nuevo cada vez."""
+    session = get_session()
+
+    try:
+        dispositivo = (
+            session.query(DispositivoCuenta)
+            .filter(DispositivoCuenta.cuenta_id == cuenta.id)
+            .first()
+        )
+        comercio = session.query(Comercio).first()
+
+        assert dispositivo is not None, "La cuenta necesita un dispositivo"
+        assert comercio is not None, "Se necesita al menos un comercio"
+
+        # El yen no lleva decimales.
+        if amount is None:
+            amount = "10" if cuenta.moneda == "JPY" else "10.00"
+
+        return {
+            "id": str(uuid4()),
+            "type": "QR",
+            "channel": "APP",
+            "source_account_id": str(cuenta.id),
+            "destination_account_id": None,
+            "merchant_id": str(comercio.id),
+            "amount": amount,
+            "currency": cuenta.moneda,
+            "source_balance_before": str(cuenta.saldo),
+            "source_balance_after": str(cuenta.saldo - Decimal(amount)),
+            "destination_balance_before": None,
+            "destination_balance_after": None,
+            "device_id": str(dispositivo.dispositivo_id),
+            "transaction_date": datetime.now(timezone.utc).isoformat(),
+        }
+    finally:
+        session.close()
+
+
+def _payload_normal(amount: str | None = None) -> dict:
+    return _payload_qr(_cuenta_del_seed(en_lista=False), amount)
 
 
 def test_health_returns_200():
@@ -44,447 +121,139 @@ def test_invalid_transaction_returns_400():
 
 
 def test_repeated_transaction_returns_same_decision():
-    session = get_session()
+    payload = _payload_normal()
 
-    try:
-        user = session.query(Usuario).first()
-        merchant = session.query(Comercio).first()
+    # Primera solicitud: decide la transacción.
+    first = client.post("/transactions", json=payload)
 
-        device = (
-            session.query(Dispositivo)
-            .filter(Dispositivo.user_id == user.id)
-            .first()
-            if user
-            else None
-        )
+    assert first.status_code == 200, first.text
+    assert first.json()["transaction_id"] == payload["id"]
+    assert first.json()["decision"] == "APPROVE"
+    assert first.json()["idempotent_replay"] is False
 
-        assert user is not None, "Se necesita al menos un usuario"
-        assert device is not None, "Se necesita un dispositivo válido"
-        assert merchant is not None, "Se necesita al menos un comercio"
+    # Segunda solicitud: reutiliza la decisión guardada en Valkey.
+    second = client.post("/transactions", json=payload)
 
-        payload = {
-            "id": str(uuid4()),
-            "user_id": str(user.id),
-            "device_id": str(device.id),
-            "merchant_id": str(merchant.id),
-            "amount": "25000.00",
-            "transaction_date": datetime.now(timezone.utc).isoformat(),
-            "channel": "WEB",
-        }
-    finally:
-        session.close()
-
-    transaction_id = payload["id"]
-
-    try:
-        # Primera solicitud: procesa la transacción.
-        first = client.post("/transactions", json=payload)
-
-        assert first.status_code == 200, first.text
-        assert first.json()["idempotent_replay"] is False
-
-        # Segunda solicitud: reutiliza la decisión guardada.
-        second = client.post("/transactions", json=payload)
-
-        assert second.status_code == 200, second.text
-        assert second.json()["idempotent_replay"] is True
-        assert second.json()["decision"] == first.json()["decision"]
-
-        # Verificar que exista un único registro.
-        verification_session = get_session()
-        try:
-            count = (
-                verification_session.query(Transaccion)
-                .filter(Transaccion.id == transaction_id)
-                .count()
-            )
-            assert count == 1
-        finally:
-            verification_session.close()
-
-    finally:
-        # Limpiar únicamente el registro creado por esta prueba.
-        cleanup_session = get_session()
-        try:
-            cleanup_session.query(Transaccion).filter(
-                Transaccion.id == transaction_id
-            ).delete(synchronize_session=False)
-            cleanup_session.commit()
-        except Exception:
-            cleanup_session.rollback()
-            raise
-        finally:
-            cleanup_session.close()
+    assert second.status_code == 200, second.text
+    assert second.json()["idempotent_replay"] is True
+    assert second.json()["decision"] == first.json()["decision"]
+    assert second.json()["processed_at"] == first.json()["processed_at"]
 
 
-def test_transaction_response_time():
-    session = get_session()
-
-    try:
-        user = session.query(Usuario).first()
-        merchant = session.query(Comercio).first()
-
-        device = (
-            session.query(Dispositivo)
-            .filter(Dispositivo.user_id == user.id)
-            .first()
-            if user
-            else None
-        )
-
-        assert user is not None
-        assert device is not None
-        assert merchant is not None
-
-        payload = {
-            "id": str(uuid4()),
-            "user_id": str(user.id),
-            "device_id": str(device.id),
-            "merchant_id": str(merchant.id),
-            "amount": "25000.00",
-            "transaction_date": datetime.now(timezone.utc).isoformat(),
-            "channel": "WEB",
-        }
-    finally:
-        session.close()
-
-    transaction_id = payload["id"]
-
-    try:
-        # Medir la primera solicitud.
-        start = perf_counter()
-        first = client.post("/transactions", json=payload)
-        first_ms = (perf_counter() - start) * 1000
-
-        assert first.status_code == 200, first.text
-        assert first_ms < 200, (
-            f"La primera solicitud tardó {first_ms:.2f} ms"
-        )
-
-        # Medir la solicitud repetida.
-        start = perf_counter()
-        second = client.post("/transactions", json=payload)
-        replay_ms = (perf_counter() - start) * 1000
-
-        assert second.status_code == 200, second.text
-        assert second.json()["idempotent_replay"] is True
-        assert replay_ms < 200, (
-            f"La solicitud repetida tardó {replay_ms:.2f} ms"
-        )
-
-        print(f"\nPrimera solicitud: {first_ms:.2f} ms")
-        print(f"Solicitud repetida: {replay_ms:.2f} ms")
-
-    finally:
-        cleanup = get_session()
-        try:
-            cleanup.query(Transaccion).filter(
-                Transaccion.id == transaction_id
-            ).delete(synchronize_session=False)
-            cleanup.commit()
-        except Exception:
-            cleanup.rollback()
-            raise
-        finally:
-            cleanup.close()
-
-
-def test_expired_idempotency_window_returns_conflict():
-    session = get_session()
-
-    try:
-        user = session.query(Usuario).first()
-        merchant = session.query(Comercio).first()
-
-        device = (
-            session.query(Dispositivo)
-            .filter(Dispositivo.user_id == user.id)
-            .first()
-            if user
-            else None
-        )
-
-        assert user is not None
-        assert device is not None
-        assert merchant is not None
-
-        payload = {
-            "id": str(uuid4()),
-            "user_id": str(user.id),
-            "device_id": str(device.id),
-            "merchant_id": str(merchant.id),
-            "amount": "25000.00",
-            "transaction_date": datetime.now(timezone.utc).isoformat(),
-            "channel": "WEB",
-        }
-    finally:
-        session.close()
-
-    transaction_id = payload["id"]
-
-    try:
-        # Crear la transacción normalmente.
-        first = client.post("/transactions", json=payload)
-        assert first.status_code == 200, first.text
-
-        # Simular que la decisión se guardó hace 25 horas.
-        expired_session = get_session()
-        try:
-            transaction = expired_session.get(
-                Transaccion,
-                transaction_id,
-            )
-            assert transaction is not None
-
-            transaction.processed_at = (
-                datetime.now(timezone.utc) - timedelta(hours=25)
-            )
-            expired_session.commit()
-        finally:
-            expired_session.close()
-
-        # La ventana configurada es de 24 horas.
-        repeated = client.post("/transactions", json=payload)
-
-        assert repeated.status_code == 409, repeated.text
-        assert "ventana de idempotencia expiró" in (
-            repeated.json()["detail"]
-        )
-
-        # Verificar que el registro original siga siendo único.
-        verification = get_session()
-        try:
-            count = (
-                verification.query(Transaccion)
-                .filter(Transaccion.id == transaction_id)
-                .count()
-            )
-            assert count == 1
-        finally:
-            verification.close()
-
-    finally:
-        # Eliminar únicamente la transacción creada por esta prueba.
-        cleanup = get_session()
-        try:
-            cleanup.query(Transaccion).filter(
-                Transaccion.id == transaction_id
-            ).delete(synchronize_session=False)
-            cleanup.commit()
-        except Exception:
-            cleanup.rollback()
-            raise
-        finally:
-            cleanup.close()
-
-
-def test_simultaneous_requests_do_not_create_duplicates():
-    session = get_session()
-
-    try:
-        user = session.query(Usuario).first()
-        merchant = session.query(Comercio).first()
-
-        device = (
-            session.query(Dispositivo)
-            .filter(Dispositivo.user_id == user.id)
-            .first()
-            if user
-            else None
-        )
-
-        assert user is not None
-        assert device is not None
-        assert merchant is not None
-
-        payload = {
-            "id": str(uuid4()),
-            "user_id": str(user.id),
-            "device_id": str(device.id),
-            "merchant_id": str(merchant.id),
-            "amount": "25000.00",
-            "transaction_date": datetime.now(timezone.utc).isoformat(),
-            "channel": "WEB",
-        }
-    finally:
-        session.close()
-
-    transaction_id = payload["id"]
-    barrier = Barrier(2)
+def test_simultaneous_requests_decide_only_once():
+    payload = _payload_normal()
+    peticiones = 10
+    barrier = Barrier(peticiones)
 
     def send_request():
         barrier.wait(timeout=10)
         return client.post("/transactions", json=payload)
 
-    try:
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            futures = [
-                executor.submit(send_request),
-                executor.submit(send_request),
-            ]
-            responses = [
-                future.result(timeout=20)
-                for future in futures
-            ]
+    with ThreadPoolExecutor(max_workers=peticiones) as executor:
+        futures = [executor.submit(send_request) for _ in range(peticiones)]
+        responses = [future.result(timeout=20) for future in futures]
 
-        assert all(
-            response.status_code == 200 for response in responses
-        ), [response.status_code for response in responses]
+    assert all(
+        response.status_code == 200 for response in responses
+    ), [response.status_code for response in responses]
 
-        bodies = [response.json() for response in responses]
+    bodies = [response.json() for response in responses]
 
-        assert bodies[0]["transaction_id"] == transaction_id
-        assert bodies[1]["transaction_id"] == transaction_id
-        assert bodies[0]["decision"] == bodies[1]["decision"]
+    assert {body["transaction_id"] for body in bodies} == {payload["id"]}
+    assert len({body["decision"] for body in bodies}) == 1
+    assert len({body["processed_at"] for body in bodies}) == 1
 
-        # Una solicitud nueva y otra repetida, sin duplicados.
-        assert sorted(
-            body["idempotent_replay"] for body in bodies
-        ) == [False, True]
-
-        verification = get_session()
-        try:
-            count = (
-                verification.query(Transaccion)
-                .filter(Transaccion.id == transaction_id)
-                .count()
-            )
-            assert count == 1
-        finally:
-            verification.close()
-
-    finally:
-        cleanup = get_session()
-        try:
-            cleanup.query(Transaccion).filter(
-                Transaccion.id == transaction_id
-            ).delete(synchronize_session=False)
-            cleanup.commit()
-        except Exception:
-            cleanup.rollback()
-            raise
-        finally:
-            cleanup.close()
+    # Solo una decidió; las demás recibieron esa misma decisión.
+    replays = [body["idempotent_replay"] for body in bodies]
+    assert replays.count(False) == 1
+    assert replays.count(True) == peticiones - 1
 
 
-@pytest.mark.parametrize(
-    "scenario,amount,expected_decision",
-    [
-        ("approve", "25000.00", "APPROVE"),
-        (
-            "hold",
-            str(max(1, HIGH_AMOUNT_THRESHOLD)),
-            "HOLD",
-        ),
-        ("reject", "25000.00", "REJECT"),
-    ],
-)
-def test_business_decisions_are_persisted(
-    scenario,
-    amount,
-    expected_decision,
-):
-    session = get_session()
-    transaction_id = uuid4()
-    restricted_document = None
+def test_same_id_with_different_amount_returns_conflict():
+    cuenta = _cuenta_del_seed(en_lista=False)
+    payload = _payload_qr(cuenta)
 
-    try:
-        # Buscar un usuario que inicialmente no esté restringido.
-        user = (
-            session.query(Usuario)
-            .outerjoin(
-                ListaRestrictiva,
-                Usuario.documento == ListaRestrictiva.documento,
-            )
-            .filter(ListaRestrictiva.id.is_(None))
-            .first()
-        )
+    first = client.post("/transactions", json=payload)
+    assert first.status_code == 200, first.text
 
-        assert user is not None, (
-            "Se necesita un usuario que no esté en la lista restrictiva."
-        )
+    otro = _payload_qr(cuenta, amount="20")
+    otro["id"] = payload["id"]
 
-        device = (
-            session.query(Dispositivo)
-            .filter(Dispositivo.user_id == user.id)
-            .first()
-        )
-        merchant = session.query(Comercio).first()
+    second = client.post("/transactions", json=otro)
 
-        assert device is not None
-        assert merchant is not None
+    assert second.status_code == 409, second.text
+    assert second.json()["detail"] == "El id ya se usó con otro contenido."
 
-        # Solo el escenario REJECT agrega temporalmente al usuario
-        # a la lista restrictiva.
-        if scenario == "reject":
-            restricted_document = user.documento
-            session.add(
-                ListaRestrictiva(
-                    documento=restricted_document,
-                    tipo="TEST",
-                    fecha_inclusion=datetime.now().date(),
-                )
-            )
-            session.commit()
 
-        payload = {
-            "id": str(transaction_id),
-            "user_id": str(user.id),
-            "device_id": str(device.id),
-            "merchant_id": str(merchant.id),
-            "amount": amount,
-            "transaction_date": datetime.now(timezone.utc).isoformat(),
-            "channel": "WEB",
-        }
+def test_owner_on_restricted_list_is_rejected():
+    payload = _payload_qr(_cuenta_del_seed(en_lista=True))
 
-    finally:
-        session.close()
+    response = client.post("/transactions", json=payload)
 
-    try:
-        response = client.post("/transactions", json=payload)
+    assert response.status_code == 200, response.text
+    assert response.json()["decision"] == "REJECT"
+    assert response.json()["decision_reason"] == (
+        "Titular incluido en una lista restrictiva."
+    )
 
-        assert response.status_code == 200, response.text
 
-        body = response.json()
-        assert body["decision"] == expected_decision
-        assert body["idempotent_replay"] is False
-        assert body["decision_reason"]
-        assert body["processed_at"]
+def test_nonexistent_account_returns_422():
+    payload = _payload_normal()
+    payload["source_account_id"] = str(uuid4())
 
-        # Comprobar la persistencia en PostgreSQL.
-        verification = get_session()
-        try:
-            saved = verification.get(Transaccion, transaction_id)
+    response = client.post("/transactions", json=payload)
 
-            assert saved is not None
-            assert saved.decision == expected_decision
-            assert saved.decision_reason == body["decision_reason"]
-            assert saved.processed_at is not None
-        finally:
-            verification.close()
+    assert response.status_code == 422, response.text
+    assert "no existe" in response.json()["detail"]
 
-    finally:
-        # Limpiar solo los datos creados por esta prueba.
-        cleanup = get_session()
-        try:
-            cleanup.query(Transaccion).filter(
-                Transaccion.id == transaction_id
-            ).delete(synchronize_session=False)
 
-            if restricted_document is not None:
-                cleanup.query(ListaRestrictiva).filter(
-                    ListaRestrictiva.documento == restricted_document,
-                    ListaRestrictiva.tipo == "TEST",
-                ).delete(synchronize_session=False)
+def test_amount_with_too_many_decimals_returns_400():
+    payload = _payload_normal()
+    payload["amount"] = "88.913"
 
-            cleanup.commit()
-        except Exception:
-            cleanup.rollback()
-            raise
-        finally:
-            cleanup.close()
+    response = client.post("/transactions", json=payload)
 
-def test_database_error_returns_500():
+    assert response.status_code == 400, response.text
+    assert "detail" in response.json()
+
+
+def test_amount_with_trailing_zeros_is_accepted():
+    payload = _payload_normal(amount="10.000")
+
+    response = client.post("/transactions", json=payload)
+
+    assert response.status_code == 200, response.text
+
+
+def test_transaction_response_time():
+    payload = _payload_normal()
+
+    # Medir la primera solicitud.
+    start = perf_counter()
+    first = client.post("/transactions", json=payload)
+    first_ms = (perf_counter() - start) * 1000
+
+    assert first.status_code == 200, first.text
+    assert first_ms < 200, (
+        f"La primera solicitud tardó {first_ms:.2f} ms"
+    )
+
+    # Medir la solicitud repetida.
+    start = perf_counter()
+    second = client.post("/transactions", json=payload)
+    replay_ms = (perf_counter() - start) * 1000
+
+    assert second.status_code == 200, second.text
+    assert second.json()["idempotent_replay"] is True
+    assert replay_ms < 200, (
+        f"La solicitud repetida tardó {replay_ms:.2f} ms"
+    )
+
+    print(f"\nPrimera solicitud: {first_ms:.2f} ms")
+    print(f"Solicitud repetida: {replay_ms:.2f} ms")
+
+
+def test_database_error_returns_500_and_releases_reservation():
     from sqlalchemy.exc import SQLAlchemyError
     from services.decision_engine.main import get_db
 
@@ -504,15 +273,7 @@ def test_database_error_returns_500():
 
     app.dependency_overrides[get_db] = override_get_db
 
-    payload = {
-        "id": str(uuid4()),
-        "user_id": str(uuid4()),
-        "device_id": str(uuid4()),
-        "merchant_id": str(uuid4()),
-        "amount": "25000.00",
-        "transaction_date": datetime.now(timezone.utc).isoformat(),
-        "channel": "WEB",
-    }
+    payload = _payload_normal()
 
     try:
         response = client.post("/transactions", json=payload)
@@ -524,3 +285,9 @@ def test_database_error_returns_500():
         "Error interno al procesar la transacción."
     )
     assert fake_session.rolled_back is True
+
+    # La reserva se liberó: el reintento decide en vez de recibir 409.
+    retry = client.post("/transactions", json=payload)
+
+    assert retry.status_code == 200, retry.text
+    assert retry.json()["idempotent_replay"] is False
