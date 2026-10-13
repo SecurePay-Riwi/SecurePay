@@ -3,6 +3,7 @@ import uuid
 from faker import Faker
 from sqlalchemy.dialects.postgresql import insert
 from shared.models import Dispositivo
+from db.seed.config import FECHA_REFERENCIA
 
 NAMESPACE = uuid.UUID("12345678-1234-5678-1234-567812345678")
 
@@ -23,7 +24,7 @@ def generar_dispositivos(session, usuarios, dispositivos_por_usuario):
                 "user_agent": fake.user_agent(),
                 "ip": fake.ipv4(),
                 "fecha_asociacion": fake.date_time_between(
-                    start_date=u["fecha_registro"], end_date="now"
+                    start_date=u["fecha_registro"], end_date=FECHA_REFERENCIA
                 ),
             })
 

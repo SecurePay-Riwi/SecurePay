@@ -3,6 +3,7 @@ import uuid
 from faker import Faker
 from sqlalchemy.dialects.postgresql import insert
 from shared.models import Comercio
+from db.seed.config import FECHA_REFERENCIA
 
 NAMESPACE = uuid.UUID("12345678-1234-5678-1234-567812345678")
 
@@ -13,6 +14,8 @@ def generar_comercios(session, cantidad):
 
     categorias = ["retail", "servicios", "alimentos", "tecnologia", "salud"]
 
+    creacion_desde = FECHA_REFERENCIA.replace(year=FECHA_REFERENCIA.year - 2)
+
     comercios = []
     for i in range(cantidad):
         comercios.append({
@@ -20,7 +23,9 @@ def generar_comercios(session, cantidad):
             "nombre": fake.company(),
             "categoria": random.choice(categorias),
             "direccion": fake.address(),
-            "fecha_creacion": fake.date_time_between(start_date="-2y", end_date="now"),
+            "fecha_creacion": fake.date_time_between(
+                start_date=creacion_desde, end_date=FECHA_REFERENCIA
+            ),
             "estado": random.choice(["activo", "inactivo", "suspendido"]),
         })
 

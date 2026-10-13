@@ -13,6 +13,7 @@ from db.seed.config import (
 from shared.db import get_session, engine
 from shared.models import Base
 from db.seed.tables.users import generar_usuarios
+from db.seed.tables.accounts import generar_cuentas
 from db.seed.tables.devices import generar_dispositivos
 from db.seed.tables.merchants import generar_comercios
 from db.seed.tables.restricted_lists import generar_listas
@@ -30,6 +31,7 @@ def reset_tablas():
                 TRUNCATE TABLE
                     transacciones,
                     usuarios,
+                    cuentas,
                     dispositivos,
                     comercios,
                     listas_restrictivas
@@ -54,11 +56,12 @@ def main():
 
     reset = os.getenv("SEED_RESET", "false").lower() == "true"
 
+    # Crear únicamente las tablas que aún no existan. Va antes del reset
+    # para que el TRUNCATE no falle con una tabla nueva (como cuentas).
+    Base.metadata.create_all(engine)
+
     if reset:
         reset_tablas()
-
-    # Crear únicamente las tablas que aún no existan.
-    Base.metadata.create_all(engine)
 
     session = get_session()
 
@@ -71,6 +74,9 @@ def main():
             vol["users"],
             DEFECT_PERCENTAGE,
         )
+
+        print("Generando cuentas...")
+        generar_cuentas(session, usuarios)
 
         print("Generando dispositivos...")
         dispositivos = generar_dispositivos(

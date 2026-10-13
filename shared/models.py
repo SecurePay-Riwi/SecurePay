@@ -31,6 +31,23 @@ class Usuario(Base):
     fecha_registro = Column(DateTime, nullable=False)
 
 
+class Cuenta(Base):
+    __tablename__ = "cuentas"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Único: cada usuario tiene una sola cuenta, en una sola moneda.
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("usuarios.id"),
+        unique=True,
+        nullable=False,
+    )
+    moneda = Column(String(3), nullable=False)  # USD, COP, EUR o JPY
+    saldo = Column(Numeric(18, 2), nullable=False)
+    fecha_apertura = Column(DateTime, nullable=False)
+    estado = Column(String, nullable=False)  # activa o bloqueada
+
+
 class Dispositivo(Base):
     __tablename__ = "dispositivos"
 
