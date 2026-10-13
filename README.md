@@ -21,7 +21,7 @@ services/
 shared/              modelos de SQLAlchemy y conexión a PostgreSQL, usados por todos
 generators/          generador de transacciones con fraude y sus pruebas
 db/
-  seed/              seed de PostgreSQL: usuarios, dispositivos, comercios y listas
+  seed/              seed de PostgreSQL: usuarios, cuentas, dispositivos, comercios y listas
 ```
 
 Las carpetas se nombran con guion bajo (`decision_engine`) porque Python
@@ -122,10 +122,13 @@ uv run python -m db.seed.seed
 Debería generar:
 
 -   100 usuarios
--   \~146 dispositivos
+-   100 cuentas (una por usuario, en USD, COP, EUR o JPY)
+-   150 dispositivos (146 normales y 4 compartidos entre varias cuentas)
 -   50 comercios
--   20 listas restrictivas
--   100 transacciones
+-   20 personas en la lista restrictiva (5 son clientes)
+
+El seed solo carga datos maestros. Las transacciones no van en el seed:
+las manda el generador al motor, como lo haría el core.
 
 ### Paso 7 --- Verificar
 
@@ -187,9 +190,15 @@ uv run python -m db.seed.seed
 
 ### Tipos de defectos
 
--   `NULL` → `telefono`
--   `INVALID_FORMAT` → `email`
--   `OUT_OF_RANGE` → `fecha_nacimiento`
+El seed solo daña el formato del documento del usuario. El formato
+correcto es solo dígitos (`1000000016`) y los defectos lo escriben así:
+
+-   `PUNTOS` → `1.000.000.016`
+-   `PREFIJO` → `CC 1000000016`
+-   `ESPACIOS` → `" 1000000016 "`
+
+La lista restrictiva siempre guarda el documento correcto, así que el
+motor debe dejar solo los dígitos antes de buscarlo.
 
 ### Reporte de defectos
 
@@ -207,5 +216,6 @@ El reporte identifica:
 -   `id` del registro
 -   tipo de defecto
 -   campo afectado
+-   documento correcto (`canonico`) y cómo quedó escrito (`valor`)
 
 El archivo se genera localmente y está incluido en `.gitignore`.

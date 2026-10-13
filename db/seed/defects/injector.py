@@ -1,6 +1,5 @@
 import json
 import random
-from datetime import date
 from pathlib import Path
 
 def seleccionar_registros(registros, porcentaje, seed=42):
@@ -22,12 +21,14 @@ def seleccionar_registros(registros, porcentaje, seed=42):
 
 def inyectar_defectos_usuarios(registros, porcentaje, seed=42):
     """
-    Inyecta diferentes tipos de defectos en los usuarios seleccionados.
+    Escribe el documento de los usuarios seleccionados en otro formato,
+    como llegaría de sistemas distintos. El motor debe normalizarlo
+    (dejar solo los dígitos) antes de buscarlo en la lista restrictiva.
 
-    Tipos de defectos:
-    - NULL en telefono
-    - Formato inválido en email
-    - Fecha de nacimiento fuera de rango
+    Formatos, a partir del canónico 1000000016:
+    - Con puntos: 1.000.000.016
+    - Con prefijo del tipo de documento: CC 1000000016
+    - Con espacios alrededor: " 1000000016 "
     """
 
     seleccionados = seleccionar_registros(registros, porcentaje, seed)
@@ -35,31 +36,26 @@ def inyectar_defectos_usuarios(registros, porcentaje, seed=42):
     defectos = []
 
     for i, usuario in enumerate(seleccionados):
+        canonico = usuario["documento"]
         tipo = i % 3
 
         if tipo == 0:
-            usuario["telefono"] = None
-            defectos.append({
-                "id": usuario["id"],
-                "tipo": "NULL",
-                "campo": "telefono",
-            })
-
+            usuario["documento"] = f"{int(canonico):,}".replace(",", ".")
+            formato = "PUNTOS"
         elif tipo == 1:
-            usuario["email"] = f"email_invalido_{i}"
-            defectos.append({
-                "id": usuario["id"],
-                "tipo": "INVALID_FORMAT",
-                "campo": "email",
-            })
-
+            usuario["documento"] = f"CC {canonico}"
+            formato = "PREFIJO"
         else:
-            usuario["fecha_nacimiento"] = date(1800, 1, 1)
-            defectos.append({
-                "id": usuario["id"],
-                "tipo": "OUT_OF_RANGE",
-                "campo": "fecha_nacimiento",
-            })
+            usuario["documento"] = f" {canonico} "
+            formato = "ESPACIOS"
+
+        defectos.append({
+            "id": usuario["id"],
+            "tipo": formato,
+            "campo": "documento",
+            "canonico": canonico,
+            "valor": usuario["documento"],
+        })
 
     return defectos
 

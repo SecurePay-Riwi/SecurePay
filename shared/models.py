@@ -31,6 +31,23 @@ class Usuario(Base):
     fecha_registro = Column(DateTime, nullable=False)
 
 
+class Cuenta(Base):
+    __tablename__ = "cuentas"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Único: cada usuario tiene una sola cuenta, en una sola moneda.
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("usuarios.id"),
+        unique=True,
+        nullable=False,
+    )
+    moneda = Column(String(3), nullable=False)  # USD, COP, EUR o JPY
+    saldo = Column(Numeric(18, 2), nullable=False)
+    fecha_apertura = Column(DateTime, nullable=False)
+    estado = Column(String, nullable=False)  # activa o bloqueada
+
+
 class Dispositivo(Base):
     __tablename__ = "dispositivos"
 
@@ -43,6 +60,29 @@ class Dispositivo(Base):
     device_fingerprint = Column(String, unique=True, nullable=False)
     user_agent = Column(String)
     ip = Column(String)
+    fecha_asociacion = Column(DateTime, nullable=False)
+
+
+class DispositivoCuenta(Base):
+    """Un dispositivo usado en una cuenta desde una fecha.
+
+    Permite que un mismo dispositivo aparezca en varias cuentas, que es
+    lo que mide la regla de dispositivo compartido.
+    """
+
+    __tablename__ = "dispositivo_cuenta"
+
+    dispositivo_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("dispositivos.id"),
+        primary_key=True,
+    )
+    cuenta_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("cuentas.id"),
+        primary_key=True,
+        index=True,
+    )
     fecha_asociacion = Column(DateTime, nullable=False)
 
 
