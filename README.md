@@ -34,6 +34,7 @@ consumidores, las APIs y las tareas programadas dentro de `services/`,
 -   [uv](https://docs.astral.sh/uv/getting-started/installation/) (gestor de paquetes y entornos de Python)
 -   Python 3.12 (uv lo instala solo si no lo tienes)
 -   PostgreSQL 16 o superior
+-   [Docker Desktop](https://www.docker.com/products/docker-desktop/) (para Valkey, la caché del motor)
 -   Git
 
 ## Instalación y ejecución
@@ -97,7 +98,32 @@ GRANT ALL ON SCHEMA public TO pagoseguro;
 \q
 ```
 
-### Paso 5 --- Crear el `.env`
+### Paso 5 --- Levantar Valkey
+
+El motor de decisión guarda la idempotencia en Valkey (en AWS es
+ElastiCache). En local corre en un contenedor de Docker. Con Docker
+Desktop abierto:
+
+``` bash
+docker run -d --name pagoseguro-valkey -p 6379:6379 valkey/valkey:8
+docker exec pagoseguro-valkey valkey-cli ping
+```
+
+El segundo comando debe responder `PONG`. La primera vez Docker avisa
+`Unable to find image 'valkey/valkey:8' locally` y la descarga sola.
+
+Después de reiniciar el equipo o cerrar Docker, el contenedor queda
+apagado. Se enciende con:
+
+``` bash
+docker start pagoseguro-valkey
+```
+
+No se vuelve a crear con `docker run`: el nombre ya existe y daría
+error. Cuando el repo tenga su `docker-compose.yml`, este paso se
+reemplaza por `docker compose up`.
+
+### Paso 6 --- Crear el `.env`
 
 Copiar `.env.example` a `.env`:
 
@@ -111,9 +137,10 @@ válidos para desarrollo.
 
 ``` env
 DATABASE_URL=postgresql://pagoseguro:pagoseguro@localhost:5432/pagoseguro
+VALKEY_URL=redis://localhost:6379/0
 ```
 
-### Paso 6 --- Ejecutar el seed
+### Paso 7 --- Ejecutar el seed
 
 ``` bash
 uv run python -m db.seed.seed
@@ -130,7 +157,7 @@ Debería generar:
 El seed solo carga datos maestros. Las transacciones no van en el seed:
 las manda el generador al motor, como lo haría el core.
 
-### Paso 7 --- Verificar
+### Paso 8 --- Verificar
 
 ``` bash
 psql -U pagoseguro -d pagoseguro -h localhost
@@ -145,7 +172,7 @@ SELECT COUNT(*) FROM usuarios;
 
 Debería devolver `100`.
 
-### Paso 8 --- Ejecutar el generador de transacciones
+### Paso 9 --- Ejecutar el generador de transacciones
 
 El generador hace de core de la billetera: lee las cuentas del seed una
 vez y produce transacciones con patrones de fraude y defectos de calidad.
@@ -163,16 +190,18 @@ Con la semilla 42 y los valores de `.env.example`, debería terminar en
 -   `labels.jsonl`: qué patrón es cada evento y qué regla debería disparar
 -   `generation_report.json`: conteos por patrón, por tipo y por defecto
 
-### Paso 9 --- Ejecutar las pruebas
+### Paso 10 --- Ejecutar las pruebas
 
 Requiere haber ejecutado el seed, porque las pruebas de la API leen
-usuarios y comercios de la base.
+cuentas y comercios de la base, y tener Valkey encendido (paso 5).
+Si Valkey está apagado, las pruebas de idempotencia salen como
+omitidas (`s`) y las de la API fallan con 503.
 
 ``` bash
 uv run pytest
 ```
 
-### Paso 10 --- Levantar la API
+### Paso 11 --- Levantar la API
 
 ``` bash
 uv run uvicorn services.decision_engine.main:app --reload
@@ -180,6 +209,9 @@ uv run uvicorn services.decision_engine.main:app --reload
 
 La API queda en http://localhost:8000 y la documentación interactiva
 en http://localhost:8000/docs.
+
+Necesita PostgreSQL y Valkey encendidos. Sin Valkey, `POST /transactions`
+responde 503 ("El servicio de idempotencia no está disponible").
 
 ## HU-04 --- Inyección de defectos
 
