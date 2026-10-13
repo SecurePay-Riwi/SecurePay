@@ -33,6 +33,12 @@ CUENTAS_BLOQUEADAS_PCT = float(os.getenv("SEED_CUENTAS_BLOQUEADAS_PCT", 2))
 USUARIOS_EN_LISTA_PCT = float(os.getenv("SEED_USUARIOS_EN_LISTA_PCT", 0.1))
 USUARIOS_EN_LISTA_MIN = int(os.getenv("SEED_USUARIOS_EN_LISTA_MIN", 5))
 
+# Comercios recién creados (posibles comercios ficticios): este porcentaje
+# de comercios se crea en los últimos N días antes de la fecha de
+# referencia; el resto, antes de esa ventana.
+COMERCIOS_NUEVOS_PCT = float(os.getenv("SEED_COMERCIOS_NUEVOS_PCT", 10))
+COMERCIOS_NUEVOS_DIAS = int(os.getenv("SEED_COMERCIOS_NUEVOS_DIAS", 30))
+
 # Dispositivos compartidos. Cada patrón dice en cuántas cuentas se usa
 # un mismo dispositivo y en cuántos días antes de la fecha de referencia
 # se reparten esas asociaciones. La regla se dispara con más de 3 cuentas

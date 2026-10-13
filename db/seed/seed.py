@@ -7,8 +7,6 @@ from db.seed.config import (
     MODE,
     VOLUMES,
     DEFECT_PERCENTAGE,
-    TRANSACTION_FRAUD_PERCENTAGE,
-    SEED,
 )
 from shared.db import get_session, engine
 from shared.models import Base
@@ -17,7 +15,6 @@ from db.seed.tables.accounts import generar_cuentas
 from db.seed.tables.devices import generar_dispositivos
 from db.seed.tables.merchants import generar_comercios
 from db.seed.tables.restricted_lists import generar_listas
-from generators.transactions import generar_transacciones
 
 
 def reset_tablas():
@@ -50,10 +47,6 @@ def main():
     print(f"Modo: {MODE}")
     print(f"Volúmenes: {VOLUMES[MODE]}")
     print(f"Porcentaje de defectos: {DEFECT_PERCENTAGE}%")
-    print(
-        f"Porcentaje de fraude: "
-        f"{TRANSACTION_FRAUD_PERCENTAGE}%"
-    )
 
     reset = os.getenv("SEED_RESET", "false").lower() == "true"
 
@@ -80,7 +73,7 @@ def main():
         cuentas = generar_cuentas(session, usuarios)
 
         print("Generando dispositivos...")
-        dispositivos = generar_dispositivos(
+        generar_dispositivos(
             session,
             usuarios,
             cuentas,
@@ -89,7 +82,7 @@ def main():
         )
 
         print("Generando comercios...")
-        comercios = generar_comercios(
+        generar_comercios(
             session,
             vol["merchants"],
         )
@@ -101,16 +94,8 @@ def main():
             vol["restricted_lists"],
         )
 
-        print("Generando transacciones...")
-        generar_transacciones(
-            session=session,
-            usuarios=usuarios,
-            dispositivos=dispositivos,
-            comercios=comercios,
-            cantidad=vol["transactions"],
-            fraud_percentage=TRANSACTION_FRAUD_PERCENTAGE,
-            seed=SEED,
-        )
+        # Las transacciones no van en el seed: el generador las manda
+        # al motor por su cuenta, como lo haría el core.
 
         print()
         print("Seed completado.")
