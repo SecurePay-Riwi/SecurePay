@@ -7,3 +7,5 @@ __pycache__/
 *.db
 .vscode/
 defect_report.json
+# Salida del generador de transacciones
+generated/

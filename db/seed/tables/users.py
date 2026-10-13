@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from shared.models import Usuario
 from db.seed.config import FECHA_REFERENCIA
+from db.seed.fechas import fecha_entre, fecha_hora_entre
 from db.seed.defects.injector import (
     inyectar_defectos_usuarios,
     guardar_reporte_defectos,
@@ -38,16 +39,14 @@ def generar_usuarios(session, cantidad, defect_percentage=0):
             # sin puntos ni prefijo. Es el formato de la lista restrictiva.
             "documento": str(1_000_000_000 + i),
             "telefono": fake.phone_number(),
-            "fecha_nacimiento": fake.date_between(
-                start_date=nacimiento_desde,
-                end_date=nacimiento_hasta,
+            "fecha_nacimiento": fecha_entre(
+                fake.random, nacimiento_desde, nacimiento_hasta
             ),
             "kyc_estado": random.choice(
                 ["aprobado", "pendiente", "rechazado"]
             ),
-            "fecha_registro": fake.date_time_between(
-                start_date=registro_desde,
-                end_date=FECHA_REFERENCIA,
+            "fecha_registro": fecha_hora_entre(
+                fake.random, registro_desde, FECHA_REFERENCIA
             ),
         })
 

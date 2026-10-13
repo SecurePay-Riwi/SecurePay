@@ -7,8 +7,19 @@ from sqlalchemy.dialects.postgresql import insert
 
 from shared.models import Dispositivo, DispositivoCuenta
 from db.seed.config import FECHA_REFERENCIA, PATRONES_COMPARTIDOS
+from db.seed.fechas import fecha_hora_entre
 
 NAMESPACE = uuid.UUID("12345678-1234-5678-1234-567812345678")
+
+
+def user_agent(fake):
+    """User agent de Chrome, Safari u Opera.
+
+    user_agent() de Faker a veces arma uno de Firefox con una fecha
+    adentro, y esas fechas salen distintas en Windows y en Linux (ver
+    db/seed/fechas.py). Estos tres navegadores no la usan.
+    """
+    return fake.random_element((fake.chrome, fake.safari, fake.opera))()
 
 
 def generar_dispositivos(
@@ -27,10 +38,10 @@ def generar_dispositivos(
                 "id": dev_id,
                 "user_id": u["id"],
                 "device_fingerprint": str(uuid.uuid5(NAMESPACE, f"fp:{u['id']}:{j}")),
-                "user_agent": fake.user_agent(),
+                "user_agent": user_agent(fake),
                 "ip": fake.ipv4(),
-                "fecha_asociacion": fake.date_time_between(
-                    start_date=u["fecha_registro"], end_date=FECHA_REFERENCIA
+                "fecha_asociacion": fecha_hora_entre(
+                    fake.random, u["fecha_registro"], FECHA_REFERENCIA
                 ),
             })
 
@@ -112,7 +123,7 @@ def generar_compartidos(fake, cuentas, cantidad):
             "id": dev_id,
             "user_id": elegidas[-1]["user_id"],
             "device_fingerprint": str(uuid.uuid5(NAMESPACE, f"fp:shared:{k}")),
-            "user_agent": fake.user_agent(),
+            "user_agent": user_agent(fake),
             "ip": fake.ipv4(),
             "fecha_asociacion": fechas[-1],
         })

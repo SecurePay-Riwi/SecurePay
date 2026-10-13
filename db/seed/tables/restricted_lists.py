@@ -9,6 +9,7 @@ from db.seed.config import (
     USUARIOS_EN_LISTA_PCT,
     USUARIOS_EN_LISTA_MIN,
 )
+from db.seed.fechas import fecha_entre
 
 NAMESPACE = uuid.UUID("12345678-1234-5678-1234-567812345678")
 
@@ -43,9 +44,7 @@ def generar_listas(session, usuarios, cantidad):
             "id": uuid.uuid5(NAMESPACE, f"list:{i}"),
             "documento": documento,
             "tipo": fake.random_element(elements=("sanciones", "PEP")),
-            "fecha_inclusion": fake.date_between(
-                start_date=inclusion_desde, end_date=hoy
-            ),
+            "fecha_inclusion": fecha_entre(fake.random, inclusion_desde, hoy),
         })
 
     for l in listas:
@@ -56,4 +55,4 @@ def generar_listas(session, usuarios, cantidad):
 
     session.commit()
     print(f"  {len(listas)} personas en la lista restrictiva ({n_clientes} son clientes)")
-    return listas
+    return listas

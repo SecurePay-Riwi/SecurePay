@@ -145,7 +145,25 @@ SELECT COUNT(*) FROM usuarios;
 
 Debería devolver `100`.
 
-### Paso 8 --- Ejecutar las pruebas
+### Paso 8 --- Ejecutar el generador de transacciones
+
+El generador hace de core de la billetera: lee las cuentas del seed una
+vez y produce transacciones con patrones de fraude y defectos de calidad.
+Con `GEN_OUTPUT=file` escribe los eventos en `generated/instance-0/` sin
+mandarlos al motor.
+
+``` bash
+uv run python -m generators
+```
+
+Con la semilla 42 y los valores de `.env.example`, debería terminar en
+`Listo: 1035 eventos`. Deja tres archivos:
+
+-   `events.jsonl`: lo que recibiría el motor, en orden de envío
+-   `labels.jsonl`: qué patrón es cada evento y qué regla debería disparar
+-   `generation_report.json`: conteos por patrón, por tipo y por defecto
+
+### Paso 9 --- Ejecutar las pruebas
 
 Requiere haber ejecutado el seed, porque las pruebas de la API leen
 usuarios y comercios de la base.
@@ -154,7 +172,7 @@ usuarios y comercios de la base.
 uv run pytest
 ```
 
-### Paso 9 --- Levantar la API
+### Paso 10 --- Levantar la API
 
 ``` bash
 uv run uvicorn services.decision_engine.main:app --reload
