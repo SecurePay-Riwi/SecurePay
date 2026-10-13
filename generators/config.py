@@ -48,7 +48,7 @@ TX_PER_ACCOUNT_DAY = float(os.getenv("GEN_TX_PER_ACCOUNT_DAY", 1))
 
 # "http": manda cada transacción al motor, como el core.
 # "file": la escribe en un archivo .jsonl, para probar sin el motor.
-OUTPUT = os.getenv("GEN_OUTPUT", "http")
+OUTPUT = os.getenv("GEN_OUTPUT", "file")
 ENGINE_URL = os.getenv("GEN_ENGINE_URL", "http://localhost:8000")
 OUTPUT_DIR = Path(os.getenv("GEN_OUTPUT_DIR", "generated"))
 
