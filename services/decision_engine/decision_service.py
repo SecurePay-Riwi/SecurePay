@@ -4,8 +4,10 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
+from shared.events import evento_decision
 from shared.models import Comercio, Cuenta, ListaRestrictiva, Usuario
 from services.decision_engine import idempotency as idem
+from services.decision_engine import publisher
 from services.decision_engine import velocity
 from services.decision_engine.schemas import (
     Decision,
@@ -113,8 +115,12 @@ def process_transaction(
 
     Devuelve (resultado, replay).
     replay=True indica que se reutilizó una decisión existente.
+
+    Solo la primera decisión se publica en SNS: un reenvío devuelve la
+    decisión guardada sin volver a publicarla.
     """
-    firma = idem.huella(payload.model_dump(mode="json"))
+    transaccion = payload.model_dump(mode="json")
+    firma = idem.huella(transaccion)
 
     previo = idem.reservar(payload.id, firma)
 
@@ -129,5 +135,8 @@ def process_transaction(
         raise
 
     idem.guardar(payload.id, firma, resultado)
+
+    # No espera a SNS: deja el evento para el hilo de fondo y sigue.
+    publisher.publicar(evento_decision(transaccion, resultado))
 
     return resultado, False

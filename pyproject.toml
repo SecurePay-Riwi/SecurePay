@@ -3,6 +3,7 @@ name = "securepay"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "boto3>=1.43.113",
     "faker>=40.43.0",
     "fastapi>=0.143.0",
     "httpx>=0.28.1",

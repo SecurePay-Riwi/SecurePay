@@ -9,7 +9,9 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 from sqlalchemy import func
 
+from services.decision_engine import publisher
 from services.decision_engine.main import app
+from services.decision_engine.publisher import MARCA_FALLA, Publicador
 from shared.cache import get_cache
 from shared.db import get_session
 from shared.models import (
@@ -108,7 +110,8 @@ def test_health_returns_200():
     response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json()["status"] == "ok"
+    assert set(response.json()["messaging"]) == {"pendientes", "publicados", "fallidos"}
 
 
 def test_invalid_transaction_returns_400():
@@ -383,3 +386,46 @@ def test_late_transfer_that_completes_the_window_is_held():
     payloads = _payloads_p2p(_minutos(0, 1, 3, 4, 5, 2))
 
     assert _decisiones(payloads) == ["APPROVE"] * 5 + ["HOLD"]
+
+
+def test_decision_is_published_once(eventos_publicados):
+    payload = _payload_normal()
+
+    first = client.post("/transactions", json=payload)
+    second = client.post("/transactions", json=payload)
+
+    assert first.status_code == second.status_code == 200
+    # El reenvío devuelve la misma decisión sin publicarla otra vez.
+    assert len(eventos_publicados) == 1
+
+    evento = eventos_publicados[0]
+    assert evento["event_type"] == "transaction.decided"
+    assert evento["transaction"]["id"] == payload["id"]
+    assert evento["transaction"]["amount"] == payload["amount"]
+    assert evento["decision"]["decision"] == first.json()["decision"]
+
+
+def test_engine_answers_when_sns_is_down(monkeypatch, caplog):
+    def sns_caido():
+        raise ConnectionError("SNS no responde")
+
+    caido = Publicador(
+        topic_arn="arn:aws:sns:us-east-2:000000000000:decisiones",
+        crear_cliente=sns_caido,
+        reintentos=1,
+        espera_reintento_s=0,
+    )
+    monkeypatch.setattr(publisher, "publicar", caido.publicar)
+
+    inicio = perf_counter()
+    response = client.post("/transactions", json=_payload_normal())
+    duracion = perf_counter() - inicio
+
+    assert response.status_code == 200, response.text
+    assert response.json()["decision"] == "APPROVE"
+    assert duracion < 0.2
+
+    # La falla queda registrada en el log, con el evento.
+    caido.detener()
+    assert caido.fallidos == 1
+    assert MARCA_FALLA in caplog.text
