@@ -1,0 +1,217 @@
+---
+sidebar_position: 3
+---
+
+# Sprint backlog 1
+## Data + Input + Base Architecture
+
+**Sprint Goal:** Have the system's foundation up and running: data generated, the ingestion pipeline operational, and the architecture documented, so that the team can begin building the anti-fraud engine on a solid and reproducible foundation
+
+**Sprint Period:** September 23, 2026 – October 06, 2026  
+**Scrum Master / Leader:** Habith  
+**Team Members:** Kerlys, Yulianis, Jorge  
+
+---
+
+## User Stories & Tasks Table
+
+| HU | Epic | Description | MoSCoW |
+| :--- | :--- | :--- | :--- |
+| HU-01 | EP-01 | User, device, merchant, and list seed | Must |
+| HU-02 | EP-01 | Parameterize seed volume | Must |
+| HU-03 | EP-01 | Idempotent seed | Must |
+| HU-04 | EP-01 | Inject configurable defects | Must |
+| HU-05 | EP-01 | Synthetic transactions with fraud patterns | Must |
+| HU-06 | EP-02 | Send transactions to decision service | Must |
+| HU-07 | EP-02 | Idempotency in duplicate transactions | Must |
+| HU-08 | EP-02 | Process out-of-order events | Should |
+| HU-09 | EP-02 | Decouple processing with asynchronous messaging | Should |
+| HU-54 | EP-11 | Define v1 architecture and initial ADRs | Must |
+| HU-62 | EP-12 | Configure Git repository with structure and conventions | Must |
+
+---
+
+## Acceptance Criteria
+
+---
+
+### US-01 — User, device, merchant, and restricted list seed
+
+#### Criterion 1
+Given the seed is configured to generate the required entities, when it is executed, it generates and persists records for users, devices, merchants, and restricted lists.
+
+#### Criterion 2
+Given the seed has generated the required records, when the consistency of the data is verified, it is consistent with itself, such as a device belonging to an existing user.
+
+#### Criterion 3
+Given the seed is available in the project environment, when the configured single command is executed, the seed runs successfully.
+
+
+#### Criterion 4
+Given the seed has generated the required records, when the database is checked, the generated data is persisted correctly.
+
+---
+
+### US-02 — Parameterize seed volume
+
+#### Criterion 1
+Given the seed supports configurable entity volumes, when volume parameters are provided for each entity, it accepts and uses the specified values.
+
+#### Criterion 2
+Given no volume parameters are provided, when the seed is executed, it uses the defined default values.
+
+#### Criterion 3
+Given specific volume parameters have been provided, when the seed is executed, it generates exactly the requested volume without exceeding or falling below it.
+
+---
+
+### US-03 — Idempotent seed
+
+#### Criterion 1
+Given the seed has already been executed with a specific dataset, when the same seed is executed a second time, no duplicate records are generated.
+
+#### Criterion 2
+Given the data already exists in the database, when the seed is executed again, it detects the existing data and skips or updates it without errors.
+
+#### Criterion 3
+Given the seed can be executed multiple times, when it is run repeatedly with the same configuration, the final result remains the same regardless of how many times it is executed.
+
+---
+
+### US-04 — Inject configurable defects
+
+#### Criterion 1
+Given the seed supports configurable defect injection, when a defect percentage parameter is provided, it accepts the specified percentage.
+
+#### Criterion 2
+Given defect injection is enabled, when the seed generates the data, the defects include at least null fields, invalid formats, and out-of-range values.
+
+#### Criterion 3
+Given the seed has generated records with defects, when the generated records are inspected, the records containing defects are identifiable for validation.
+
+#### Criterion 4
+Given no defect percentage parameter is provided, when the seed is executed, it generates clean data by default.
+
+---
+
+### US-05 — Synthetic transactions with fraud patterns
+
+#### Criterion 1
+Given the synthetic transaction generator is configured, when transactions are generated, it produces transactions with known fraud patterns including mule activity, transaction splitting, and velocity.
+
+#### Criterion 2
+Given the seed is generating synthetic transactions, when a transaction is created, it contains the required fields: user, device, merchant, amount, date, and channel.
+
+#### Criterion 3
+Given a fraud percentage has been configured, when synthetic transactions are generated, the system produces the configured percentage of fraudulent transactions.
+
+#### Criterion 4
+Given fraudulent transactions have been generated, when the generated transactions are inspected, the fraudulent ones are labeled so their effectiveness can be validated by the engine later.
+
+---
+
+### US-06 — Send transactions to the decision service
+
+#### Criterion 1
+Given the decision service is available, when a transaction is sent through the REST endpoint, the endpoint receives it successfully.
+
+#### Criterion 2
+Given a valid transaction has been received, when the decision service evaluates it, the endpoint returns one of the decisions: APPROVE, HOLD, or REJECT.
+
+#### Criterion 3
+Given the decision service is operating under normal conditions, when a transaction is processed, the response time does not exceed 200 ms.
+
+#### Criterion 4
+Given a request is sent to the decision endpoint, when the request is processed, the system returns the appropriate HTTP status code: 200, 400, or 500.
+
+#### Criterion 5
+Given a transaction has been received and evaluated, when the processing is completed, the transaction is registered together with its decision.
+
+---
+
+### US-07 — Idempotency on duplicate transactions
+
+Criterion 1
+#### Given a transaction with a specific ID has already been processed, when the same transaction ID is submitted again, the system returns the same decision without reprocessing.
+
+#### Criterion 2
+Given a transaction has already been processed, when the same transaction is submitted again, no duplicate record is created in the database.
+
+#### Criterion 3
+Given the system has a defined idempotency window, when a duplicate transaction is received within that window, the idempotent behavior is applied.
+
+---
+
+### US-08 — Process out-of-order events
+
+#### Criterion 1
+Given the system has already processed a transaction with a specific timestamp, when a transaction with an earlier timestamp is received, the system accepts it.
+
+#### Criterion 2
+Given events have arrived out of chronological order, when the system updates the user's history, the events are correctly ordered before the history is updated.
+
+#### Criterion 3
+Given an event arrives after a more recent event has already been processed, when the system processes the late event, the event is not lost.
+
+#### Criterion 4
+Given the user's history contains events received in different orders, when the history is updated, it reflects the actual chronological order rather than the arrival order.
+
+---
+
+### US-09 — Decouple processing with asynchronous messaging
+
+#### Criterion 1
+Given the system has completed the transaction decision, when the decision is generated, the system publishes an event to RabbitMQ.
+
+#### Criterion 2
+Given an event has been published to RabbitMQ, when the decision response is returned to the client, the response does not wait for the consumers to process the event.
+
+#### Criterion 3
+Given RabbitMQ is unavailable, when the system completes the transaction decision, it still responds to the client and registers the messaging failure.
+
+#### Criterion 4
+Given an event has been published to RabbitMQ, when the consumers process the event, they do so independently without affecting the main response time.
+
+---
+
+### US-54 — Define v1 architecture and initial ADRs
+
+#### Criterion 1
+Given the project architecture and components have been defined, when the architecture documentation is created, a logical and physical end-to-end diagram exists covering all system components.
+
+#### Criterion 2
+Given the system contains synchronous and asynchronous processes, when the architecture diagram is documented, it includes both data flows.
+
+#### Criterion 3
+Given architecture decisions have been identified, when the ADRs are documented, at least 5 are written with context, evaluated alternatives, the decision taken, and the reason for discarding the alternatives.
+
+#### Criterion 4
+Given the architecture documentation is being prepared, when the document is reviewed, it explicitly answers the five architecture questions defined by the project.
+
+#### Criterion 5
+Given the architecture documentation has been completed, when the project repository is checked, the document is versioned in it.
+
+---
+
+### US-62 — Git repo setup
+
+#### Criterion 1
+Given the development team requires a shared repository, when the repository is configured, it exists and is accessible to all team members.
+
+#### Criterion 2
+Given the project contains multiple components, when the repository structure is documented, it has a defined folder structure organized by components.
+
+#### Criterion 3
+Given a person external to the team accesses the repository, when they read the README and follow its instructions, they can understand the project and run it in less than 30 minutes.
+
+#### Criterion 4
+Given the team uses Git for development, when the repository conventions are reviewed, the branch conventions are documented including main, develop, feature/, and hotfix/.
+
+#### Criterion 5
+Given the repository uses Pull Requests for code review, when the repository history is reviewed, at least one example Pull Request exists as evidence of the review workflow.
+
+#### Criterion 6
+Given the repository contains project source code, when it is inspected for sensitive information, no credentials, keys, or passwords are stored.
+
+#### Criterion 7
+Given the repository contains files that should not be versioned, when the repository configuration is reviewed, a correctly configured .gitignore is present. 
