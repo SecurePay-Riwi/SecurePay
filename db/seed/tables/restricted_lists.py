@@ -1,4 +1,5 @@
 import random
+import re
 import uuid
 from faker import Faker
 from sqlalchemy.dialects.postgresql import insert
@@ -30,8 +31,9 @@ def generar_listas(session, usuarios, cantidad):
     listas = []
     for i in range(cantidad):
         if i < n_clientes:
-            # Mismo documento del cliente, en formato canónico.
-            documento = clientes[i]["documento"]
+            # Documento del cliente en formato canónico. Si el seed le
+            # cambió el formato (defecto), la lista guarda solo los dígitos.
+            documento = re.sub(r"\D", "", clientes[i]["documento"])
         else:
             # Personas que no son clientes: cédulas de 8 dígitos, que nunca
             # coinciden con las de 10 dígitos de los usuarios.
