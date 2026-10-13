@@ -7,12 +7,16 @@ reenvía el mismo id, recibe la misma decisión mientras dure el TTL.
 import hashlib
 import json
 import os
+import time
 
 from shared.cache import get_cache
 
 TTL = int(os.getenv("IDEMPOTENCY_TTL_SECONDS", "3600"))
 # Si el proceso muere a mitad de decidir, la reserva se libera sola.
 RESERVA_TTL = 30
+# Cuánto espera un reenvío a que la primera petición termine de decidir.
+ESPERA_PENDIENTE_S = 0.1
+INTERVALO_PENDIENTE_S = 0.01
 
 
 class EnProceso(Exception):
@@ -49,8 +53,20 @@ def reservar(tx_id, firma):
     datos = json.loads(guardado)
     if datos["huella"] != firma:
         raise IdReutilizado()
-    if datos["estado"] == "PENDING":
-        raise EnProceso()
+
+    # La primera petición suele decidir en milisegundos: en vez de fallar
+    # de una vez, se espera un momento a que guarde su decisión.
+    limite = time.monotonic() + ESPERA_PENDIENTE_S
+    while datos["estado"] == "PENDING":
+        if time.monotonic() >= limite:
+            raise EnProceso()
+        time.sleep(INTERVALO_PENDIENTE_S)
+
+        guardado = r.get(_clave(tx_id))
+        if guardado is None:  # la primera falló y liberó la reserva
+            return reservar(tx_id, firma)
+        datos = json.loads(guardado)
+
     return datos["resultado"]
 
 
