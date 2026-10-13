@@ -26,6 +26,13 @@ MONEDAS = {
 # Porcentaje de cuentas que nacen bloqueadas.
 CUENTAS_BLOQUEADAS_PCT = float(os.getenv("SEED_CUENTAS_BLOQUEADAS_PCT", 2))
 
+# Porcentaje de los usuarios que también están en la lista restrictiva,
+# con un mínimo para que en desarrollo haya con qué probar el rechazo.
+# Con 0,1: 5 de 100 usuarios en desarrollo (por el mínimo) y 2.300 de
+# 2,3 millones en el modo completo. Van dentro del total de la lista.
+USUARIOS_EN_LISTA_PCT = float(os.getenv("SEED_USUARIOS_EN_LISTA_PCT", 0.1))
+USUARIOS_EN_LISTA_MIN = int(os.getenv("SEED_USUARIOS_EN_LISTA_MIN", 5))
+
 # Dispositivos compartidos. Cada patrón dice en cuántas cuentas se usa
 # un mismo dispositivo y en cuántos días antes de la fecha de referencia
 # se reparten esas asociaciones. La regla se dispara con más de 3 cuentas

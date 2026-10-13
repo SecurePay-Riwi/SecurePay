@@ -97,6 +97,7 @@ def main():
         print("Generando listas restrictivas...")
         generar_listas(
             session,
+            usuarios,
             vol["restricted_lists"],
         )
 

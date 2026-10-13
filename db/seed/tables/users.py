@@ -34,7 +34,9 @@ def generar_usuarios(session, cantidad, defect_percentage=0):
             "id": user_id,
             "nombre": fake.name(),
             "email": f"user{i}@pagoseguro.com",
-            "documento": f"DOC{i:010d}",
+            # Documento en formato canónico: solo dígitos, como una cédula
+            # sin puntos ni prefijo. Es el formato de la lista restrictiva.
+            "documento": str(1_000_000_000 + i),
             "telefono": fake.phone_number(),
             "fecha_nacimiento": fake.date_between(
                 start_date=nacimiento_desde,
