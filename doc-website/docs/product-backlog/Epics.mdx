@@ -1,0 +1,183 @@
+---
+sidebar_position: 1
+---
+
+# Epics
+
+## EP-01 — Data Management and Generation
+
+This epic covers the simulated sources, seed, and data quality issues required by the project.
+
+| ID | User Story | Priority |
+| :--- | :--- | :--- |
+| **US-01** | As a development team, I want to generate user, device, merchant, and restricted list data through a seed to have reproducible data. | High |
+| **US-02** | As a development team, I want to parameterize the seed volume to work with different data sizes depending on the environment. | High |
+| **US-03** | As a development team, I want the seed to be idempotent to avoid duplicates when running it multiple times. | High |
+| **US-04** | As a development team, I want to inject configurable defects into the data to validate the system's ability to handle them. | High |
+| **US-05** | As a development team, I want to generate synthetic transactions with fraud patterns to test fraud prevention rules. | High |
+
+---
+
+## EP-02 — Transactional Ingestion and Processing
+
+The system must receive a continuous flow of transactions and process them without depending synchronously on batch processes.
+
+| ID | User Story | Priority |
+| :--- | :--- | :--- |
+| **US-06** | As a risk analyst, I want to send transactions to the decision service to obtain a fraud decision. | Critical |
+| **US-07** | As a data engineer, I want to process duplicate transactions idempotently to avoid inconsistent decisions. | Critical |
+| **US-08** | As a data engineer, I want to process out-of-order events to maintain the integrity of the transactional history. | High |
+| **US-09** | As a data engineer, I want to decouple subsequent processing via asynchronous messaging so it doesn't affect the transactional decision response. | High |
+
+---
+
+## EP-03 — Anti-Fraud Decision Engine
+
+This will be one of the central epics of the product, because the main objective is to evaluate transactions through configurable rules and produce a decision. Each transaction must receive APPROVE, HOLD, or REJECT, with a 200 ms limit and specific behavior when the engine exceeds that time (corresponds directly to BR-01 through BR-07).
+
+| ID | User Story | Priority |
+| :--- | :--- | :--- |
+| **US-10** | As a fraud analyst, I want to receive an APPROVE, HOLD, or REJECT decision for each transaction. | Critical |
+| **US-11** | As a fraud analyst, I want the system to evaluate rules that use user history to detect suspicious behaviors. | Critical |
+| **US-12** | As a fraud analyst, I want the system to allow me to detect multiple outgoing transfers in a short period to identify suspicious behaviors. | Critical |
+| **US-13** | As a fraud analyst, I want the system to allow me to detect money mule patterns to hold the operation and generate a case. | Critical |
+| **US-14** | As a fraud analyst, I want the system to increase the risk of accounts associated with shared devices to identify possible related networks. | High |
+| **US-15** | As a fraud analyst, I want to be able to detect transaction splitting to generate cases destined for compliance. | High |
+| **US-16** | As a fraud analyst, I want the system to allow rejecting transactions associated with documents present in restricted lists. | Critical |
+| **US-17** | As a fraud analyst, I want the system to allow detecting device changes, password changes, and a high-value transaction in a short period to identify possible account takeovers. | High |
+| **US-18** | As a risk analyst, I want to apply a default decision when the engine exceeds 200 ms to maintain the behavior defined by the business. | Critical |
+
+---
+
+## EP-04 — Rule Management and Versioning
+
+The project specifically requires that rules can be modified without redeploying code and that each decision retains the rule version used. Historical simulation is furthermore defined as FR-09.
+
+| ID | User Story | Priority |
+| :--- | :--- | :--- |
+| **US-19** | As a risk manager, I want to create anti-fraud rules through an API to configure new controls. | Critical |
+| **US-20** | As a risk manager, I want to modify a rule without redeploying the system to react quickly to new fraud patterns. | Critical |
+| **US-21** | As a risk manager, I want to activate or deactivate rules to control which ones participate in decisions. | Critical |
+| **US-22** | As a risk manager, I want to version rules to maintain change traceability. | Critical |
+| **US-23** | As a risk manager, I want to know which rule version produced a decision to be able to audit it. | High |
+| **US-24** | As a risk manager, I want to simulate a new rule version on historical data before activating it in production. | Medium |
+
+---
+
+## EP-05 — Anti-Fraud Case Management
+
+Analysts need a prioritized queue, history, and related networks; furthermore, a held case must be resolved or escalated within four hours. Evidence retention for ten years is established in BR-12, and immutability is also a non-functional requirement.
+
+| ID | User Story | Priority |
+| :--- | :--- | :--- |
+| **US-25** | As a fraud analyst, I want a suspicious transaction to generate a case to be able to investigate it. | Critical |
+| **US-26** | As a fraud analyst, I want to consult a case queue to identify pending operations. | High |
+| **US-27** | As a fraud analyst, I want to assign a case to a person in charge to establish who should investigate it. | High |
+| **US-28** | As a fraud analyst, I want to consult the user's transactional history to analyze their behavior. | Critical |
+| **US-29** | As a fraud analyst, I want to consult related accounts via shared devices to identify possible networks. | High |
+| **US-30** | As a fraud analyst, I want to resolve a case by recording its result to preserve the investigation evidence. | Critical |
+| **US-31** | As a supervisor, I want unresolved cases within four hours to escalate automatically. | Critical |
+| **US-32** | As a system, I want to preserve the evidence of each case for ten years without the possibility of modification. | Critical |
+
+---
+
+## EP-06 — Compliance and Suspicious Operations
+
+The project establishes both the consultation of restricted lists and the reporting of suspicious operations.
+
+| ID | User Story | Priority |
+| :--- | :--- | :--- |
+| **US-33** | As a system, I want to consult restricted lists to verify documents before making a decision. | Critical |
+| **US-34** | As a compliance officer, I want to receive a report when an operation involves a document on a restricted list. | Critical |
+| **US-35** | As a compliance officer, I want to generate the suspicious operations report to comply with the regulatory needs of the project. | High |
+
+---
+
+## EP-07 — Reconciliation
+
+This epic addresses the issue of discrepancies between PagoSeguro and its payment partners. Reconciliation logic and the three categories of discrepancies are explicitly defined in BR-10.
+
+| ID | User Story | Priority |
+| :--- | :--- | :--- |
+| **US-36** | As a treasurer, I want to process daily statements from payment partners to compare their transactions with PagoSeguro. | Critical |
+| **US-37** | As a system, I want to reconcile transactions using reference, amount, and date to determine if they match. | Critical |
+| **US-38** | As a treasury team, I want to identify missing transactions on the partner's side. | High |
+| **US-39** | As a treasury team, I want to identify missing transactions in PagoSeguro. | High |
+| **US-40** | As a treasury team, I want to identify amount discrepancies between transactions. | High |
+| **US-41** | As a treasury team, I want to check pending discrepancies and their age for tracking purposes. | High |
+
+---
+
+## EP-08 — Currency Conversion
+
+This responds to BR-11 and source F6.
+
+| ID | User Story | Priority |
+| :--- | :--- | :--- |
+| **US-42** | As a system, I want to check the exchange rate corresponding to the transaction day to convert amounts to USD. | High |
+| **US-43** | As a system, I want to preserve the original amount and the converted USD amount to maintain financial traceability. | High |
+
+---
+
+## EP-09 — Analytics and Rule Effectiveness
+
+The project specifically requires recalculating precision and false positives, in addition to PaySim analysis and device networks.
+
+| ID | User Story | Priority |
+| :--- | :--- | :--- |
+| **US-44** | As a risk manager, I want to measure the precision of each anti-fraud rule over historical data to understand its effectiveness. | High |
+| **US-45** | As a risk manager, I want to measure false positives per rule to identify those rules affecting legitimate operations. | High |
+| **US-46** | As a risk analyst, I want to analyze historical transactions to identify detected and undetected fraud patterns. | High |
+| **US-47** | As a risk analyst, I want to analyze shared devices to identify risk concentrations. | High |
+
+---
+
+## EP-10 — Analytical Model and Dashboard
+
+These six stories directly reflect the six business questions that the dashboard must answer.
+
+| ID | User Story | Priority |
+| :--- | :--- | :--- |
+| **US-48** | As a risk manager, I want to check the number and amount of transactions by type, currency, and channel. | High |
+| **US-49** | As a risk manager, I want to check the most triggered rules, their precision, and false positives. | High |
+| **US-50** | As a risk manager, I want to check how much fraud was detected and how much went undetected based on history. | High |
+| **US-51** | As a risk manager, I want to check case resolution times and escalated cases. | High |
+| **US-52** | As a treasury team, I want to check the reconciliation status by partner and the age of discrepancies. | High |
+| **US-53** | As a risk analyst, I want to identify devices and merchants that concentrate higher risk. | High |
+
+---
+
+## EP-11 — AWS Cloud Infrastructure
+
+Covers everything related to the design, deployment, and operation of AWS infrastructure. It includes system architecture definition, network and security configuration, managed storage and databases, container deployment on ECS/Fargate and EKS, production observability, load performance testing, and cost analysis.
+
+| ID | User Story | Priority |
+| :--- | :--- | :--- |
+| **US-54** | As a development team, I want to document the end-to-end v1 architecture with its initial ADRs to have a agreed technical baseline guiding project development. | High |
+| **US-55** | As a development team, I want to design the network in AWS with VPC, subnets, IAM, and Security Groups to ensure a secure environment with least privilege. | High |
+| **US-56** | As a development team, I want to configure S3 and RDS in AWS and generate the v1 cost analysis to have managed storage and an initial monthly spend estimate. | High |
+| **US-57** | As a development team, I want to publish images to ECR and deploy services to ECS/Fargate to have components running in the cloud. | High |
+| **US-58** | As a development team, I want to deploy the decision service in EKS and compare it against Fargate in latency, operation, and cost to justify the infrastructure decision. | High |
+| **US-59** | As an operations team, I want to configure metrics, logs, and alarms to detect and respond to system failures in production. | High |
+| **US-60** | As a risk manager, I want the system to undergo a load test of 50, 150, and 300 tx/s measuring p50, p95, and p99 to validate performance compliance. | High |
+| **US-61** | As a development team, I want to generate the final cost analysis comparing alternatives and the operational runbook to close the project with complete and operable documentation. | High |
+
+---
+
+## EP-12 — DevOps & CI/CD
+
+Covers development practices, automation, and code quality. Includes Git repository setup, component packaging into reproducible Docker images, local ecosystem spin-up, and CI/CD pipelines for both application and data pipelines.
+
+| ID | User Story | Priority |
+| :--- | :--- | :--- |
+| **US-62** | As a development team, I want to configure the Git repository with a component-based structure, branch conventions, and Pull Request workflow to ensure orderly and traceable work from the start. | High |
+| **US-63** | As a development team, I want to package each component into a reproducible Docker image to ensure the system runs identically in any environment. | High |
+| **US-64** | As a development team, I want to spin up the complete ecosystem locally with a single command so any member can reproduce the environment without manual setup. | High |
+| **US-65** | As a development team, I want an application CI/CD pipeline that runs lint, tests, image building, and automatic deployment to ensure code quality on every merge. | High |
+| **US-66** | As a data team, I want a data CI/CD pipeline that validates DAGs, runs job tests, and quality controls to ensure data pipelines are reliable before deployment. | High |
+
+It covers everything related to development, automation, and code quality practices. This includes configuring
+the Git repository with team collaboration conventions, packaging components into reproducible Docker images, settingup the entire ecosystem locally with a single command, and continuous integration and delivery pipelines for both the application and the data pipelines. These epic tasks ensure that the team works in an organized
+manner, that the code is automatically verified before each deployment, and that the environment is
+reproducible at any time.
+
