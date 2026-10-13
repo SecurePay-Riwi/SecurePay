@@ -9,6 +9,7 @@ from db.seed.config import (
     COMERCIOS_NUEVOS_PCT,
     COMERCIOS_NUEVOS_DIAS,
 )
+from db.seed.fechas import fecha_hora_entre
 
 NAMESPACE = uuid.UUID("12345678-1234-5678-1234-567812345678")
 
@@ -55,9 +56,7 @@ def generar_comercios(session, cantidad):
             "nombre": f"{prefijos[categoria]} {empresa}",
             "categoria": categoria,
             "direccion": fake.address(),
-            "fecha_creacion": fake.date_time_between(
-                start_date=desde, end_date=hasta
-            ),
+            "fecha_creacion": fecha_hora_entre(fake.random, desde, hasta),
             "estado": random.choice(["activo", "inactivo", "suspendido"]),
         }
         # Un comercio recién creado está activo: si no, no recibe pagos.
@@ -73,4 +72,4 @@ def generar_comercios(session, cantidad):
 
     session.commit()
     print(f"  {len(comercios)} comercios generados ({n_nuevos} recién creados)")
-    return comercios
+    return comercios
