@@ -6,7 +6,16 @@ from sqlalchemy.orm import Session
 
 from shared.models import Comercio, Cuenta, ListaRestrictiva, Usuario
 from services.decision_engine import idempotency as idem
-from services.decision_engine.schemas import Decision, TransactionRequest
+from services.decision_engine import velocity
+from services.decision_engine.schemas import (
+    Decision,
+    TransactionRequest,
+    TransactionType,
+)
+
+# Solo las transferencias entre cuentas cuentan para la velocidad: un pago
+# QR va a un comercio y un retiro sale a efectivo.
+TIPOS_VELOCIDAD = {TransactionType.P2P}
 
 
 class ReferenciaInvalida(Exception):
@@ -66,12 +75,23 @@ def _decidir(session: Session, payload: TransactionRequest) -> dict:
         .first()
     )
 
-    # La regla de velocidad vuelve en Valkey, con la hora del evento,
-    # en la historia 8.
+    # Regla: velocidad. Se registra aunque otra regla decida, porque el
+    # intento de transferir cuenta igual.
+    transferencias = 0
+    if payload.type in TIPOS_VELOCIDAD:
+        transferencias = velocity.registrar_y_contar(
+            payload.source_account_id, payload.id, payload.transaction_date
+        )
 
     if en_lista:
         decision = Decision.REJECT
         reason = "Titular incluido en una lista restrictiva."
+    elif transferencias > velocity.LIMITE:
+        decision = Decision.HOLD
+        reason = (
+            f"Velocidad: {transferencias} transferencias salientes en "
+            f"{velocity.VENTANA_MIN} minutos desde la misma cuenta."
+        )
     else:
         decision = Decision.APPROVE
         reason = "La transacción no activó las reglas configuradas."

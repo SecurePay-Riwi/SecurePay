@@ -1,6 +1,6 @@
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from threading import Barrier
 from time import perf_counter
@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func
 
 from services.decision_engine.main import app
+from shared.cache import get_cache
 from shared.db import get_session
 from shared.models import (
     Comercio,
@@ -291,3 +292,94 @@ def test_database_error_returns_500_and_releases_reservation():
 
     assert retry.status_code == 200, retry.text
     assert retry.json()["idempotent_replay"] is False
+
+
+def _payloads_p2p(fechas: list[datetime]) -> list[dict]:
+    """Transferencias P2P desde una cuenta del seed, una por fecha.
+
+    Se borra el historial de velocidad de la cuenta para no heredar el de
+    otra prueba o el de una corrida del generador.
+    """
+    session = get_session()
+
+    try:
+        origen, dispositivo = (
+            session.query(Cuenta, DispositivoCuenta)
+            .join(DispositivoCuenta, DispositivoCuenta.cuenta_id == Cuenta.id)
+            .join(Usuario, Usuario.id == Cuenta.user_id)
+            .outerjoin(
+                ListaRestrictiva,
+                ListaRestrictiva.documento == DOCUMENTO_NORMALIZADO,
+            )
+            .filter(Cuenta.estado == "activa", ListaRestrictiva.id.is_(None))
+            .order_by(Cuenta.id)
+            .first()
+        )
+        get_cache().delete(f"vel:{origen.id}")
+        destino = (
+            session.query(Cuenta)
+            .filter(Cuenta.moneda == origen.moneda, Cuenta.id != origen.id)
+            .first()
+        )
+
+        assert destino is not None, "Se necesitan dos cuentas en la misma moneda"
+
+        amount = "1" if origen.moneda == "JPY" else "1.00"
+        payloads = []
+
+        for i, fecha in enumerate(fechas):
+            payloads.append({
+                "id": str(uuid4()),
+                "type": "P2P",
+                "channel": "APP",
+                "source_account_id": str(origen.id),
+                "destination_account_id": str(destino.id),
+                "merchant_id": None,
+                "amount": amount,
+                "currency": origen.moneda,
+                "source_balance_before": str(origen.saldo - i),
+                "source_balance_after": str(origen.saldo - i - 1),
+                "destination_balance_before": str(destino.saldo + i),
+                "destination_balance_after": str(destino.saldo + i + 1),
+                "device_id": str(dispositivo.dispositivo_id),
+                "transaction_date": fecha.isoformat(),
+            })
+
+        return payloads
+    finally:
+        session.close()
+
+
+def _decisiones(payloads: list[dict]) -> list[str]:
+    decisiones = []
+
+    for payload in payloads:
+        response = client.post("/transactions", json=payload)
+        assert response.status_code == 200, response.text
+        decisiones.append(response.json()["decision"])
+
+    return decisiones
+
+
+def _minutos(*minutos) -> list[datetime]:
+    base = datetime.now(timezone.utc)
+    return [base + timedelta(minutes=m) for m in minutos]
+
+
+def test_sixth_transfer_in_ten_minutes_is_held():
+    payloads = _payloads_p2p(_minutos(0, 1.6, 3.2, 4.8, 6.4, 8))
+
+    assert _decisiones(payloads) == ["APPROVE"] * 5 + ["HOLD"]
+
+
+def test_five_transfers_in_ten_minutes_are_approved():
+    payloads = _payloads_p2p(_minutos(0, 2, 4, 6, 8))
+
+    assert _decisiones(payloads) == ["APPROVE"] * 5
+
+
+def test_late_transfer_that_completes_the_window_is_held():
+    # La del minuto 2 llega al final, después de las otras cinco.
+    payloads = _payloads_p2p(_minutos(0, 1, 3, 4, 5, 2))
+
+    assert _decisiones(payloads) == ["APPROVE"] * 5 + ["HOLD"]

@@ -100,8 +100,9 @@ GRANT ALL ON SCHEMA public TO pagoseguro;
 
 ### Paso 5 --- Levantar Valkey
 
-El motor de decisión guarda la idempotencia en Valkey (en AWS es
-ElastiCache). En local corre en un contenedor de Docker. Con Docker
+El motor de decisión guarda en Valkey (en AWS es ElastiCache) la
+idempotencia y el historial de transferencias de cada cuenta que usa la
+regla de velocidad. En local corre en un contenedor de Docker. Con Docker
 Desktop abierto:
 
 ``` bash
@@ -194,8 +195,8 @@ Con la semilla 42 y los valores de `.env.example`, debería terminar en
 
 Requiere haber ejecutado el seed, porque las pruebas de la API leen
 cuentas y comercios de la base, y tener Valkey encendido (paso 5).
-Si Valkey está apagado, las pruebas de idempotencia salen como
-omitidas (`s`) y las de la API fallan con 503.
+Si Valkey está apagado, las pruebas de idempotencia y de velocidad
+salen como omitidas (`s`) y las de la API fallan con 503.
 
 ``` bash
 uv run pytest
@@ -212,6 +213,51 @@ en http://localhost:8000/docs.
 
 Necesita PostgreSQL y Valkey encendidos. Sin Valkey, `POST /transactions`
 responde 503 ("El servicio de idempotencia no está disponible").
+
+### Paso 12 --- Simular el flujo completo
+
+El generador hace de core: manda cada transacción al motor por HTTP y
+guarda la decisión que recibió junto a la etiqueta del evento. Con la API
+levantada (paso 11) en una terminal, en otra:
+
+``` bash
+docker exec pagoseguro-valkey valkey-cli FLUSHDB
+```
+
+Limpia Valkey. Si no se hace, los ids de una corrida de hace menos de 1 h
+se tratan como reenvíos y el historial de velocidad arrastra la corrida
+anterior.
+
+Luego, en PowerShell:
+
+``` powershell
+$env:GEN_OUTPUT="http"
+uv run python -m generators
+```
+
+En bash: `GEN_OUTPUT=http uv run python -m generators`. También se puede
+dejar `GEN_OUTPUT=http` en el `.env`.
+
+A 50 eventos por segundo (`GEN_RATE`) tarda unos 20 segundos. Con la
+semilla 42 debería terminar con `Respuestas del motor: {'200': 1023,
+'404': 12}`. Los 404 son los eventos de seguridad (cambio de dispositivo y
+de contraseña), que todavía no tienen endpoint.
+
+Cada línea de `generated/instance-0/labels.jsonl` trae el patrón, la regla
+que debería dispararse y lo que respondió el motor:
+
+``` json
+{"id": "...", "pattern": "VELOCITY", "is_fraud": true, "expected_rule": "velocidad",
+ "response": {"status": 200, "decision": "HOLD", "reason": "Velocidad: 6 transferencias salientes en 10 minutos desde la misma cuenta."}}
+```
+
+Hoy el motor aplica dos reglas: lista restrictiva (REJECT) y velocidad
+(HOLD, más de 5 transferencias P2P en 10 minutos desde la misma cuenta,
+medidas con la hora del evento aunque lleguen desordenados). Con la
+semilla 42, las 3 transacciones de `RESTRICTED_LIST` salen REJECT, 4
+transferencias de `VELOCITY` salen HOLD (la que completa la ventana en
+cada caso) y todo lo demás sale APPROVE, porque las otras reglas todavía
+no existen.
 
 ## HU-04 --- Inyección de defectos
 
