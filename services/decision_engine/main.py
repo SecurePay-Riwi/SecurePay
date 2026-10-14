@@ -1,5 +1,7 @@
 
+import logging
 from collections.abc import Generator
+from contextlib import asynccontextmanager
 
 import valkey
 from fastapi import Depends, FastAPI, HTTPException
@@ -12,15 +14,30 @@ from services.decision_engine.decision_service import (
     ReferenciaInvalida,
     process_transaction,
 )
+from services.decision_engine import publisher
 from services.decision_engine.idempotency import EnProceso, IdReutilizado
 from fastapi import Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    # Al apagar: publica lo que quedó en memoria antes de salir.
+    publisher.detener()
+
+
 app = FastAPI(
     title="SecurePay Antifraude API",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 @app.exception_handler(RequestValidationError)
@@ -48,7 +65,9 @@ def get_db() -> Generator[Session, None, None]:
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok"}
+    # La mensajería no cambia el "ok": si SNS falla, el motor sigue
+    # decidiendo y el balanceador no debe sacarlo de servicio.
+    return {"status": "ok", "messaging": publisher.estado()}
 
 
 @app.post(

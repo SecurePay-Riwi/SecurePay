@@ -18,23 +18,46 @@ Monorepo: una carpeta por cada pieza que se despliega por separado.
 ```
 services/
   decision_engine/   motor de decisión (FastAPI, POST /transactions) y sus pruebas
-shared/              modelos de SQLAlchemy y conexión a PostgreSQL, usados por todos
+  consumers/         consumidores de las colas (casos, historial, analítica), con firma de Lambda
+shared/              modelos, conexión a PostgreSQL, clientes de AWS y formato del evento de decisión
 generators/          generador de transacciones con fraude y sus pruebas
 db/
   seed/              seed de PostgreSQL: usuarios, cuentas, dispositivos, comercios y listas
+infra/
+  localstack/init/   crea en LocalStack el tema SNS, las colas SQS y el bucket del Data Lake
+docker-compose.yml   PostgreSQL, Valkey y LocalStack para desarrollo local
 ```
 
 Las carpetas se nombran con guion bajo (`decision_engine`) porque Python
 no puede importar módulos con guion. Más adelante se agregan los
-consumidores, las APIs y las tareas programadas dentro de `services/`,
-`jobs/` para PySpark e `infra/` para Terraform.
+APIs y las tareas programadas dentro de `services/`, `jobs/` para
+PySpark y Terraform dentro de `infra/`.
+
+## Cómo viaja una decisión
+
+```
+core (generador) ──HTTP──▶ motor ──▶ responde al core (no espera a nadie)
+                             │
+                             └─ hilo de fondo ──▶ SNS "decisiones"
+                                                   ├─▶ SQS "casos"      ─▶ consumidor de casos
+                                                   ├─▶ SQS "historial"  ─▶ consumidor de historial
+                                                   └─▶ SQS "analitica"  ─▶ consumidor de analítica ─▶ S3 raw/
+```
+
+Cada cola tiene su cola de errores (`casos-dlq`, ...): un mensaje que
+falla 5 veces pasa ahí y se guarda 14 días. En AWS, SNS, SQS y S3 son los
+servicios reales y los consumidores son Lambdas; en local los imita
+LocalStack y los consumidores corren con
+`uv run python -m services.consumers`. El código es el mismo: solo cambia
+`AWS_ENDPOINT_URL`, que en local apunta a LocalStack.
 
 ## Requisitos
 
 -   [uv](https://docs.astral.sh/uv/getting-started/installation/) (gestor de paquetes y entornos de Python)
 -   Python 3.12 (uv lo instala solo si no lo tienes)
 -   PostgreSQL 16 o superior
--   [Docker Desktop](https://www.docker.com/products/docker-desktop/) (para Valkey, la caché del motor)
+-   [Docker Desktop](https://www.docker.com/products/docker-desktop/) (para Valkey y LocalStack)
+-   Una cuenta gratuita de [LocalStack](https://app.localstack.cloud) (plan Hobby) para su token
 -   Git
 
 ## Instalación y ejecución
@@ -98,31 +121,42 @@ GRANT ALL ON SCHEMA public TO pagoseguro;
 \q
 ```
 
-### Paso 5 --- Levantar Valkey
+### Paso 5 --- Levantar Valkey y LocalStack
 
-El motor de decisión guarda en Valkey (en AWS es ElastiCache) la
-idempotencia y el historial de transferencias de cada cuenta que usa la
-regla de velocidad. En local corre en un contenedor de Docker. Con Docker
-Desktop abierto:
+El motor guarda en Valkey (en AWS es ElastiCache) la idempotencia y el
+historial de transferencias que usa la regla de velocidad. LocalStack
+imita SNS, SQS y S3 en tu máquina: el motor publica ahí cada decisión y
+los consumidores la leen. LocalStack es solo para desarrollo; en AWS se
+usan los servicios reales.
 
-``` bash
-docker run -d --name pagoseguro-valkey -p 6379:6379 valkey/valkey:8
-docker exec pagoseguro-valkey valkey-cli ping
-```
+1.  Crea tu cuenta en https://app.localstack.cloud (plan Hobby, gratis
+    para uso no comercial) y copia tu token en
+    *Settings → Auth Tokens*. Va en tu `.env` (paso 6), nunca en el repo.
+2.  Si tenías el contenedor suelto de Valkey, apágalo, porque usa el
+    mismo puerto 6379:
 
-El segundo comando debe responder `PONG`. La primera vez Docker avisa
-`Unable to find image 'valkey/valkey:8' locally` y la descarga sola.
+    ``` bash
+    docker stop pagoseguro-valkey
+    ```
 
-Después de reiniciar el equipo o cerrar Docker, el contenedor queda
-apagado. Se enciende con:
+3.  Con Docker Desktop abierto y el `.env` creado (paso 6):
 
-``` bash
-docker start pagoseguro-valkey
-```
+    ``` bash
+    docker compose up -d valkey localstack
+    docker compose ps
+    ```
 
-No se vuelve a crear con `docker run`: el nombre ya existe y daría
-error. Cuando el repo tenga su `docker-compose.yml`, este paso se
-reemplaza por `docker compose up`.
+    Los dos deben quedar `healthy`. LocalStack queda sano cuando terminó
+    de crear el tema `decisiones`, las colas `casos`, `historial` y
+    `analitica` (cada una con su `-dlq`) y el bucket
+    `pagoseguro-datalake` (script `infra/localstack/init/01_messaging.py`).
+    LocalStack no guarda nada al apagarse: cada vez que arranca, el script
+    vuelve a crear todo vacío.
+
+Para apagar: `docker compose stop`. El Compose también trae PostgreSQL
+(`docker compose up -d` levanta los tres) en el puerto **5433**, para no
+chocar con un PostgreSQL instalado. Si lo usas en vez de los pasos 3 y 4,
+pon el puerto 5433 en `DATABASE_URL`.
 
 ### Paso 6 --- Crear el `.env`
 
@@ -132,14 +166,19 @@ Copiar `.env.example` a `.env`:
 cp .env.example .env
 ```
 
-Ajustar `DATABASE_URL` con el usuario y la contraseña de tu base local.
-El resto de variables de `.env.example` tienen valores por defecto
-válidos para desarrollo.
+Ajustar `DATABASE_URL` con el usuario y la contraseña de tu base local
+y pegar tu token de LocalStack. El resto de variables de `.env.example`
+tienen valores por defecto válidos para desarrollo.
 
 ``` env
 DATABASE_URL=postgresql://pagoseguro:pagoseguro@localhost:5432/pagoseguro
 VALKEY_URL=redis://localhost:6379/0
+LOCALSTACK_AUTH_TOKEN=ls-...
 ```
+
+Las variables `AWS_*` apuntan a LocalStack con credenciales de mentira
+(`test`), a propósito. En AWS no se ponen: el motor y las Lambdas usan su
+rol.
 
 ### Paso 7 --- Ejecutar el seed
 
@@ -194,9 +233,12 @@ Con la semilla 42 y los valores de `.env.example`, debería terminar en
 ### Paso 10 --- Ejecutar las pruebas
 
 Requiere haber ejecutado el seed, porque las pruebas de la API leen
-cuentas y comercios de la base, y tener Valkey encendido (paso 5).
-Si Valkey está apagado, las pruebas de idempotencia y de velocidad
-salen como omitidas (`s`) y las de la API fallan con 503.
+cuentas y comercios de la base, y tener Valkey y LocalStack encendidos
+(paso 5). Si Valkey está apagado, las pruebas de idempotencia y de
+velocidad salen como omitidas (`s`) y las de la API fallan con 503. Si
+LocalStack está apagado, las dos pruebas de punta a punta de la
+mensajería salen omitidas; las demás de la mensajería usan SNS, SQS y S3
+de mentira y no lo necesitan.
 
 ``` bash
 uv run pytest
@@ -214,6 +256,40 @@ en http://localhost:8000/docs.
 Necesita PostgreSQL y Valkey encendidos. Sin Valkey, `POST /transactions`
 responde 503 ("El servicio de idempotencia no está disponible").
 
+Cada decisión nueva se publica en SNS sin hacer esperar al core: la
+petición la deja en una cola en memoria y un hilo de fondo la publica en
+lotes de hasta 10. Un reenvío (mismo id) no se vuelve a publicar. Si
+LocalStack (o SNS en AWS) está caído, el motor sigue respondiendo y cada
+evento que no pudo publicar queda en el log con la marca
+`EVENTO_NO_PUBLICADO` y el evento completo. `GET /health` muestra cuántos
+eventos están pendientes, publicados y fallidos:
+
+``` json
+{"status": "ok", "messaging": {"pendientes": 0, "publicados": 1000, "fallidos": 0}}
+```
+
+### Paso 11b --- Levantar los consumidores
+
+En otra terminal:
+
+``` bash
+uv run python -m services.consumers
+```
+
+Lee las tres colas en lotes de hasta 10 y llama a cada consumidor como lo
+haría Lambda. Se puede levantar uno solo:
+`uv run python -m services.consumers analitica`. Hoy hacen esto:
+
+-   **analítica:** escribe cada lote como un archivo JSON Lines en
+    `s3://pagoseguro-datalake/raw/decisiones/fecha=AAAA-MM-DD/`.
+-   **casos:** lee y confirma. Crear el caso queda pendiente de decidir en
+    equipo qué transacciones retenidas abren caso.
+-   **historial:** lee y confirma. Los pares dispositivo–cuenta llegan con
+    las reglas de historial.
+
+Un mensaje que falla vuelve a la cola a los 30 s; a los 5 intentos pasa a
+la cola de errores.
+
 ### Paso 12 --- Simular el flujo completo
 
 El generador hace de core: manda cada transacción al motor por HTTP y
@@ -226,7 +302,11 @@ docker exec pagoseguro-valkey valkey-cli FLUSHDB
 
 Limpia Valkey. Si no se hace, los ids de una corrida de hace menos de 1 h
 se tratan como reenvíos y el historial de velocidad arrastra la corrida
-anterior.
+anterior. Con `docker compose`, el contenedor se llama distinto:
+`docker compose exec valkey valkey-cli FLUSHDB`.
+
+Para que las decisiones lleguen hasta S3, deja corriendo también los
+consumidores (paso 11b).
 
 Luego, en PowerShell:
 
@@ -258,6 +338,19 @@ semilla 42, las 3 transacciones de `RESTRICTED_LIST` salen REJECT, 4
 transferencias de `VELOCITY` salen HOLD (la que completa la ventana en
 cada caso) y todo lo demás sale APPROVE, porque las otras reglas todavía
 no existen.
+
+Para revisar la mensajería (el `awslocal` del contenedor de LocalStack es
+el comando `aws` ya apuntado a LocalStack):
+
+``` bash
+docker compose exec localstack awslocal s3 ls s3://pagoseguro-datalake/raw/decisiones/ --recursive
+docker compose exec localstack awslocal sqs get-queue-attributes --queue-url http://localhost:4566/000000000000/analitica-dlq --attribute-names ApproximateNumberOfMessages
+```
+
+Con la semilla 42 y los consumidores corriendo, `GET /health` termina en
+`publicados: 1000` (1.023 respuestas menos los 23 reenvíos), los archivos
+de `raw/decisiones/` suman 1.000 líneas, una por transacción, y las colas
+y sus `-dlq` quedan en 0.
 
 ## HU-04 --- Inyección de defectos
 
