@@ -24,10 +24,12 @@ generators/          generador de transacciones con fraude y sus pruebas
 sources/
   csv_files/
     partner_statements/  extractos diarios de los 4 socios de pago (CSV y TXT) y sus pruebas
+  apis/
+    restricted_list/     servicio simulado del proveedor de listas restrictivas y sus pruebas
 db/
   seed/              seed de PostgreSQL: usuarios, cuentas, dispositivos, comercios y listas
 infra/
-  localstack/init/   crea en LocalStack el tema SNS, las colas SQS y el bucket del Data Lake
+  localstack/init/   crea en LocalStack el tema SNS, las colas SQS y los buckets (Data Lake y proveedor de listas)
 docker-compose.yml   PostgreSQL, Valkey y LocalStack para desarrollo local
 ```
 
@@ -152,7 +154,9 @@ usan los servicios reales.
     Los dos deben quedar `healthy`. LocalStack queda sano cuando terminó
     de crear el tema `decisiones`, las colas `casos`, `historial` y
     `analitica` (cada una con su `-dlq`) y el bucket
-    `pagoseguro-datalake` (script `infra/localstack/init/01_messaging.py`).
+    `pagoseguro-datalake` (script `infra/localstack/init/01_messaging.py`),
+    y el bucket del proveedor de listas `pagoseguro-proveedor-listas`
+    (script `02_sources.py`, en la misma carpeta).
     LocalStack no guarda nada al apagarse: cada vez que arranca, el script
     vuelve a crear todo vacío.
 
@@ -196,6 +200,10 @@ Debería generar:
 -   150 dispositivos (146 normales y 4 compartidos entre varias cuentas)
 -   50 comercios
 -   20 personas en la lista restrictiva (5 son clientes)
+
+Al final exporta esa lista a `generated/listas/lista_restrictiva.jsonl`,
+que es la "base del proveedor" que lee el servicio de listas (paso 14).
+Con `SEED_LIST_OUTPUT=s3` también la sube a LocalStack.
 
 El seed solo carga datos maestros. Las transacciones no van en el seed:
 las manda el generador al motor, como lo haría el core.
@@ -421,6 +429,65 @@ Quedan en `s3://pagoseguro-datalake/raw/extractos/<socio>/fecha=AAAA-MM-DD/`:
 ``` bash
 docker compose exec localstack awslocal s3 ls s3://pagoseguro-datalake/raw/extractos/ --recursive
 ```
+
+### Paso 14 --- Levantar el servicio de listas restrictivas
+
+Simula al proveedor externo de listas restrictivas (sanciones y PEP):
+responde lento y a veces se cae, a propósito, para que el motor tenga
+que defenderse. No lee PostgreSQL: carga una sola vez al arrancar el
+archivo que exporta el seed (paso 7). Si vuelves a correr el seed con
+otros parámetros, reinicia el servicio.
+
+``` bash
+uv run uvicorn sources.apis.restricted_list.main:app --port 8001
+```
+
+Al arrancar debe decir `Lista restrictiva cargada: 20 personas`. Si no
+encuentra el archivo, no arranca y te pide correr el seed.
+
+| Endpoint | Para qué | Respuesta |
+|---|---|---|
+| `GET /lista` | La lista completa. La usará la tarea diaria que carga la lista en la caché del motor | `{"total": 20, "registros": [...]}` |
+| `GET /lista/{documento}` | Si un documento está listado. El motor la usará solo si la caché no está disponible | `{"listado": true, "documento": "...", "tipo": "PEP", "fecha_inclusion": "..."}` o `{"documento": "...", "listado": false}` |
+| `GET /health` | Que el servicio esté vivo, sin latencia ni caídas | `{"status": "ok", "total": 20}` |
+
+El documento se normaliza a solo dígitos, así que `CC 1.000.000.016` y
+`1000000016` dan lo mismo. Que un documento no esté listado es un 200
+con `"listado": false`, no un 404.
+
+Prueba rápida (en PowerShell usa `curl.exe`):
+
+``` bash
+curl http://localhost:8001/lista/1000000016
+```
+
+Lo que lo hace "malo", configurable en el `.env`:
+
+| Variable | Qué hace | Por defecto |
+|---|---|---|
+| `LISTA_LATENCIA_MIN_MS` / `LISTA_LATENCIA_MAX_MS` | Cada respuesta tarda un tiempo al azar entre estos dos valores | 50 / 3000 |
+| `LISTA_FALLA_PCT` | Porcentaje de peticiones que responden 503 (proveedor caído), después de la espera | 5 |
+| `LISTA_SEMILLA` | Fija el azar para repetir el mismo comportamiento | sin semilla |
+
+Para leer la lista desde S3 como en AWS, con LocalStack encendido
+(paso 5), primero súbela con el seed y luego arranca el servicio:
+
+``` powershell
+$env:SEED_LIST_OUTPUT="s3"
+uv run python -m db.seed.seed
+$env:LISTA_SOURCE="s3"
+uv run uvicorn sources.apis.restricted_list.main:app --port 8001
+```
+
+En bash: `SEED_LIST_OUTPUT=s3 uv run python -m db.seed.seed` y
+`LISTA_SOURCE=s3 uv run uvicorn sources.apis.restricted_list.main:app --port 8001`.
+Si LocalStack ya estaba encendido antes de esta versión, reinícialo
+(`docker compose restart localstack`) para que cree el bucket
+`pagoseguro-proveedor-listas`.
+
+Hoy el motor todavía busca la lista en PostgreSQL. Pasarlo a la caché,
+con este servicio como respaldo y circuit breaker, es la historia de
+rechazo por lista restrictiva del sprint 2.
 
 ## HU-04 --- Inyección de defectos
 

@@ -15,6 +15,7 @@ from db.seed.tables.accounts import generar_cuentas
 from db.seed.tables.devices import generar_dispositivos
 from db.seed.tables.merchants import generar_comercios
 from db.seed.tables.restricted_lists import generar_listas
+from db.seed.export_lista import exportar_lista
 
 
 def reset_tablas():
@@ -93,6 +94,9 @@ def main():
             usuarios,
             vol["restricted_lists"],
         )
+
+        print("Exportando la lista para el servicio de listas restrictivas...")
+        exportar_lista(session)
 
         # Las transacciones no van en el seed: el generador las manda
         # al motor por su cuenta, como lo haría el core.

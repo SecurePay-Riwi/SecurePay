@@ -21,6 +21,8 @@ The seed loads the **master data** the engine and the generator need into Postgr
 | `comercios` | 50 | 5,000 | 10% created in the last 30 days, all active. Name matches the category. |
 | `listas_restrictivas` | 20 | 50,000 | 0.1% of the users (minimum 5) are customers; the rest are 8-digit IDs of non-customers. |
 
+At the end the seed **exports the restricted list** to `generated/listas/lista_restrictiva.jsonl` (and to the provider bucket in S3 with `SEED_LIST_OUTPUT=s3`). That file is what the [restricted list service](./restricted-list.mdx) reads; the service never reads PostgreSQL.
+
 Initial balances are random up to a cap per currency: COP 20,000,000, USD 5,000, EUR 5,000 and JPY 750,000 (the yen has no decimals).
 
 ### Shared devices
