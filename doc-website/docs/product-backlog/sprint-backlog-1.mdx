@@ -7,7 +7,7 @@ sidebar_position: 3
 
 **Sprint Goal:** Have the system's foundation up and running: data generated, the ingestion pipeline operational, and the architecture documented, so that the team can begin building the anti-fraud engine on a solid and reproducible foundation
 
-**Sprint Period:** September 23, 2026 – October 06, 2026  
+**Sprint Period:** September 23, 2026 – October 06, 2026 (planned). All stories were merged to `main` on October 13, 2026; see the [Sprint 1 review](./sprint-1-review.mdx).  
 **Scrum Master / Leader:** Habith  
 **Team Members:** Kerlys, Yulianis, Jorge  
 
@@ -127,18 +127,26 @@ Given a request is sent to the decision endpoint, when the request is processed,
 #### Criterion 5
 Given a transaction has been received and evaluated, when the processing is completed, the transaction is registered together with its decision.
 
+:::note[How it was delivered]
+Writing to PostgreSQL inside the request would eat into the 200 ms budget, so the engine does not write to the database. It stores the decision in Valkey (idempotency) and publishes a `transaction.decided` event; the consumers record it afterwards. See [Messaging](../components/messaging.mdx).
+:::
+
 ---
 
 ### US-07 — Idempotency on duplicate transactions
 
-Criterion 1
-#### Given a transaction with a specific ID has already been processed, when the same transaction ID is submitted again, the system returns the same decision without reprocessing.
+#### Criterion 1
+Given a transaction with a specific ID has already been processed, when the same transaction ID is submitted again, the system returns the same decision without reprocessing.
 
 #### Criterion 2
 Given a transaction has already been processed, when the same transaction is submitted again, no duplicate record is created in the database.
 
 #### Criterion 3
 Given the system has a defined idempotency window, when a duplicate transaction is received within that window, the idempotent behavior is applied.
+
+:::note[How it was delivered]
+Idempotency lives in Valkey, not in PostgreSQL: one `idem:{id}` key per transaction with a 1-hour TTL. Since the engine no longer writes transactions to the database, criterion 2 holds by design. See [Decision engine](../components/decision-engine.mdx#idempotency).
+:::
 
 ---
 
@@ -159,6 +167,10 @@ Given the user's history contains events received in different orders, when the 
 ---
 
 ### US-09 — Decouple processing with asynchronous messaging
+
+:::note[How it was delivered]
+The story was written with RabbitMQ in mind. The architecture replaced it with Amazon SNS + SQS (ADR-04 and ADR-06), emulated locally with LocalStack. Read "RabbitMQ" below as "the `decisiones` SNS topic". See [Messaging](../components/messaging.mdx).
+:::
 
 #### Criterion 1
 Given the system has completed the transaction decision, when the decision is generated, the system publishes an event to RabbitMQ.

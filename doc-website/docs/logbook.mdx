@@ -1,5 +1,5 @@
 ---
-sidebar_position: 7
+sidebar_position: 8
 ---
 
 
@@ -182,3 +182,46 @@ There is no order yet; we have a list of what the client wants:
 **Activity:** User story submission  
 
 **Description:** Yulianis submitted US-5, US-6, and US-7, fully documented and pushed to a branch in the GitHub repository.  
+
+---
+
+**10/12/2026**  
+**Leader:** Habith  
+**Minion-1:** Kerlys  
+**Minion-2:** Yulianis  
+**Minion-3:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Repository foundations  
+
+**Description:**  
+- PR #1 merged: Yulianis's user stories 4 to 7 (defect injection, transaction generator, decision service and idempotency).
+- PR #2 merged: dependencies managed with uv and Python 3.12 (Jorge).
+- PR #3 merged: the repository was restructured as a monorepo (`services/`, `shared/`, `generators/`, `db/seed/`), with the tests inside each component.
+- Docusaurus documentation site published on GitHub Pages (Habith).
+
+---
+
+**10/13/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Sprint 1 closed  
+
+**Description:**  
+- PR #4 merged: master data seed finished (accounts table, device–account pairs, shared devices, restricted list with canonical documents).
+- PR #5 merged: transaction generator rebuilt as a simulated wallet core, with one labeled fraud pattern per rule, a control case for each, and three data defects.
+- PR #6 merged: idempotency moved to Valkey and the new transaction format; the engine no longer writes to PostgreSQL.
+- PR #7 merged: velocity rule measured by event time, so out-of-order events are counted correctly.
+- PR #8 merged: asynchronous messaging with SNS + SQS on LocalStack, base Docker Compose and Lambda-style consumers.
+- Team decision: only mule account, transaction splitting and restricted list open a case. Fallback approvals open no case; they are flagged and re-evaluated when the engine recovers.
+- Kerlys left the project; her stories are unassigned.
+- All Sprint 1 stories marked as done in Jira. See the [Sprint 1 review](./product-backlog/sprint-1-review.mdx).
