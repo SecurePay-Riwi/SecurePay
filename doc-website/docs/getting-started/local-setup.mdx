@@ -1,0 +1,119 @@
+---
+sidebar_position: 1
+title: Local setup
+description: Install the tools, start PostgreSQL, Valkey and LocalStack, and load the seed.
+---
+
+# Local setup
+
+This page takes you from an empty machine to a running decision engine. It follows the same steps as the repository `README.md`.
+
+## Requirements
+
+| Tool | Why |
+| :--- | :--- |
+| [uv](https://docs.astral.sh/uv/getting-started/installation/) | Python package and environment manager. It installs Python 3.12 if you do not have it. |
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Runs PostgreSQL, Valkey and LocalStack. |
+| A free [LocalStack](https://app.localstack.cloud) account (Hobby plan) | Since March 2026 LocalStack images need an auth token. |
+| Git | To clone the repository. |
+| PostgreSQL 16 (optional) | Only if you prefer an installed PostgreSQL over the one in Docker Compose. |
+
+## 1. Clone and install dependencies
+
+```bash
+git clone https://github.com/SecurePay-Riwi/SecurePay.git
+cd SecurePay
+uv sync
+```
+
+`uv sync` creates `.venv` and installs exactly the versions pinned in `uv.lock`, including the dev group (pytest). You do not need to activate the environment: every command runs with `uv run`.
+
+## 2. Create the `.env`
+
+```bash
+cp .env.example .env
+```
+
+Paste your LocalStack token (*Settings → Auth Tokens* in app.localstack.cloud) and check `DATABASE_URL`. The token goes only in your `.env`, never in the repository.
+
+```env
+DATABASE_URL=postgresql://pagoseguro:pagoseguro@localhost:5433/pagoseguro
+VALKEY_URL=redis://localhost:6379/0
+LOCALSTACK_AUTH_TOKEN=ls-...
+```
+
+:::tip[Port 5433]
+The Compose PostgreSQL listens on **5433** on your machine so it does not collide with an installed PostgreSQL. If you use your own PostgreSQL instead, keep port 5432 in `DATABASE_URL`.
+:::
+
+The `AWS_*` variables point to LocalStack with fake credentials (`test`) on purpose. In AWS they are not set: the engine and the Lambdas use their IAM role. Every variable is explained in [Configuration](../reference/configuration.mdx).
+
+## 3. Start the local services
+
+With Docker Desktop open:
+
+```bash
+docker compose up -d
+docker compose ps
+```
+
+The three services must end up `healthy`:
+
+| Service | Image | Port | Used for |
+| :--- | :--- | :--- | :--- |
+| `postgres` | `postgres:16` | 5433 | Master data (users, accounts, devices, merchants, lists). |
+| `valkey` | `valkey/valkey:8` | 6379 | Idempotency keys and the velocity history. ElastiCache in AWS. |
+| `localstack` | `localstack/localstack:2026.09.1` | 4566 | SNS, SQS and S3. |
+
+LocalStack is only `healthy` after `infra/localstack/init/01_messaging.py` created the `decisiones` topic, the `casos`, `historial` and `analitica` queues (each with its `-dlq`) and the `pagoseguro-datalake` bucket. LocalStack keeps nothing when it stops: every start recreates everything empty.
+
+| Command | Effect |
+| :--- | :--- |
+| `docker compose stop` | Stops the services and keeps the PostgreSQL data. |
+| `docker compose down` | Removes the containers and keeps the PostgreSQL data. |
+| `docker compose down -v` | Removes the containers **and** the PostgreSQL data. |
+
+:::note
+If you used the standalone `pagoseguro-valkey` container before the Compose existed, stop it first (`docker stop pagoseguro-valkey`): it uses the same port 6379.
+:::
+
+## 4. Load the seed
+
+```bash
+uv run python -m db.seed.seed
+```
+
+In `dev` mode it creates 100 users, 100 accounts, 150 devices (4 of them shared), 50 merchants and 20 people in the restricted list (5 of them are customers). Check it:
+
+```bash
+docker compose exec postgres psql -U pagoseguro -d pagoseguro -c "SELECT COUNT(*) FROM usuarios;"
+```
+
+It must return `100`. More options (volumes, defects, reset) in [Seed](../components/seed.mdx).
+
+:::caution[Reseed after pulling the generator changes]
+On October 13, 2026 the seed stopped taking dates from Faker (Faker gives different dates on Windows and Linux). If your database was loaded before that, reload it once with `SEED_RESET=true`.
+:::
+
+## 5. Start the decision engine
+
+```bash
+uv run uvicorn services.decision_engine.main:app --reload
+```
+
+The API is at http://localhost:8000 and its interactive documentation at http://localhost:8000/docs. It needs PostgreSQL and Valkey; without Valkey, `POST /transactions` answers `503`.
+
+## 6. Start the consumers (optional)
+
+In another terminal:
+
+```bash
+uv run python -m services.consumers
+```
+
+They read the three queues in LocalStack and call the same handlers that will run as Lambdas in AWS. See [Consumers](../components/consumers.mdx).
+
+## Next steps
+
+- [Simulate the full flow](./simulate-full-flow.mdx) with the generator.
+- [Run the tests](./testing.mdx).
