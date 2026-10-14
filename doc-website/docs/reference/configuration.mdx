@@ -27,6 +27,9 @@ All configuration comes from environment variables, loaded from `.env` with `pyt
 | `SEED_USUARIOS_EN_LISTA_MIN` | `5` | Minimum number of those customers. |
 | `SEED_COMERCIOS_NUEVOS_PCT` | `10` | Merchants created recently. |
 | `SEED_COMERCIOS_NUEVOS_DIAS` | `30` | What "recently" means, in days. |
+| `SEED_LIST_OUTPUT` | `file` | `file` exports the restricted list to `SEED_LIST_FILE`; `s3` also uploads it to the provider bucket. |
+| `SEED_LIST_FILE` | `generated/listas/lista_restrictiva.jsonl` | Provider file read by the restricted list service. |
+| `PROVEEDOR_LISTAS_BUCKET` / `PROVEEDOR_LISTAS_KEY` | `pagoseguro-proveedor-listas` / `lista_restrictiva.jsonl` | Where the provider file lives in S3. |
 | `SEED_USERS`, `SEED_DEVICES_PER_USER`, `SEED_MERCHANTS`, `SEED_RESTRICTED_LISTS`, `SEED_SHARED_DEVICES` | per mode | Optional volume overrides. |
 
 See [Seed](../components/seed.mdx).
@@ -99,3 +102,14 @@ See [Transaction generator](../components/generator.mdx).
 | `EXT_OUTPUT_DIR` | `generated/extractos` | Local output folder (emptied on every run). |
 
 It also uses `SEED` and `DATALAKE_BUCKET`. See [Partner statements](../components/partner-statements.mdx).
+
+## Restricted list service
+
+| Variable | Default | What it does |
+| :--- | :--- | :--- |
+| `LISTA_SOURCE` | `file` | `file` reads `SEED_LIST_FILE`; `s3` reads `PROVEEDOR_LISTAS_BUCKET`. |
+| `LISTA_LATENCIA_MIN_MS` / `LISTA_LATENCIA_MAX_MS` | `50` / `3000` | Random latency of every response. |
+| `LISTA_FALLA_PCT` | `5` | Requests that answer 503. |
+| `LISTA_SEMILLA` | none | Fixes the randomness of latency and failures. |
+
+See [Restricted list service](../components/restricted-list.mdx).

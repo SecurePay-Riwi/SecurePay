@@ -1,0 +1,108 @@
+---
+sidebar_position: 7
+title: Restricted list service
+description: Simulated external provider of restricted lists (sanctions and PEP), slow and unreliable on purpose.
+---
+
+# Restricted list service
+
+**Folder:** `sources/apis/restricted_list/` · **Run:** `uv run uvicorn sources.apis.restricted_list.main:app --port 8001`
+
+The assignment asks for an external restricted-list provider that **responds slowly and goes down from time to time**, so the engine has to protect itself. This component **simulates that provider**. It is not our product: in production a real provider would expose its own endpoint with an up-to-date list.
+
+## Where its data comes from
+
+The [seed](./seed.mdx) fills the `listas_restrictivas` table in PostgreSQL and, at the end, **exports the same list to a file** that plays the provider's database:
+
+```text
+generated/listas/lista_restrictiva.jsonl                          (always)
+s3://pagoseguro-proveedor-listas/lista_restrictiva.jsonl          (SEED_LIST_OUTPUT=s3)
+```
+
+One person per line, sorted by document, with the document in canonical form (digits only):
+
+```json
+{"documento": "1000000016", "tipo": "sanciones", "fecha_inclusion": "2023-06-13"}
+```
+
+The export reads the table, not what the seed just generated, so the file always matches the database even with `SEED_RESET=false`.
+
+The service loads the file into memory **once at startup**, with no periodic refresh: with the same seed and configuration the seed always produces the same list. If the seed runs again with other parameters, restart the service. If the file cannot be read, the service does not start: failing loudly is better than answering "not listed" for everyone.
+
+It does **not** read PostgreSQL. That is why, in AWS, its Lambda (behind API Gateway) stays **outside the VPC**, and why the folder imports nothing from the rest of the repository (not even `shared/`), so it can move to the simulated-APIs repository on its own.
+
+The provider bucket is separate from the Data Lake because it holds a third party's data, not ours: the service needs no permission on the Data Lake.
+
+## Endpoints
+
+| Endpoint | Used by | Response |
+| :--- | :--- | :--- |
+| `GET /lista` | The daily task that loads the list into the engine's cache | `{"total": 20, "registros": [...]}` |
+| `GET /lista/{documento}` | The engine, **only when the cache is not available** | `{"listado": true, "documento": "1000000016", "tipo": "sanciones", "fecha_inclusion": "2023-06-13"}` or `{"documento": "1000000099", "listado": false}` |
+| `GET /health` | Load balancer and Compose | `{"status": "ok", "total": 20}`, with no latency and no failures |
+
+The document is normalized to digits before the lookup, so `CC 1.000.000.016`, `1.000.000.016` and `1000000016` are the same person. A document that is not listed is a **200 with `"listado": false`**, not a 404, so it cannot be confused with a mistyped route. A document with no digits is a 400.
+
+```python
+@app.get("/lista/{documento}")
+async def consultar(documento: str, request: Request):
+    await request.app.state.proveedor.simular()   # sleeps and, sometimes, 503
+    doc = normalizar(documento)                    # "CC 1.000.000.016" -> "1000000016"
+    ...
+    registro = request.app.state.lista.get(doc)
+    if registro is None:
+        return {"documento": doc, "listado": False}
+    return {"listado": True, **registro}
+```
+
+## How it misbehaves
+
+| Variable | Default | What it does |
+| :--- | :--- | :--- |
+| `LISTA_LATENCIA_MIN_MS` / `LISTA_LATENCIA_MAX_MS` | `50` / `3000` | Every response on `/lista` and `/lista/{documento}` takes a random time in this range. |
+| `LISTA_FALLA_PCT` | `5` | Share of requests that answer **503**. The failure comes **after** the wait, like a saturated provider that is slow and then gives up, so the engine must cut by timeout and not only by error. |
+| `LISTA_SEMILLA` | none | Fixes the randomness to repeat the same behavior. Without it every start behaves differently, like a real provider. |
+
+The wait uses `asyncio.sleep`, so one slow request does not block the others: 200 parallel requests finish in about the maximum latency (3.5 s measured), with about 5% of 503s.
+
+## How the system uses it (bitácora 3.12)
+
+1. A daily Lambda (EventBridge) calls `GET /lista` and loads the full list into the engine's cache, like the exchange-rate task does with Frankfurter.
+2. The engine checks **only the cache**. A document that is not in the full cached list is not listed; the provider is not asked again.
+3. Only if the cache is not available, the engine calls `GET /lista/{documento}`, behind an automatic circuit breaker and with the default decision if it does not answer in time.
+
+Steps 1 to 3 belong to the Sprint 2 story "rejection by restricted list". Today the [decision engine](./decision-engine.mdx) still looks the document up in PostgreSQL.
+
+Size in full mode: 50,000 records are about 4 MB of JSON on `GET /lista`, under Lambda's 6 MB response limit.
+
+## Configuration
+
+| Variable | Default | What it does |
+| :--- | :--- | :--- |
+| `LISTA_SOURCE` | `file` | `file` reads `SEED_LIST_FILE`; `s3` reads the provider bucket (LocalStack locally, real S3 in AWS). |
+| `SEED_LIST_FILE` | `generated/listas/lista_restrictiva.jsonl` | Local file (written by the seed, read by the service). |
+| `PROVEEDOR_LISTAS_BUCKET` / `PROVEEDOR_LISTAS_KEY` | `pagoseguro-proveedor-listas` / `lista_restrictiva.jsonl` | Where the list lives in S3. |
+
+Reading from S3 like in AWS, with LocalStack running:
+
+```powershell
+$env:SEED_LIST_OUTPUT="s3"
+uv run python -m db.seed.seed
+$env:LISTA_SOURCE="s3"
+uv run uvicorn sources.apis.restricted_list.main:app --port 8001
+```
+
+LocalStack creates the bucket at startup (`infra/localstack/init/02_sources.py`).
+
+## How it works inside
+
+| File | What it does |
+| :--- | :--- |
+| `main.py` | The FastAPI app. `create_app(config)` loads the list on startup (lifespan), so tests can build their own app. |
+| `lista.py` | Reads the file (local or S3), parses it into a `documento → registro` dictionary and normalizes documents. |
+| `proveedor.py` | Draws the latency and the failure of each request. |
+| `config.py` | `LISTA_*` variables, read in a function and validated. |
+
+## Tests
+
+`uv run pytest sources/apis db` (no database needed): document formats from the seed defects, listed and not listed, 400 without digits, full list, 503 with `LISTA_FALLA_PCT=100` while `/health` stays up, latency in range and reproducible with a seed (about 5% of failures over 2,000 draws), no start without the file, a broken line fails with its number, invalid configuration, and the seed export (one line per person, sorted, same bytes whatever the database order). One test reads from S3 in LocalStack and is skipped when LocalStack is off.

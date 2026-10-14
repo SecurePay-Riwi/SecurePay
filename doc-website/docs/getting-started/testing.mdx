@@ -6,12 +6,12 @@ description: How to run the test suite and what each group of tests needs.
 
 # Testing
 
-The tests live inside each component (`services/*/tests/`, `generators/tests/`). pytest finds them through `pyproject.toml`:
+The tests live inside each component (`services/*/tests/`, `generators/tests/`, `sources/**/tests/`, `db/seed/tests/`). pytest finds them through `pyproject.toml`:
 
 ```toml
 [tool.pytest.ini_options]
 pythonpath = ["."]
-testpaths = ["services", "generators"]
+testpaths = ["services", "generators", "sources", "db"]
 ```
 
 Run everything from the repository root:
@@ -20,7 +20,7 @@ Run everything from the repository root:
 uv run pytest
 ```
 
-At the end of Sprint 1 the suite had **107 tests**; with the partner statements it has **126**.
+At the end of Sprint 1 the suite had **107 tests**; with the partner statements it had **126**, and with the restricted list service it has **147**.
 
 ## What each group needs
 
@@ -42,7 +42,8 @@ If a service is off, its tests are **skipped** (`s`) instead of failing, except 
 ```bash
 uv run pytest generators                 # only the generator
 uv run pytest services/decision_engine   # only the engine
-uv run pytest sources                    # only the partner statements
+uv run pytest sources/csv_files          # only the partner statements
+uv run pytest sources/apis db            # only the restricted list service and the seed export
 uv run pytest -k velocity                # tests whose name contains "velocity"
 uv run pytest -rs                        # show why tests were skipped
 ```
