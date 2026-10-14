@@ -4,6 +4,8 @@
 
 Lee la base una vez, genera el tráfico con fraude y defectos, y lo manda
 al motor (GEN_OUTPUT=http) o lo escribe en un archivo (GEN_OUTPUT=file).
+En los dos modos queda generated/instance-N/events.jsonl, que es de donde
+leen los extractos de los socios.
 """
 
 from generators import config
@@ -50,23 +52,29 @@ def main():
     )
 
     carpeta = carpeta_de_salida(config.OUTPUT_DIR, instancia)
+    # El archivo se escribe siempre: con GEN_OUTPUT=http queda además como
+    # registro de lo que se mandó, y los extractos de los socios lo leen.
+    archivo = SalidaArchivo(carpeta)
+    http = None
     if config.OUTPUT == "http":
-        salida = SalidaHttp(config.ENGINE_URL, config.RATE_PER_SECOND)
-    else:
-        salida = SalidaArchivo(carpeta)
+        http = SalidaHttp(config.ENGINE_URL, config.RATE_PER_SECOND)
     reporte = Reporte(carpeta)
 
     print(f"Generando {volumen['transactions']} transacciones...")
     enviados = 0
     try:
         for evento in defectos.aplicar(core.eventos()):
-            reporte.anotar(evento, salida.enviar(evento))
+            resultado = http.enviar(evento) if http else None
+            archivo.enviar(evento)
+            reporte.anotar(evento, resultado)
             enviados += 1
             if enviados % 1_000 == 0:
                 print(f"  {enviados} eventos enviados")
     finally:
         # Aunque se corte a la mitad (Ctrl+C), queda el reporte de lo enviado.
-        salida.cerrar()
+        archivo.cerrar()
+        if http:
+            http.cerrar()
         resumen = reporte.cerrar(
             defectos.reporte,
             {
