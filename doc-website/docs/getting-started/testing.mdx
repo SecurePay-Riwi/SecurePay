@@ -1,0 +1,51 @@
+---
+sidebar_position: 3
+title: Testing
+description: How to run the test suite and what each group of tests needs.
+---
+
+# Testing
+
+The tests live inside each component (`services/*/tests/`, `generators/tests/`). pytest finds them through `pyproject.toml`:
+
+```toml
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["services", "generators"]
+```
+
+Run everything from the repository root:
+
+```bash
+uv run pytest
+```
+
+At the end of Sprint 1 the suite has **107 tests**.
+
+## What each group needs
+
+| Tests | Folder | Needs |
+| :--- | :--- | :--- |
+| Generator (catalog, core, money, defects, rules, sender) | `generators/tests/` | Nothing: they do not touch the database. |
+| Request schema | `services/decision_engine/tests/test_schemas.py` | Nothing. |
+| API | `services/decision_engine/tests/test_api.py` | PostgreSQL **with the seed loaded** and Valkey. |
+| Idempotency and velocity | `test_idempotency_valkey.py`, `test_velocity_valkey.py` | Valkey. |
+| Publisher | `test_publisher.py` | Nothing: SNS is faked. |
+| Consumers | `services/consumers/tests/test_consumers.py` | Nothing: SQS and S3 are faked. |
+| End-to-end messaging | `services/consumers/tests/test_localstack_flow.py` | LocalStack. |
+
+If a service is off, its tests are **skipped** (`s`) instead of failing, except the API tests, which fail with `503` when Valkey is down.
+
+## Useful commands
+
+```bash
+uv run pytest generators                 # only the generator
+uv run pytest services/decision_engine   # only the engine
+uv run pytest -k velocity                # tests whose name contains "velocity"
+uv run pytest -rs                        # show why tests were skipped
+```
+
+## Conventions
+
+- Each rule's fraud pattern has a **control case** that sits just on the side that must *not* trigger the rule. If the engine flags a control case, the engine is wrong.
+- The generator is deterministic: with seed 42 it always produces 1,035 events, the same on Windows and Linux. Tests can rely on exact counts.

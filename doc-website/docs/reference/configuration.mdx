@@ -1,0 +1,86 @@
+---
+sidebar_position: 1
+title: Configuration
+description: Every environment variable in .env.example, what it does and its default.
+---
+
+# Configuration
+
+All configuration comes from environment variables, loaded from `.env` with `python-dotenv`. Copy `.env.example` to `.env`; the defaults work for local development. Never commit `.env`.
+
+## Database
+
+| Variable | Example | What it does |
+| :--- | :--- | :--- |
+| `DATABASE_URL` | `postgresql://pagoseguro:pagoseguro@localhost:5433/pagoseguro` | PostgreSQL connection. Port 5433 for the Compose database, 5432 for an installed one. |
+
+## Seed
+
+| Variable | Default | What it does |
+| :--- | :--- | :--- |
+| `SEED` | `42` | Random seed, shared by the seed and the generator. |
+| `SEED_MODE` | `dev` | `dev` or `prod` volumes. |
+| `SEED_RESET` | `false` | `true` empties the seed tables before loading. |
+| `SEED_DEFECT_PERCENTAGE` | `0` | Users whose document is written in a wrong format. |
+| `SEED_CUENTAS_BLOQUEADAS_PCT` | `2` | Accounts created blocked. |
+| `SEED_USUARIOS_EN_LISTA_PCT` | `0.1` | Customers that are also in the restricted list. |
+| `SEED_USUARIOS_EN_LISTA_MIN` | `5` | Minimum number of those customers. |
+| `SEED_COMERCIOS_NUEVOS_PCT` | `10` | Merchants created recently. |
+| `SEED_COMERCIOS_NUEVOS_DIAS` | `30` | What "recently" means, in days. |
+| `SEED_USERS`, `SEED_DEVICES_PER_USER`, `SEED_MERCHANTS`, `SEED_RESTRICTED_LISTS`, `SEED_SHARED_DEVICES` | per mode | Optional volume overrides. |
+
+See [Seed](../components/seed.mdx).
+
+## Decision engine
+
+| Variable | Default | What it does |
+| :--- | :--- | :--- |
+| `VALKEY_URL` | `redis://localhost:6379/0` | Valkey connection (ElastiCache in AWS). |
+| `IDEMPOTENCY_TTL_SECONDS` | `3600` | How long a decision is returned to resends. |
+| `VELOCITY_WINDOW_MINUTES` | `10` | Velocity window. |
+| `VELOCITY_LIMIT` | `5` | Held when the window has more transfers than this. |
+| `VELOCITY_HISTORY_HOURS` | `24` | Transfer history kept per account. |
+
+See [Decision engine](../components/decision-engine.mdx).
+
+## Messaging and Data Lake
+
+| Variable | Default | What it does |
+| :--- | :--- | :--- |
+| `AWS_ENDPOINT_URL` | `http://localhost:4566` | Sends every AWS call to LocalStack. **Not set in AWS.** |
+| `AWS_DEFAULT_REGION` | `us-east-2` | Region. |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | `test` / `test` | Fake on purpose: LocalStack accepts anything. In AWS the IAM role is used instead. |
+| `SNS_DECISIONES_TOPIC_ARN` | `arn:aws:sns:us-east-2:000000000000:decisiones` | Topic where decisions are published. If empty, every event is logged as not published. |
+| `DATALAKE_BUCKET` | `pagoseguro-datalake` | Bucket for the `raw/` layer. |
+| `PUBLISH_BATCH_WAIT_MS` | `500` | Max wait to fill a batch of 10. |
+| `PUBLISH_BUFFER_SIZE` | `10000` | In-memory events allowed while SNS does not answer. |
+| `PUBLISH_RETRIES` | `3` | Retries per batch. |
+
+See [Messaging](../components/messaging.mdx).
+
+## Docker Compose
+
+| Variable | Default | What it does |
+| :--- | :--- | :--- |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `pagoseguro` | Credentials of the Compose PostgreSQL. |
+| `LOCALSTACK_AUTH_TOKEN` | — | Your personal LocalStack token (free Hobby plan). **Required**: Compose refuses to start without it. Only in your `.env`, never in the repository. |
+
+## Transaction generator
+
+| Variable | Default | What it does |
+| :--- | :--- | :--- |
+| `GEN_MODE` | `dev` | `dev` (1,000 transactions) or `prod` (1,000,000). |
+| `GEN_OUTPUT` | `file` | `file` writes to `generated/`; `http` sends to the engine. |
+| `GEN_ENGINE_URL` | `http://localhost:8000` | Engine URL in `http` mode. |
+| `GEN_RATE` | `50` | Events per second (0 = as fast as possible). |
+| `GEN_FRAUD_PERCENTAGE` | `5` | Share of the stream that belongs to a fraud pattern. |
+| `GEN_DUPLICATE_PERCENTAGE` | `2` | Resends. |
+| `GEN_OUT_OF_ORDER_PERCENTAGE` | `2` | Out-of-order events. |
+| `GEN_DECIMAL_DEFECT_PERCENTAGE` | `1` | Amounts with extra decimals. |
+| `GEN_TRANSACTIONS` | per mode | Number of transactions. |
+| `GEN_MAX_ACCOUNTS` | per mode | Accounts loaded in memory (0 = all). |
+| `GEN_OUTPUT_DIR` | `generated` | Output folder. |
+| `GEN_INSTANCE_INDEX` / `GEN_INSTANCE_COUNT` | `0` / `1` | Several generators in parallel. |
+| `GEN_TX_PER_ACCOUNT_DAY` | `1` | Average daily transactions per account (sets the simulated clock speed). |
+
+See [Transaction generator](../components/generator.mdx).

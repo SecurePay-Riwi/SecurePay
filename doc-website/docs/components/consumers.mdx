@@ -1,0 +1,67 @@
+---
+sidebar_position: 5
+title: Consumers
+description: The three SQS consumers, written as Lambda handlers and run locally with a small runner.
+---
+
+# Consumers
+
+**Folder:** `services/consumers/` · **Run locally:** `uv run python -m services.consumers`
+
+One consumer per queue. Each is a function with the **AWS Lambda signature**, `handler(event, context)`: it receives a batch of up to 10 SQS messages and returns which ones failed (`ReportBatchItemFailures`). In AWS, SQS triggers the Lambda; locally, a runner reads LocalStack and calls the same function.
+
+| Queue | Handler | Today | Next |
+| :--- | :--- | :--- | :--- |
+| `analitica` | `analytics.handler` | **Writes** each batch to S3 as JSON Lines. | Go through Kinesis Data Firehose in AWS. |
+| `casos` | `cases.handler` | Skeleton: reads, logs non-`APPROVE` decisions and acknowledges. | Open a case in PostgreSQL for mule account, splitting and restricted list ([Team decisions](../architecture/team-decisions.mdx)). |
+| `historial` | `history.handler` | Skeleton: reads and acknowledges. | Store new device–account pairs in DynamoDB and the cache. |
+
+The skeletons acknowledge messages so the queues do not pile up.
+
+## Batch handling
+
+`batch.py` has what the three share:
+
+```python
+def leer_lote(event):
+    """Splits the batch into valid (id, event) pairs and ids of broken messages."""
+    validos, fallidos = [], []
+    for registro in event.get("Records", []):
+        try:
+            validos.append((registro["messageId"], leer_evento(registro["body"])))
+        except EventoInvalido as exc:
+            log.error("Mensaje %s inválido: %s", registro["messageId"], exc)
+            fallidos.append(registro["messageId"])
+    return validos, fallidos
+
+def respuesta(fallidos):
+    return {"batchItemFailures": [{"itemIdentifier": i} for i in fallidos]}
+```
+
+A broken message is reported as failed, retried, and after 5 attempts lands in the DLQ, where someone can look at it.
+
+## Analytics: the raw layer
+
+Each batch becomes one JSON Lines file (one event per line), partitioned by arrival day:
+
+```text
+s3://pagoseguro-datalake/raw/decisiones/fecha=2026-10-14/001003-<uuid>.jsonl
+```
+
+If S3 fails, the whole batch is reported as failed and retried. If SQS delivers a message twice, the line is duplicated in `raw`: the raw layer keeps what arrived untouched, and the curated layer removes duplicates by transaction id.
+
+In AWS, writing one object per batch would be ~13 million PUTs a month (~$65), so the analytics consumer will write through Kinesis Data Firehose, which groups ~5 MB objects. Locally it writes straight to S3.
+
+## Running them locally
+
+```bash
+uv run python -m services.consumers              # all three
+uv run python -m services.consumers analitica    # only one
+```
+
+The runner (`runner.py`) does what the Lambda service does with an SQS trigger:
+
+- Long-polls each queue (10 s) for batches of up to 10.
+- Builds the same `Records` event Lambda would receive and calls the handler.
+- Deletes only the messages that succeeded. If the handler raises, the whole batch returns to the queue, as in Lambda.
+- Failed messages become visible again after 30 s; after 5 attempts they move to the DLQ.

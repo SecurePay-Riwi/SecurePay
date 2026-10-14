@@ -1,22 +1,17 @@
-# Website
+# SecurePay documentation site
 
-This website is built using [Docusaurus](https://docusaurus.io/), a modern static website generator.
+Documentation of the PagoSeguro Anti-fraud project, built with [Docusaurus 3](https://docusaurus.io/) and published at https://securepay-riwi.github.io/SecurePay/.
 
-## Installation
+## Local development
 
-```bash
-npm install
-```
-
-**Note**: feel free to use the package manager of your choice.
-
-## Local Development
+Requires Node.js 20.
 
 ```bash
+npm ci
 npm run start
 ```
 
-This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
+Opens a local server with live reload.
 
 ## Build
 
@@ -24,20 +19,20 @@ This command starts a local development server and opens up a browser window. Mo
 npm run build
 ```
 
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
+Generates the static site in `build/`. The build fails on broken internal links (`onBrokenLinks: 'throw'`), so run it before opening a pull request.
 
 ## Deployment
 
-Using SSH:
+Every push to `main` that touches `doc-website/` runs `.github/workflows/doc-site.yml`, which builds the site and deploys it to GitHub Pages.
 
-```bash
-USE_SSH=true npm run deploy
-```
+## Where things go
 
-Not using SSH:
+| Folder | Content |
+| :--- | :--- |
+| `docs/getting-started/` | Local setup, full flow simulation, tests |
+| `docs/architecture/` | AWS design, costs, ADRs, team decisions, open questions |
+| `docs/components/` | One page per piece of code |
+| `docs/reference/` | Environment variables, data model, glossary |
+| `docs/product-backlog/` | Epics, dependencies, sprint backlogs and reviews |
 
-```bash
-GIT_USER=<Your GitHub username> npm run deploy
-```
-
-If you are using GitHub Pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
+Each folder's sidebar label and position live in its `_category_.json`; each page's order in its `sidebar_position`.

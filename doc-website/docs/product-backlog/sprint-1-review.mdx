@@ -1,0 +1,58 @@
+---
+sidebar_position: 9
+title: Sprint 1 review
+description: What Sprint 1 delivered, where it differs from the backlog, and what is left for the next sprints.
+---
+
+# Sprint 1 review
+
+**Sprint goal:** have the system's foundation running (data generated, the ingestion pipeline operational and the architecture documented) so the team can build the anti-fraud engine on a solid, reproducible base.
+
+**Planned:** September 23 – October 6, 2026 · **Closed:** October 13, 2026, with every story merged to `main` (last merge: PR #8) and marked done in Jira.
+
+## Delivered
+
+| Story | What was delivered | PR |
+| :--- | :--- | :--- |
+| US-01 Seed | Users, accounts (one per user, 4 currencies), devices, device–account pairs, merchants and restricted lists in PostgreSQL. | #4 |
+| US-02 Seed volumes | `dev` and `prod` modes plus per-entity overrides (`SEED_USERS`, …). Full mode = 2.3 million users. | #4 |
+| US-03 Idempotent seed | Deterministic ids and `ON CONFLICT DO NOTHING`; optional `SEED_RESET`. Same data on Windows and Linux. | #4 |
+| US-04 Defect injection | Documents written with dots, prefix or spaces, with `defect_report.json`. | #1, #4 |
+| US-05 Synthetic transactions | Generator that plays the wallet core: 5 labeled fraud patterns, each with a control case, plus resends, out-of-order events and extra decimals. | #1, #5 |
+| US-06 Decision service | `POST /transactions` with APPROVE / HOLD / REJECT, status codes 200/400/409/422/503/500. Rules: restricted list and velocity. | #1, #6 |
+| US-07 Idempotency | `SET NX` in Valkey with a 1-hour TTL; the same id with another body is `409`. | #6 |
+| US-08 Out-of-order events | Velocity history as a sorted set by event time; late events are counted where they belong. | #7 |
+| US-09 Asynchronous messaging | Background SNS publisher, three SQS queues with DLQs, Lambda-style consumers, base Docker Compose with LocalStack. | #8 |
+| US-54 Architecture v1 and ADRs | AWS architecture, costs and 8 ADRs. See [Architecture](../architecture/overview.mdx). | — |
+| US-62 Repository setup | Monorepo, uv, `.gitignore`, `.env.example`, README and this site. | #2, #3 |
+
+**Tests:** 107. **End-to-end check (seed 42):** 1,023 transactions answered `200`, 23 resends with the same decision as their original, 3 restricted-list transactions rejected, 4 velocity frauds held (and none of their controls), 1,000 decisions in S3 with no duplicates, and the engine kept answering with LocalStack down.
+
+## Where we differ from the backlog
+
+| Backlog said | What we did | Why |
+| :--- | :--- | :--- |
+| Publish events to **RabbitMQ** | **SNS + SQS**, LocalStack locally | Managed, highly available, no broker to operate ([ADR-04](../architecture/decisions.mdx#adr-04), [ADR-06](../architecture/decisions.mdx#adr-06)). |
+| Register each transaction with its decision **in the database**, inside the service | The engine writes **nothing** to PostgreSQL; the decision goes to Valkey and to the event | A database write inside the request breaks the 200 ms budget. |
+| Idempotency so that **no duplicate record** is created in the database | Idempotency in **Valkey** | Same reason; the cache answers in under a millisecond. |
+| The seed generates transactions | The seed loads **master data only**; the generator sends transactions over HTTP | That is how the real core behaves. |
+| Branches `main`, `develop`, `feature/`, `hotfix/` | No `develop` branch yet | Feature branches merge into `main` through PRs. |
+
+## Carried over
+
+| Item | Goes to |
+| :--- | :--- |
+| Real cases consumer (open cases for mule account, splitting and restricted list) | Sprint 2, with the case table |
+| History consumer (device–account pairs in DynamoDB and the cache) | Sprint 2, with the history rules |
+| Security events endpoint (`/security-events`, today `404`) | Account takeover rule |
+| Default decision on timeout and later review of fallback approvals | Sprint 2, "default decision on timeout" |
+| Seed and engine as Compose services (single-command environment) | Sprint 2, currently unassigned |
+| Batch inserts so full-mode seed loads in reasonable time | Before the load test |
+| Validate devices with `dispositivo_cuenta` and drop `dispositivos.user_id` | With the engine rules |
+| Convert amounts to USD with the day's rate before comparing thresholds | With the rules that use USD thresholds |
+| A script that crosses `labels.jsonl` with the engine's decisions | To measure rule effectiveness |
+| Firehose for the analytics consumer in AWS | With the Terraform infrastructure |
+
+## Team changes
+
+Kerlys left the project on October 13, 2026. Her stories (including the single-command Docker Compose) are unassigned.

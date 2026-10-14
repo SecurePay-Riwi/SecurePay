@@ -1,0 +1,79 @@
+---
+sidebar_position: 4
+title: Team decisions
+description: Decisions taken by the team while building Sprint 1, and why.
+---
+
+# Team decisions
+
+Smaller decisions than the [ADRs](./decisions.mdx), taken while building. Each one says what was decided and why.
+
+## Which held transactions open a case
+
+**Decided by the team on 2026-10-13.**
+
+Only three rules open a case in the analyst's inbox:
+
+| Opens a case | Does not open a case (recorded and shown on the dashboard) |
+| :--- | :--- |
+| Mule account | Velocity |
+| Transaction splitting | Account takeover |
+| Restricted list | Approvals by fallback |
+
+**Why.** If every held transaction opened a case, the inbox would get about 1% of the volume, some 43,000 cases a day, which no team of people can work. The assignment only says "create a case" for the mule account and splitting rules, plus the report to compliance for the restricted list. Holding is automatic; a case is what takes a person's time and what must be archived for 10 years.
+
+## What happens with approvals by fallback
+
+**Decided on 2026-10-13.**
+
+When the engine is too slow, transactions under USD 50 are approved by default. Those approvals:
+
+- **Do not open a case** when approved: during an incident they arrive all at once (10 minutes at 50 tx/s is ~30,000) and would bury the real cases.
+- Are **flagged as `fallback`** and visible on the dashboard.
+- Trigger **one alert per incident** to the tech team, not one per transaction.
+- Are **re-run through the rules when the engine recovers**: only those that trigger mule account, splitting or restricted list open a case. The money has already moved (the risk the assignment accepts, capped under USD 50), so the review is used to freeze the destination account if the money is still in the wallet, open the case and report.
+
+Pending: which component runs that later review (a job or a scheduled Lambda). It belongs to the Sprint 2 story "default decision on timeout".
+
+**If the whole engine does not answer**, the fallback happens in the core: that transaction never reaches the queue, so the core resends it to the engine with the **same id** when it is back. The engine, being idempotent, decides and publishes it normally. In the simulation the generator plays that role.
+
+## Idempotency window of 1 hour
+
+A resent transaction gets the same decision for 1 hour (`IDEMPOTENCY_TTL_SECONDS=3600`). That sizes the idempotency memory at ~180 thousand keys (~18 MB). If a real core resend can arrive later, the TTL must go up and the memory be recalculated.
+
+## The engine does not write to PostgreSQL
+
+**Decided on 2026-10-13 (story 7).** Writing every transaction to the database inside the request breaks the 200 ms budget. The engine keeps the decision in Valkey (idempotency) and publishes it; the consumers store what needs storing.
+
+## Velocity counts only P2P transfers, by event time
+
+**Decided on 2026-10-13 (story 8).**
+
+- The rule says "outgoing transfers", so **QR payments to merchants do not count**. If needed, they can become their own rule with its own threshold once rule management exists.
+- The window uses `transaction_date`, **not the arrival time**, so out-of-order events are counted where they really belong.
+- Decisions already returned never change: if a late event completes a window, the late event is the one held.
+- History per account is 24 hours (`VELOCITY_HISTORY_HOURS`). At 50 tx/s that is ~100 MB that was not in the 300 MB cache estimate; 1 hour would be enough for velocity (~5 MB). To confirm in the load test.
+
+## Data for the seed and the generator
+
+**Decided on 2026-10-12 and 2026-10-13.**
+
+| Decision | Why |
+| :--- | :--- |
+| One account per user, in its own table | The user is the identity (email, document, KYC); the account is currency, balance and status. |
+| Four currencies: COP, USD, EUR, JPY | All available in Frankfurter v2. The yen has no decimals, which covers the "different decimal precision per currency" defect. |
+| Fixed reference date 2026-10-01 00:00 UTC | Two runs produce the same data regardless of the day. |
+| Random dates without Faker, user agents only from Chrome, Safari or Opera | Faker gives different dates on Windows and Linux with the same seed. The team works on Windows and AWS runs Amazon Linux. |
+| Device–account is many-to-many | Needed by the shared device rule. |
+| Canonical document = digits only | The seed's defects write documents with dots, a `CC` prefix or spaces; the engine normalizes before looking them up. |
+| The seed loads only master data | Transactions come from the generator, like the real core. |
+| The core reports balances before and after | Like PaySim. The engine does not keep balances; the mule rule uses the balance in the transaction. |
+| No transfers between different currencies | The assignment does not ask for it and it adds complexity. |
+
+## Messaging details
+
+- **Publishing never blocks the answer.** The request leaves the event in an in-memory queue; a background thread publishes batches of up to 10 every 500 ms at most.
+- **A resend is not published again.**
+- **The event is versioned** (`transaction.decided` v1), so an old consumer rejects a new format instead of misreading it.
+- **LocalStack is pinned** to `2026.09.1` so the whole team runs the same version; since March 2026 new versions need a free account token.
+- **The LocalStack init script is Python, not bash**, because a `.sh` saved on Windows (CRLF or no execute permission) fails at startup.

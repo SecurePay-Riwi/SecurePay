@@ -1,0 +1,100 @@
+---
+sidebar_position: 2
+title: Data model
+description: PostgreSQL tables, Valkey keys and the S3 layout used today.
+---
+
+# Data model
+
+## PostgreSQL
+
+Defined with SQLAlchemy in `shared/models.py`, shared by the engine, the seed and the generator. Table and column names are in Spanish.
+
+```text
+usuarios 1 ── 1 cuentas 1 ── * dispositivo_cuenta * ── 1 dispositivos
+    │                                                        │
+    └────────────────────────── 1 ── * ──────────────────────┘ (dispositivos.user_id, to be removed)
+
+comercios            listas_restrictivas (matched by documento)
+```
+
+### `usuarios`
+
+| Column | Type | Notes |
+| :--- | :--- | :--- |
+| `id` | UUID | Primary key. |
+| `nombre` | text | |
+| `email` | text | Unique. |
+| `documento` | text | Unique. Canonical form is digits only; the seed may write it with dots, prefix or spaces. |
+| `telefono` | text | |
+| `fecha_nacimiento` | date | |
+| `kyc_estado` | text | |
+| `fecha_registro` | timestamp | |
+
+### `cuentas`
+
+| Column | Type | Notes |
+| :--- | :--- | :--- |
+| `id` | UUID | Primary key. |
+| `user_id` | UUID | FK to `usuarios`, **unique**: one account per user. |
+| `moneda` | char(3) | `COP`, `USD`, `EUR` or `JPY`. |
+| `saldo` | numeric(18,2) | Initial balance. The engine does not keep balances; the core sends them. |
+| `fecha_apertura` | timestamp | |
+| `estado` | text | `activa` or `bloqueada`. |
+
+### `dispositivos`
+
+| Column | Type | Notes |
+| :--- | :--- | :--- |
+| `id` | UUID | Primary key. |
+| `user_id` | UUID | FK to `usuarios`. Assumes one owner; it will be removed once the engine validates devices through `dispositivo_cuenta`. |
+| `device_fingerprint` | text | Unique. |
+| `user_agent`, `ip` | text | |
+| `fecha_asociacion` | timestamp | |
+
+### `dispositivo_cuenta`
+
+Many-to-many: a device used on an account since a date. This is what the shared device rule measures.
+
+| Column | Type | Notes |
+| :--- | :--- | :--- |
+| `dispositivo_id` | UUID | FK, part of the primary key. |
+| `cuenta_id` | UUID | FK, part of the primary key, indexed. |
+| `fecha_asociacion` | timestamp | |
+
+### `comercios`
+
+| Column | Type | Notes |
+| :--- | :--- | :--- |
+| `id` | UUID | Primary key. |
+| `nombre`, `categoria`, `direccion` | text | |
+| `fecha_creacion` | timestamp | 10% within the last 30 days. |
+| `estado` | text | |
+
+### `listas_restrictivas`
+
+| Column | Type | Notes |
+| :--- | :--- | :--- |
+| `id` | UUID | Primary key. |
+| `documento` | text | Unique, always canonical (digits only). |
+| `tipo` | text | |
+| `fecha_inclusion` | date | |
+
+### `transacciones` (legacy)
+
+Still defined in `shared/models.py` but **no longer written**: the seed stopped generating transactions and the engine does not write to PostgreSQL. Transactions and decisions travel as [events](../components/messaging.mdx#the-decision-event).
+
+## Valkey
+
+| Key | Type | TTL | Content |
+| :--- | :--- | :--- | :--- |
+| `idem:{transaction_id}` | string (JSON) | 30 s while `PENDING`, 1 h when `DONE` | State, body fingerprint and the decision. |
+| `vel:{source_account_id}` | sorted set | 24 h after the last transfer | Member: transaction id. Score: `transaction_date` in ms. |
+
+## S3
+
+| Path | Written by | Format |
+| :--- | :--- | :--- |
+| `s3://pagoseguro-datalake/raw/decisiones/fecha=YYYY-MM-DD/HHMMSS-<uuid>.jsonl` | Analytics consumer | One `transaction.decided` event per line. |
+
+The `curated` and `analytics` layers arrive with the Spark ETL.

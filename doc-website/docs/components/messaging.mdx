@@ -1,0 +1,92 @@
+---
+sidebar_position: 4
+title: Messaging
+description: How decisions leave the engine through SNS and SQS without making the core wait.
+---
+
+# Messaging
+
+**Files:** `services/decision_engine/publisher.py`, `shared/events.py`, `shared/aws.py`, `infra/localstack/init/01_messaging.py`
+
+After deciding, the engine publishes each decision so the rest of the system can react without the core waiting. In AWS these are real SNS, SQS and S3; locally, LocalStack imitates them. **The code is the same**: only `AWS_ENDPOINT_URL` changes, and in AWS it is not set at all.
+
+```text
+engine ──▶ in-memory queue ──▶ background thread ──PublishBatch──▶ SNS "decisiones"
+                                                                   ├─▶ SQS "casos"      (+ casos-dlq)
+                                                                   ├─▶ SQS "historial"  (+ historial-dlq)
+                                                                   └─▶ SQS "analitica"  (+ analitica-dlq)
+```
+
+Why SNS + SQS and not RabbitMQ: [ADR-04](../architecture/decisions.mdx#adr-04) and [ADR-06](../architecture/decisions.mdx#adr-06).
+
+## Resources
+
+Created by `infra/localstack/init/01_messaging.py` every time LocalStack starts (Terraform will create them in AWS):
+
+| Resource | Configuration |
+| :--- | :--- |
+| SNS topic `decisiones` | Where the engine publishes every decision. |
+| SQS `casos`, `historial`, `analitica` | Subscribed to the topic with no filters and **raw message delivery**: the queue gets the event exactly as published, without the SNS envelope. Visibility timeout 30 s. |
+| Dead-letter queues `<queue>-dlq` | A message that fails **5 times** moves there and is kept **14 days** (the SQS maximum). |
+| S3 bucket `pagoseguro-datalake` | Where analytics writes the `raw/` layer. |
+
+In AWS each queue also needs a policy that lets the topic write to it; LocalStack does not check permissions.
+
+## The decision event
+
+Defined once in `shared/events.py`, because the engine and the consumers are deployed separately (Fargate and Lambda).
+
+```json
+{
+  "event_type": "transaction.decided",
+  "event_version": 1,
+  "transaction": { "id": "…", "type": "P2P", "amount": "125000.00", "currency": "COP", "...": "the transaction exactly as it arrived" },
+  "decision": {
+    "transaction_id": "…",
+    "decision": "HOLD",
+    "decision_reason": "…",
+    "processed_at": "2026-10-14T00:10:03.512+00:00"
+  }
+}
+```
+
+If the format ever changes in an incompatible way, `event_version` goes up so an old consumer rejects the message (it ends in the DLQ) instead of misreading it. `leer_evento()` validates type, version and the required decision fields.
+
+## How the engine publishes
+
+The request never talks to SNS. `publisher.publicar()` drops the event in an in-memory queue and returns immediately; a background thread does the rest:
+
+1. Waits for the first event, then collects up to **10** (the `PublishBatch` limit) or whatever arrives in **500 ms** (`PUBLISH_BATCH_WAIT_MS`).
+2. Publishes the batch. Only the entries SNS rejected are retried, up to **3 times** with growing waits (`PUBLISH_RETRIES`).
+3. What still fails is logged as an error with the mark **`EVENTO_NO_PUBLICADO`** and the full event. In AWS that log goes to CloudWatch, where an alarm catches it and the event can be republished.
+4. If SNS is down long enough to fill the in-memory queue (**10,000 events**, ~3 minutes at 50 tx/s, `PUBLISH_BUFFER_SIZE`), new events are logged as failed instead of blocking.
+5. On shutdown, `detener()` publishes what is pending before the process exits; whatever cannot go out is logged, never silently lost.
+
+A **resend** (same id) is not published again: only the first decision produces an event.
+
+```text
+2026-10-14 00:10:03 ERROR services.decision_engine.publisher: EVENTO_NO_PUBLICADO (EndpointConnectionError: …): {"event_type": "transaction.decided", …}
+```
+
+AWS clients (`shared/aws.py`) use short timeouts (1 s connect, 2 s read) and no boto3 retries, so a dead service never hangs the publisher for seconds inside boto3.
+
+:::note[Cost note]
+With 4 tasks at ~12.5 tx/s each, 500 ms produces batches of ~6, not 10, which would put SNS at ~$10/month instead of ~$6. The wait will be tuned in the load test.
+:::
+
+## Delivery guarantees
+
+| Situation | What happens |
+| :--- | :--- |
+| SNS down or slow | The engine keeps answering; events are retried, then logged with `EVENTO_NO_PUBLICADO`. |
+| A consumer fails on one message | Only that message returns to its queue (after 30 s); the rest of the batch is deleted. |
+| A message fails 5 times | It moves to the queue's DLQ for 14 days. After fixing the cause it is sent back with SQS redrive. |
+| The same message delivered twice | Possible with SQS. Consumers must tolerate it (for example, not open two cases for one transaction). |
+
+## Checking it locally
+
+```bash
+docker compose exec localstack awslocal sns list-topics
+docker compose exec localstack awslocal sqs list-queues
+docker compose exec localstack awslocal s3 ls s3://pagoseguro-datalake/raw/decisiones/ --recursive
+```

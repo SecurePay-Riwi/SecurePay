@@ -1,0 +1,118 @@
+---
+sidebar_position: 3
+title: Architecture decisions (ADRs)
+description: The highest-impact architecture decisions, with context, alternatives and consequences.
+---
+
+# Architecture decisions (ADRs)
+
+Each record follows the same format: context, decision, alternatives considered and consequences. Smaller decisions taken while building are in [Team decisions](./team-decisions.mdx).
+
+| ADR | Decision | Status |
+| :--- | :--- | :--- |
+| [ADR-01](#adr-01) | The decision engine sits behind an ALB, not API Gateway | Accepted |
+| [ADR-02](#adr-02) | Fargate for the engine, Lambda for everything else | Accepted |
+| [ADR-03](#adr-03) | High-frequency state lives in ElastiCache Serverless for Valkey | Accepted, with checkpoint |
+| [ADR-04](#adr-04) | Messaging is SNS fanned out to three SQS queues | Accepted |
+| [ADR-05](#adr-05) | Spark jobs run on EMR Serverless | Accepted |
+| [ADR-06](#adr-06) | Managed services instead of the self-managed stack in the assignment | Accepted |
+| [ADR-07](#adr-07) | The engine's autoscaling maximum goes from 12 to 24 tasks | Proposed |
+| [ADR-08](#adr-08) | Private subnets go out through NAT Gateway, not VPC endpoints | Accepted, validated with the professor |
+
+---
+
+## ADR-01 — The decision engine sits behind an ALB, not API Gateway {/* #adr-01 */}
+
+**Status:** Accepted · **Date:** 2026-10-02
+
+**Context.** The core needs a synchronous decision service with p99 ≤ 200 ms at 300 tx/s. At the sustained 50 tx/s that is 129.6 million requests a month, the busiest path in the system.
+
+**Decision.** The engine sits directly behind an Application Load Balancer. API Gateway is kept for the low-volume endpoints (rules, cases, restricted list service).
+
+**Alternatives.** API Gateway for everything: about $128.60/month against $25 for the ALB, and 10 to 20 ms of extra latency on a 200 ms budget. Network Load Balancer: faster, but no HTTP-level health checks or built-in TLS termination with ACM.
+
+**Consequences.** Two different entry points, which must be documented. In exchange, the critical path has the lowest possible latency and cost.
+
+## ADR-02 — Fargate for the engine, Lambda for everything else {/* #adr-02 */}
+
+**Status:** Accepted · **Date:** 2026-10-02
+
+**Context.** One component has high, constant traffic (the engine) and six have low or sporadic traffic (queue consumers, rules and cases APIs, list service, partner ingestion, exchange rates).
+
+**Decision.** The engine runs on Fargate with autoscaling. The rest runs on Lambda.
+
+**Alternatives.** Everything on Lambda: about $235/month for the engine's volume against $72.08, plus the cold-start risk against the 200 ms limit. Everything on Fargate: the six small components would need 12 tasks to survive a zone loss, about $108/month against $40.60.
+
+**Consequences.** Two compute models to maintain and package. The rule is explicit: constant, latency-sensitive load goes to Fargate; sporadic load goes to Lambda.
+
+## ADR-03 — High-frequency state lives in ElastiCache Serverless for Valkey {/* #adr-03 */}
+
+**Status:** Accepted, with checkpoint · **Date:** 2026-10-03
+
+**Context.** On every transaction the engine reads and updates idempotency keys, 10 to 30-minute window counters, 24-hour rolling sums, the active rules and the restricted list cache: 129.6 million transactions a month inside 200 ms.
+
+**Decision.** That state lives in ElastiCache Serverless for Valkey. DynamoDB is kept for low-frequency data: device–account pairs and exchange rates.
+
+**Alternatives.** Storing each transaction in DynamoDB: about $105/month and it grows with traffic. Fixed-size nodes (Redis OSS or Valkey): predictable cost, but the size must be guessed before having data; if it falls short, the cache evicts keys and idempotency is the first thing lost.
+
+**Consequences.** The cost becomes variable ($9 to $25 depending on real memory). Latency of the serverless layer and real operation usage stay open until measured. **Checkpoint:** if latency is not enough, the way out is Valkey on `t3.small` nodes ×2 (~$39.71/month), a Terraform change that does not touch the engine code.
+
+## ADR-04 — Messaging is SNS fanned out to three SQS queues {/* #adr-04 */}
+
+**Status:** Accepted · **Date:** 2026-10-03
+
+**Context.** The decision service must not depend synchronously on any later process. After deciding there are three independent jobs: create cases, keep history and feed analytics.
+
+**Decision.** The engine publishes each decision to an SNS topic; three SQS queues are subscribed, one per consumer, each with its dead-letter queue. No subscription filters.
+
+**Alternatives.** Self-managed RabbitMQ (what the assignment names): it has to be installed, patched and replicated. Amazon MSK: a floor near $70/month for replay we do not need. One SQS queue with a dispatcher consumer: simpler, but a slow consumer becomes a single point of failure. Filtering the cases queue: saves ~$10/month at the cost of a silent failure if the engine labels a message wrong.
+
+**Consequences.** All three queues receive the full volume ($31.10/month for SQS). In exchange, each consumer fails and recovers on its own, and SQS absorbs the 300 tx/s peak without slowing the engine. Implemented locally in Sprint 1: see [Messaging](../components/messaging.mdx).
+
+## ADR-05 — Spark jobs run on EMR Serverless {/* #adr-05 */}
+
+**Status:** Accepted · **Date:** 2026-10-02
+
+**Context.** Five distributed data jobs: Data Lake ETL, daily reconciliation (hard deadline at 07:00), rule effectiveness, shared device network and rule version simulation. The team has no previous Spark experience.
+
+**Decision.** The five jobs run on EMR Serverless.
+
+**Alternatives.** Spark in containers on Fargate: ~30% cheaper per compute hour, but needs a custom Spark image and manual temp storage. AWS Glue ETL: a minimum charge per run that punishes short jobs. EC2 Spot: cheapest, but can be reclaimed with 2 minutes' notice, unacceptable against the 07:00 deadline.
+
+**Consequences.** A premium per compute hour in exchange for weeks of work the team does not have. Job durations are not measured yet, so the $7.50/month is provisional.
+
+## ADR-06 — Managed services instead of the self-managed stack in the assignment {/* #adr-06 */}
+
+**Status:** Accepted · **Date:** 2026-10-03
+
+**Context.** The assignment names RabbitMQ, Airflow with Celery, Spark on custom containers and EKS. The professor allows other services as long as the requirements are met and the choice is argued. The team is 3 to 4 people for 6 weeks.
+
+**Decision.** They are replaced by SQS and SNS, EventBridge Scheduler with Step Functions, EMR Serverless and ECS/Fargate. EKS stays out of the production architecture.
+
+**Alternatives.** Building the assignment's stack as is: about $320/month without replicating the broker or Airflow's metadata database, and the team maintaining four systems. The EKS control plane is $73/month fixed plus continuous operation.
+
+**Consequences.** The solution is tied to AWS. In exchange, high availability comes with each service and the team spends its time on the business rules instead of running infrastructure.
+
+## ADR-07 — The engine's autoscaling maximum goes from 12 to 24 tasks {/* #adr-07 */}
+
+**Status:** Proposed · **Date:** 2026-10-05
+
+**Context.** The system must sustain 300 tx/s and survive the loss of one zone. With two zones, losing one removes half the tasks: 12 become 6, and 6 tasks cover only 150 tx/s.
+
+**Decision.** Raise the maximum to 24 so the 12 survivors cover the full peak, and set **25 requests per second per task** as the target the load test must confirm.
+
+**Alternatives.** Stay at 12 and accept degradation during an outage. Raise the minimum instead: pays all month for an exceptional scenario. Three zones: the maximum would drop to 18 but add ~$36.50/month fixed.
+
+**Consequences.** The maximum is only paid while scaled out: 24 tasks cost $0.59/hour against $0.10 for the base 4. If the load test disproves the target of 25, the numbers change (20 → 6 base and 30 max; 15 → 8 and 40).
+
+## ADR-08 — Private subnets go out through NAT Gateway, not VPC endpoints {/* #adr-08 */}
+
+**Status:** Accepted, validated with the professor · **Date:** 2026-10-05
+
+**Context.** The engine and the Lambdas that use RDS or the cache live in private subnets and must call AWS services outside the VPC. The NAT was costed with 20 GB of traffic when the real figure is ~150 GB.
+
+**Decision.** Keep NAT Gateway ×2, one per zone, with the cost corrected to $72.51.
+
+**Alternatives.** Interface VPC endpoints: same cost at our volume and more secure, but one endpoint per service, four design changes, and more expensive as services grow. NAT instance, proxy, a single NAT and IPv6: discarded.
+
+**Consequences.** Private subnets keep internet egress, mitigated with security groups and least privilege. Any new service works with no extra work, and X-Ray and Session Manager stay available. Endpoints are documented as the next hardening step.

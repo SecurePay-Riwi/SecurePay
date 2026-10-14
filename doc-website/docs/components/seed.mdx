@@ -1,0 +1,104 @@
+---
+sidebar_position: 1
+title: Seed
+description: The PostgreSQL seed that loads users, accounts, devices, merchants and restricted lists.
+---
+
+# Seed
+
+**Folder:** `db/seed/` · **Run:** `uv run python -m db.seed.seed`
+
+The seed loads the **master data** the engine and the generator need into PostgreSQL. It is versioned, parameterizable, idempotent and reproducible: the same configuration always produces the same data, on Windows and on Linux. It does **not** create transactions; those come from the [generator](./generator.mdx), like the real wallet core.
+
+## What it generates
+
+| Table | `dev` mode | `prod` mode (full) | Details |
+| :--- | ---: | ---: | :--- |
+| `usuarios` | 100 | 2,300,000 | Canonical document, digits only (`1000000000` onward). |
+| `cuentas` | 100 | 2,300,000 | One per user, in COP (50%), USD (25%), EUR (15%) or JPY (10%). 2% start blocked. |
+| `dispositivos` | 150 | proportional | 146 normal and 4 shared in `dev` (2,300 shared in full mode). |
+| `dispositivo_cuenta` | 163 | proportional | Which device was used on which account, and since when. |
+| `comercios` | 50 | 5,000 | 10% created in the last 30 days, all active. Name matches the category. |
+| `listas_restrictivas` | 20 | 50,000 | 0.1% of the users (minimum 5) are customers; the rest are 8-digit IDs of non-customers. |
+
+Initial balances are random up to a cap per currency: COP 20,000,000, USD 5,000, EUR 5,000 and JPY 750,000 (the yen has no decimals).
+
+### Shared devices
+
+The shared device rule fires when one device is used on **more than 3 accounts in 30 days**. The seed creates four patterns: two that must fire the rule and two control cases that must not.
+
+```python
+# db/seed/config.py
+PATRONES_COMPARTIDOS = [
+    {"cuentas": 5, "dias": 30},  # Fires the rule.
+    {"cuentas": 4, "dias": 30},  # Fires the rule.
+    # Control cases: must NOT fire the rule.
+    {"cuentas": 3, "dias": 30},  # Catches ">= 3" instead of "> 3".
+    {"cuentas": 5, "dias": 90},  # Catches counting all accounts instead of the window.
+]
+```
+
+## Configuration
+
+| Variable | Default | What it does |
+| :--- | :--- | :--- |
+| `SEED` | `42` | Random seed. Same seed, same data. |
+| `SEED_MODE` | `dev` | `dev` (small volumes) or `prod` (the assignment's volumes). |
+| `SEED_RESET` | `false` | `true` empties every seed table (`TRUNCATE … CASCADE`) before loading. |
+| `SEED_DEFECT_PERCENTAGE` | `0` | Percentage of users whose document is written in a wrong format. |
+| `SEED_USERS`, `SEED_DEVICES_PER_USER`, `SEED_MERCHANTS`, `SEED_RESTRICTED_LISTS`, `SEED_SHARED_DEVICES` | per mode | Override a single volume. |
+| `SEED_CUENTAS_BLOQUEADAS_PCT` | `2` | Accounts that start blocked. |
+| `SEED_USUARIOS_EN_LISTA_PCT` / `SEED_USUARIOS_EN_LISTA_MIN` | `0.1` / `5` | Customers that are also in the restricted list. |
+| `SEED_COMERCIOS_NUEVOS_PCT` / `SEED_COMERCIOS_NUEVOS_DIAS` | `10` / `30` | Recently created merchants. The 30 days are provisional until the rule is defined. |
+
+Example: full mode with 10% defects, starting from empty tables.
+
+```powershell
+$env:SEED_MODE="prod"
+$env:SEED_DEFECT_PERCENTAGE="10"
+$env:SEED_RESET="true"
+uv run python -m db.seed.seed
+```
+
+:::caution
+Full mode inserts row by row today, so 2.3 million users take a long time. Batch inserts are pending.
+:::
+
+## How it stays idempotent and reproducible
+
+- **Deterministic ids.** Ids come from `uuid5` over a fixed namespace (`user:0`, `user:1`, …), not from `uuid4`.
+- **Insert or skip.** Every insert uses `ON CONFLICT DO NOTHING` on a natural key (document for users, `user_id` for accounts, fingerprint for devices), so a second run creates no duplicates.
+- **Fixed reference date.** All dates are calculated back from `2026-10-01 00:00 UTC` (`FECHA_REFERENCIA` in `shared/config.py`), not from "now".
+- **No dates from Faker.** Faker gives different dates on Windows and Linux with the same seed, so `db/seed/fechas.py` draws them in whole seconds or days. User agents only come from Chrome, Safari or Opera (Faker's Firefox one embeds a date).
+- **Tables are created first.** `Base.metadata.create_all` runs before the reset, so the `TRUNCATE` does not fail on a table added later.
+
+## Defect injection
+
+The seed only damages one thing: **the format of the user's document**. The correct format is digits only (`1000000016`):
+
+| Defect | Written as |
+| :--- | :--- |
+| `PUNTOS` | `1.000.000.016` |
+| `PREFIJO` | `CC 1000000016` |
+| `ESPACIOS` | `" 1000000016 "` |
+
+The restricted list always stores the canonical document, so the engine must keep only the digits before looking it up:
+
+```python
+# services/decision_engine/decision_service.py
+def normalizar_documento(documento: str) -> str:
+    """Keeps only the digits, which is how the restricted list is stored."""
+    return re.sub(r"\D", "", documento)
+```
+
+After each run, `defect_report.json` (ignored by Git) lists every damaged record: `id`, defect type, field, the canonical document and how it was written.
+
+## Code map
+
+| File | Role |
+| :--- | :--- |
+| `seed.py` | Entry point: creates tables, optional reset, calls each table generator in order. |
+| `config.py` | Mode, volumes, percentages, currencies and shared device patterns. |
+| `fechas.py` | Reproducible random dates. |
+| `tables/` | One generator per table (`users`, `accounts`, `devices`, `merchants`, `restricted_lists`). |
+| `defects/injector.py` | Picks the damaged users reproducibly and writes the report. |

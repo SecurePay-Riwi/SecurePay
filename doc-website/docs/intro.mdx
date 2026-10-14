@@ -1,5 +1,73 @@
 ---
 sidebar_position: 1
+title: Introduction
+description: What PagoSeguro Anti-fraud is, what it solves and how this documentation is organized.
 ---
 
 # Introduction
+
+PagoSeguro is a digital wallet with 2.3 million users that processes 1.8 million transactions a day in four currencies (COP, USD, EUR and JPY). This project builds its **anti-fraud platform**: transaction monitoring, configurable fraud rules, a case review workflow and daily reconciliation with payment partners.
+
+It is the RIWI bootcamp Project 05, built end-to-end on AWS (Ohio, `us-east-2`, two Availability Zones) in six weeks, designed as if it were a real company system that runs 24/7.
+
+## The problem
+
+Every transaction the wallet core receives must get a decision before money moves:
+
+| Decision | Meaning |
+| :--- | :--- |
+| `APPROVE` | The transaction goes through. |
+| `HOLD` | The transaction is held for review. |
+| `REJECT` | The transaction is refused. |
+
+The decision must come back in **under 200 ms (p99)** at a sustained 50 transactions per second and a peak of 300, and the system must survive the loss of one Availability Zone. Everything that is not needed for the decision (opening cases, keeping history, analytics) must happen afterwards, without making the core wait.
+
+## Guiding principles
+
+- **Serverless first:** managed services before self-managed servers.
+- **Save money by choosing better services, never by giving up security, availability or reliability.**
+- **Production is designed complete; development is cheap and intermittent**, created and destroyed with Terraform.
+- **The functionality the assignment asks for is mandatory**; the technologies can change when the change is argued (see [Architecture decisions](./architecture/decisions.mdx)).
+
+## What exists today (end of Sprint 1)
+
+| Piece | Folder | Status |
+| :--- | :--- | :--- |
+| [Seed](./components/seed.mdx) | `db/seed/` | Done: users, accounts, devices, device–account pairs, merchants and restricted lists in PostgreSQL. |
+| [Transaction generator](./components/generator.mdx) | `generators/` | Done: plays the wallet core, with labeled fraud patterns and data defects. |
+| [Decision engine](./components/decision-engine.mdx) | `services/decision_engine/` | Running with two rules (restricted list and velocity), idempotency and out-of-order handling in Valkey. |
+| [Messaging](./components/messaging.mdx) | `services/decision_engine/publisher.py`, `infra/localstack/` | Done locally: SNS topic, three SQS queues with dead-letter queues, on LocalStack. |
+| [Consumers](./components/consumers.mdx) | `services/consumers/` | Analytics writes to S3; cases and history are skeletons. |
+| AWS infrastructure (Terraform) | `infra/` | Designed, not built yet. |
+
+The details of what was delivered and what is pending are in the [Sprint 1 review](./product-backlog/sprint-1-review.mdx).
+
+## Tech stack
+
+- **Python 3.12** managed with **uv**, **FastAPI** for the engine and APIs.
+- **PostgreSQL 16** for master data, **Valkey 8** for high-frequency state.
+- **Amazon SNS, SQS and S3**, emulated locally with **LocalStack**.
+- **Docker Compose** for the local environment.
+- Planned: **PySpark** on EMR Serverless for batch jobs and **Terraform** for the infrastructure.
+
+## How to read this documentation
+
+| If you want to… | Go to |
+| :--- | :--- |
+| Run the project on your machine | [Local setup](./getting-started/local-setup.mdx) |
+| See the whole flow working | [Simulate the full flow](./getting-started/simulate-full-flow.mdx) |
+| Understand the AWS design and its costs | [Architecture overview](./architecture/overview.mdx) |
+| Understand one piece of code | [Components](./components/seed.mdx) |
+| Look up a variable, a table or a term | [Reference](./reference/configuration.mdx) |
+| Contribute code | [Contributing](./contributing.mdx) |
+| Follow the plan and the sprints | [Product backlog](./product-backlog/Epics.mdx) |
+
+## Team
+
+| Member | Role |
+| :--- | :--- |
+| Habith | Scrum Master / Leader |
+| Yulianis | Developer |
+| Jorge | Developer |
+
+Kerlys was part of the team until October 13, 2026.

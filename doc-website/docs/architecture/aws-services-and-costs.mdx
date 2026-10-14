@@ -1,0 +1,137 @@
+---
+sidebar_position: 2
+title: AWS services and costs
+description: The assumptions behind the numbers, every AWS service with its monthly cost, and how each one is configured.
+---
+
+# AWS services and costs
+
+All figures are monthly USD in Ohio (`us-east-2`). The full formulas, rates and audits live in the team's architecture log; this page is the summary.
+
+## Assumptions
+
+Every number below depends on these. If an assumption changes, the costs change.
+
+| Assumption | Value | Source |
+| :--- | :--- | :--- |
+| Region | US East (Ohio), `us-east-2` | Team decision |
+| Availability Zones | 2 | Must survive the loss of one zone |
+| Sustained volume | 50 tx/s | Assignment |
+| Monthly volume | 129,600,000 transactions | 50 × 86,400 × 30 |
+| Peak volume | 300 tx/s | Assignment |
+| Latency target | p99 ≤ 200 ms | Assignment |
+| "24/7" scenario | Everything on the whole month | Real production |
+| "Development" scenario | ~25 hours of use a month | Setup and test sessions |
+| Available credit | USD 200 (AWS free credit) | Team account |
+| Idempotency key TTL | 1 hour | Our decision: ~180 thousand keys (~18 MB) |
+| Fargate task size | 0.5 vCPU / 1 GB | Our decision |
+| History retention for rules | 30 days | Assignment, applied with TTL in DynamoDB |
+
+In the development scenario, pay-per-use services (Lambda, SQS, DynamoDB, Step Functions, Athena) drop to almost zero. Fixed-cost services (NAT Gateway, RDS instance, cache) only go down if Terraform destroys them between sessions. Storage (S3, RDS disk) does not go down.
+
+## Services and monthly cost
+
+Grouped by service, so a service that solves several things is counted once.
+
+| Service | Used for | 24/7 | Development |
+| :--- | :--- | ---: | ---: |
+| Application Load Balancer | High-volume entry to the decision engine | $25.19 | $0.65 |
+| AWS Fargate | Decision engine | $72.08 | $2.47 |
+| Amazon SQS | 3 queues (cases, history, analytics) + 1 DLQ each | $31.10 | $0.50 |
+| AWS Lambda | Consumers, rules and cases APIs, list service, partner ingestion, exchange rates, case escalation | $40.60 | $0.60 |
+| ElastiCache Serverless (Valkey) | Idempotency, windows, 24 h sums, active rules, list cache | ~$22.87 | ~$0.23 |
+| Amazon SNS (events) | Decision fan-out + active rule invalidation | $6.08 | $0.10 |
+| Amazon SNS (emails) | Notices to compliance, supervisor, treasury and the tech team | ~$0.15 | $0.00 |
+| Amazon API Gateway | Rules, cases and list service endpoints (HTTP API) | $1.10 | $0.10 |
+| Amazon EventBridge Scheduler | Reconciliation, exchange rates, 5-minute alerts | $0.00 | $0.00 |
+| AWS Step Functions | Reconciliation orchestration | $0.00 | $0.00 |
+| Amazon DynamoDB | Durable device–account pairs (30 days) + exchange rates table | ~$1.00 | $0.10 |
+| AWS EMR Serverless | 5 Spark jobs | $7.50 | $0.50 |
+| AWS Systems Manager | Session Manager + Parameter Store | $0.00 | $0.00 |
+| Amazon RDS PostgreSQL | Multi-AZ instance + storage: users, rules, cases | $30.88 | $5.50 |
+| NAT Gateway (×2) | Outbound traffic from private subnets to AWS services | $72.51 | $2.28 |
+| Data transfer | Cross-AZ + internet egress | ~$2.60 | ~$0.20 |
+| Amazon CloudWatch | Logs, metrics, alarms | $9.45 | $1.50 |
+| AWS X-Ray | Transaction tracing | $4.00 | $0.50 |
+| Amazon S3 | Data Lake + immutable evidence for 10 years | $2.60 | $0.50 |
+| Amazon Athena | SQL over S3 | $1.50 | $0.15 |
+| AWS Glue Data Catalog | Table catalog for Athena | $0.00 | $0.00 |
+| Amazon ECR | Docker image registry | $0.50 | $0.50 |
+| CloudWatch alarms | ~10 alarms at $0.10 each | $1.00 | $0.30 |
+| RDS extra backups | Retention beyond the database size | $0.50 | $0.50 |
+| IAM, KMS (AWS keys), VPC, Budgets, CloudTrail | Roles, encryption at rest, network, credit alerts, audit | $0.00 | $0.00 |
+| Power BI Desktop, GitHub Actions, Frankfurter API | Dashboard, CI/CD, exchange rates | $0.00 | $0.00 |
+| **Total** | | **≈ $333.21** | **≈ $17.18** |
+
+The total assumes 300 MB of cache memory. At 150 MB it drops to ~$290; at 1 GB it rises to ~$343. See [Open questions](./open-questions.mdx).
+
+**One-off costs**, outside the monthly table: the load test at 50, 150 and 300 tx/s (USD 5 to 10 per full run) and running the full-mode seed against RDS (a couple of dollars).
+
+## How each service is configured
+
+This is what Terraform has to create.
+
+### Network
+
+| Resource | Configuration |
+| :--- | :--- |
+| VPC | One VPC, 2 AZs |
+| Public subnets | 2 (one per AZ): ALB and NAT Gateway |
+| Private subnets | 2 (one per AZ): Fargate, RDS, cache, Lambdas that need data access |
+| NAT Gateway | 2, one per AZ, so losing a zone does not cut the other one off |
+| Gateway VPC endpoints | S3 and DynamoDB (free) |
+| Security groups | One per service, minimal rules between them |
+| Tags | `proyecto`, `ambiente`, `responsable` on every resource |
+
+### Compute
+
+| Resource | Configuration |
+| :--- | :--- |
+| Fargate (decision engine) | 0.5 vCPU / 1 GB per task. Autoscaling min 4 / max 24 across 2 AZs, target 25 requests per task (to confirm in the load test) |
+| ALB | HTTPS listener with a free ACM certificate, active health checks |
+| Lambda | Inside the VPC only when it needs RDS or the cache. 512 MB and 30 s by default; the SQS consumers 1024 MB and 60 s (to tune when measured) |
+| ECR | One repository per component, image scanning on push |
+
+### Data
+
+| Resource | Configuration |
+| :--- | :--- |
+| RDS PostgreSQL | `db.t3.micro`, Multi-AZ, 20 GB gp3, automatic backups, SSL/TLS |
+| ElastiCache Serverless (Valkey) | No node choice, scales by itself, 100 MB minimum billed, cross-AZ replica included, encryption in transit. Key design in [Decision engine](../components/decision-engine.mdx) |
+| DynamoDB | On demand, TTL on. Device–account pairs (30 days) and exchange rates |
+| S3 Data Lake | Three medallion layers: `raw` (bronze), `curated` (silver, clean Parquet), `analytics` (gold, dimensional model) |
+| S3 evidence | Separate bucket, Object Lock in COMPLIANCE mode for 10 years, Glacier Instant Retrieval |
+
+### Messaging
+
+| Resource | Configuration |
+| :--- | :--- |
+| SNS `decisiones` | Standard topic, published with `PublishBatch` (batches of 10) |
+| SQS `casos`, `historial`, `analitica` | Subscribed with raw message delivery, no subscription filters, read and deleted in batches of 10 |
+| Dead-letter queues | One per queue, after 5 attempts, 14-day retention, CloudWatch alarm on any message, redrive after fixing the cause |
+| SNS `regla-cambiada` | A subscribed Lambda refreshes the cache |
+| SNS `alertas-negocio` / `alarmas-operativas` | Email to compliance, supervisor and treasury / to the tech team |
+
+### Security and operations
+
+| Resource | Configuration |
+| :--- | :--- |
+| IAM | One role per service, least privilege |
+| KMS | AWS managed keys for RDS, S3, DynamoDB, cache and SQS |
+| Parameter Store | RDS credentials and the Kaggle token as `SecureString` |
+| Session Manager | The only administrative access: no bastion, no public IPs |
+| TLS | HTTPS on ALB and API Gateway, SSL/TLS on RDS, in-transit encryption on the cache |
+| CloudWatch Logs | Only errors, fallbacks and held transactions |
+| Budgets | Alerts at 80% and 100% of the USD 200 credit |
+| Terraform | All the infrastructure, remote state in S3 (in a bucket created separately so `destroy` never deletes it) |
+| GitHub Actions | Lint, tests, secret scanning, build, push to ECR and deploy; blocks the merge if anything fails |
+
+### Deployment and rollback
+
+| What is rolled back | How |
+| :--- | :--- |
+| An application version | Images are tagged with the commit id, never only `latest`. Rolling back is redeploying the previous task definition revision. |
+| A deployment that fails by itself | The ECS deployment circuit breaker rolls back automatically when new tasks fail health checks. |
+| An infrastructure change | Go back to the previous Terraform commit and apply. The remote state is versioned. |
+| A business rule | No deployment: rules are versioned in PostgreSQL, so rolling back is activating the previous version through the API. |
+| A schema change | Migrations must be backward compatible: add columns, never rename or drop in the same deployment. |

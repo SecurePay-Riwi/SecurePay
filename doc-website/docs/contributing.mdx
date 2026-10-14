@@ -1,0 +1,81 @@
+---
+sidebar_position: 7
+title: Contributing
+description: Repository layout, branches, commits and the pull request flow.
+---
+
+# Contributing
+
+## Repository layout
+
+Monorepo: one folder per piece that is deployed separately, each with its own tests (and, from Sprint 2, its own Docker image).
+
+```text
+SecurePay/
+├── services/
+│   ├── decision_engine/   # decision engine (FastAPI) and its tests
+│   └── consumers/         # SQS consumers with the Lambda signature, and their tests
+├── shared/                # SQLAlchemy models, DB/Valkey/AWS clients, decision event format
+├── generators/            # transaction generator (simulated core) and its tests
+├── db/seed/               # PostgreSQL master data seed
+├── infra/localstack/init/ # creates SNS, SQS and S3 in LocalStack
+├── doc-website/           # this documentation site (Docusaurus)
+├── docker-compose.yml     # PostgreSQL, Valkey and LocalStack for local development
+├── pyproject.toml         # dependencies and pytest config (uv)
+└── uv.lock
+```
+
+Coming later: `services/admin-api/`, `services/restricted-list-mock/`, `services/scheduled/`, `jobs/` (PySpark) and Terraform under `infra/`. Shared code that the engine and Spark must run identically, like the **rule interpreter**, goes in `shared/`.
+
+Folders use underscores (`decision_engine`, not `decision-engine`) because Python cannot import modules with hyphens.
+
+## Branches
+
+| Branch | Use |
+| :--- | :--- |
+| `main` | Always working. Only changes through pull requests. |
+| `feature/<short-name>` | New work, e.g. `feature/async-messaging`. |
+| `refactor/<short-name>` | Restructuring without behavior changes. |
+| `docs/<short-name>` | Documentation only. |
+| `hotfix/<short-name>` | Urgent fixes to `main`. |
+
+There is no `develop` branch today: feature branches merge straight into `main` through pull requests.
+
+## Commits
+
+- In **English**, in the [Conventional Commits](https://www.conventionalcommits.org/) style: `feat(decision-engine): …`, `fix(seed): …`, `docs: …`, `test: …`, `chore: …`.
+- One logical change per commit. Commits made before October 13, 2026 are in Spanish and stay that way.
+- Never commit `.env`, tokens or passwords. `.env.example` lists every variable with safe defaults.
+
+## Pull requests
+
+1. Branch from an up-to-date `main`.
+2. Run `uv run pytest` with PostgreSQL (seeded), Valkey and LocalStack up.
+3. Update the repository `README.md` and these docs when you add setup steps, environment variables or ways to run something.
+4. Open the PR against `main` with a title and description in English: what a reader would see before and after, and how it was done.
+5. Another team member reviews before merging.
+
+## Documentation site
+
+The site lives in `doc-website/` and is deployed to GitHub Pages by `.github/workflows/doc-site.yml` on every push to `main` that touches it. To preview locally:
+
+```bash
+cd doc-website
+npm ci
+npm run start
+```
+
+`onBrokenLinks: 'throw'` makes the build fail on a broken internal link, so run `npm run build` before opening a PR. How the site was set up: [How the documentation site was built](./how-was-created-this-docu.mdx).
+
+## Pull request history
+
+| PR | Content |
+| :--- | :--- |
+| #1 | User stories 4 to 7: defect injection, transaction generator, decision service, idempotency (Yulianis) |
+| #2 | Dependencies with uv and Python 3.12 |
+| #3 | Monorepo structure |
+| #4 | Master data seed finished |
+| #5 | Transaction generator rebuilt as a simulated core |
+| #6 | Idempotency in Valkey and the new transaction format |
+| #7 | Velocity by event time (out-of-order events) |
+| #8 | Asynchronous messaging with SNS + SQS on LocalStack |

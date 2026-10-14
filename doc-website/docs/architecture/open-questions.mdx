@@ -1,0 +1,59 @@
+---
+sidebar_position: 5
+title: Open questions
+description: What is still undecided or unmeasured in the architecture.
+---
+
+# Open questions
+
+Things that are not decided yet, or that are decided but still need a measurement.
+
+| Status | Meaning |
+| :--- | :--- |
+| 🟡 Proposed | Argued recommendation, pending confirmation. |
+| 🔵 To measure | Decided with real data, not estimates. |
+| ❗ Open | Unsolved problem. |
+
+## 🟡 How much cache memory the engine needs
+
+ElastiCache Serverless for Valkey was chosen ([ADR-03](./decisions.mdx#adr-03)), but its memory is the estimate we trust the least:
+
+| What | Estimate | Depends on |
+| :--- | :--- | :--- |
+| Idempotency | 18 MB (1 h TTL) to 430 MB (24 h TTL) | The TTL |
+| 24-hour sums | 100 to 200 MB | Accounts active per day |
+| 10–30 min windows | ~15 MB | Accounts active in the window |
+| Velocity history (24 h) | ~100 MB | Not in the original estimate; ~5 MB with 1 h |
+| Restricted list cache | ~5 MB | 50 thousand records |
+| Active rules | A few KB | — |
+
+To be measured with the full-mode seed (2.3 million users) and the load test. Also pending: the real latency of the serverless layer and the operations it consumes per transaction.
+
+## 🔵 Cases consumer: Lambda or Fargate
+
+All three queues are consumed by Lambda. If case processing turns out heavier, that consumer can move to Fargate (~$30/month per task). Decided by measuring, not estimating.
+
+## 🔵 Real duration of the five Spark jobs
+
+Frequencies are defined; durations are not measured. That decides whether EMR Serverless stays at $7.50/month or drops to about $4.
+
+## 🟡 Ohio prices
+
+Figures were built with `us-east-1` rates. SNS, NAT Gateway, interface endpoints and cross-AZ transfer are verified in `us-east-2`. The rest is checked with the AWS Pricing Calculator export.
+
+## ❗ S3 PUT requests are not costed
+
+| Write | Situation |
+| :--- | :--- |
+| Data Lake raw layer | One object per batch of 10 messages would be 12.96 M PUTs, $64.80/month, plus a small files problem. Grouping into ~5 MB objects with Kinesis Data Firehose costs ~$0.07 + ~$1.89. 🟡 Approved in principle, not in the cost table yet. |
+| Evidence in Glacier IR | One object per case costs ~$3/month at a realistic case rate; sealing in batches is cheaper but leaves a window where evidence is not yet immutable. The team chose not to sacrifice security. |
+
+## Other open items
+
+- **Restricted list in the cache:** nobody loads it every day yet. Natural option: a daily Lambda that reads PostgreSQL and loads the cache.
+- **When to call the restricted list service:** only when the cached copy is unavailable, not every time a document is "missing" from the cache.
+- **Circuit breaker of the list service:** automatic, pending team confirmation.
+- **Who reviews fallback approvals** after the engine recovers (see [Team decisions](./team-decisions.mdx#what-happens-with-approvals-by-fallback)).
+- **Analyst and risk manager login** to the API and where their roles live (for example Amazon Cognito).
+- **SNS filters per recipient** on the business alerts topic, so treasury does not get compliance emails.
+- **Consumer Lambda memory:** configured at 1024 MB but costed at 512 MB (~$32/month difference).

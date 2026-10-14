@@ -1,0 +1,86 @@
+---
+sidebar_position: 2
+title: Simulate the full flow
+description: Send generated transactions to the engine over HTTP and follow the decisions to S3.
+---
+
+# Simulate the full flow
+
+The generator plays the wallet core: it sends every transaction to the engine over HTTP and stores the answer next to the event's fraud label. With the consumers running, the decisions travel all the way to the Data Lake in S3.
+
+```text
+generator (core) ──HTTP──▶ engine ──▶ answers the core (waits for nobody)
+                             │
+                             └─ background thread ──▶ SNS "decisiones"
+                                                       ├─▶ SQS "casos"      ─▶ cases consumer
+                                                       ├─▶ SQS "historial"  ─▶ history consumer
+                                                       └─▶ SQS "analitica"  ─▶ analytics consumer ─▶ S3 raw/
+```
+
+## Before you start
+
+You need the [local setup](./local-setup.mdx) done: services `healthy`, seed loaded, engine running (step 5) and, to reach S3, the consumers running (step 6).
+
+## 1. Clean Valkey
+
+```bash
+docker compose exec valkey valkey-cli FLUSHDB
+```
+
+Otherwise the ids of a run from less than one hour ago are treated as resends, and the velocity history carries the previous run.
+
+## 2. Run the generator against the engine
+
+PowerShell:
+
+```powershell
+$env:GEN_OUTPUT="http"
+uv run python -m generators
+```
+
+Bash:
+
+```bash
+GEN_OUTPUT=http uv run python -m generators
+```
+
+You can also leave `GEN_OUTPUT=http` in your `.env`. At 50 events per second (`GEN_RATE`) it takes about 20 seconds.
+
+## 3. What you should see (seed 42, default `.env.example`)
+
+| Check | Expected |
+| :--- | :--- |
+| Generator output | `Respuestas del motor: {'200': 1023, '404': 12}` |
+| The 12 `404` | Security events (device and password changes). Their endpoint arrives with the account takeover rule. |
+| `RESTRICTED_LIST` transactions | 3, all `REJECT`. |
+| `VELOCITY` fraud | 4 transfers in `HOLD`, exactly the one that completes each window. Their control cases stay `APPROVE`. |
+| Everything else | `APPROVE`: the other rules do not exist yet. |
+| `GET /health` | `"publicados": 1000` (1,023 answers minus 23 resends, which are not published again). |
+| S3 `raw/decisiones/` | 1,000 lines in total, one per transaction. |
+| Queues and their `-dlq` | Empty. |
+
+Each line of `generated/instance-0/labels.jsonl` carries the pattern, the rule it should trigger and what the engine answered:
+
+```json
+{"id": "...", "pattern": "VELOCITY", "is_fraud": true, "expected_rule": "velocidad",
+ "response": {"status": 200, "decision": "HOLD", "reason": "Velocidad: 6 transferencias salientes en 10 minutos desde la misma cuenta."}}
+```
+
+## 4. Inspect the messaging
+
+`awslocal`, inside the LocalStack container, is the `aws` CLI already pointed at LocalStack:
+
+```bash
+docker compose exec localstack awslocal s3 ls s3://pagoseguro-datalake/raw/decisiones/ --recursive
+docker compose exec localstack awslocal sqs get-queue-attributes \
+  --queue-url http://localhost:4566/000000000000/analitica-dlq \
+  --attribute-names ApproximateNumberOfMessages
+```
+
+## Things worth trying
+
+| Experiment | What it shows |
+| :--- | :--- |
+| Stop LocalStack (`docker compose stop localstack`) and run the generator again | The engine keeps answering. Each event it could not publish is logged with `EVENTO_NO_PUBLICADO` and `/health` counts it under `fallidos`. |
+| `GEN_OUT_OF_ORDER_PERCENTAGE=30` | The 4 velocity frauds are still detected, because the window uses the event time, not the arrival time. |
+| Send the same `id` twice with a different body | `409`: the same id with different content is a core error, not a resend. |

@@ -6,7 +6,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'Secure Pay',
-  tagline: 'Dinosaurs are cool',
+  tagline: 'Transaction monitoring, anti-fraud rules and reconciliation for a digital wallet',
   favicon: 'img/securepay-logo.png',
 
   // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
@@ -41,26 +41,11 @@ const config: Config = {
       {
         docs: {
           sidebarPath: './sidebars.ts',
-          // Please change this to your repo.
-          // Remove this to remove the "edit this page" links.
           editUrl:
-            'https://github.com/facebook/docusaurus/tree/main/packages/create-docusaurus/templates/shared/',
+            'https://github.com/SecurePay-Riwi/SecurePay/tree/main/doc-website/',
         },
-        blog: {
-          showReadingTime: true,
-          feedOptions: {
-            type: ['rss', 'atom'],
-            xslt: true,
-          },
-          // Please change this to your repo.
-          // Remove this to remove the "edit this page" links.
-          editUrl:
-            'https://github.com/facebook/docusaurus/tree/main/packages/create-docusaurus/templates/shared/',
-          // Useful options to enforce blogging best practices
-          onInlineTags: 'warn',
-          onInlineAuthors: 'warn',
-          onUntruncatedBlogPosts: 'warn',
-        },
+        // No blog for now: sprint news goes in the logbook and the sprint reviews.
+        blog: false,
         theme: {
           customCss: './src/css/custom.css',
         },
@@ -69,15 +54,14 @@ const config: Config = {
   ],
 
   themeConfig: {
-    // Replace with your project's social card
-    image: 'img/docusaurus-social-card.jpg',
+    image: 'img/securepay-logo.png',
     colorMode: {
       respectPrefersColorScheme: true,
     },
     navbar: {
       title: 'SecurePay Anti-fraud',
       logo: {
-        alt: 'My Site Logo',
+        alt: 'SecurePay logo',
         src: 'img/securepay-logo.png',
       },
       items: [
@@ -87,9 +71,8 @@ const config: Config = {
           position: 'left',
           label: 'Documentation',
         },
-        {to: '/blog', label: 'Blog', position: 'left'},
         {
-          href: 'https://github.com/facebook/docusaurus',
+          href: 'https://github.com/SecurePay-Riwi/SecurePay',
           label: 'GitHub',
           position: 'right',
         },
@@ -101,44 +84,26 @@ const config: Config = {
         {
           title: 'Docs',
           items: [
-            {
-              label: 'Tutorial',
-              to: '/docs/intro',
-            },
+            {label: 'Introduction', to: '/docs/intro'},
+            {label: 'Local setup', to: '/docs/getting-started/local-setup'},
+            {label: 'Architecture', to: '/docs/architecture/overview'},
           ],
         },
         {
-          title: 'Community',
+          title: 'Project',
           items: [
-            {
-              label: 'Stack Overflow',
-              href: 'https://stackoverflow.com/questions/tagged/docusaurus',
-            },
-            {
-              label: 'Discord',
-              href: 'https://discordapp.com/invite/docusaurus',
-            },
-            {
-              label: 'X',
-              href: 'https://x.com/docusaurus',
-            },
+            {label: 'Sprint 1 review', to: '/docs/product-backlog/sprint-1-review'},
+            {label: 'Logbook', to: '/docs/logbook'},
           ],
         },
         {
           title: 'More',
           items: [
-            {
-              label: 'Blog',
-              to: '/blog',
-            },
-            {
-              label: 'GitHub',
-              href: 'https://github.com/facebook/docusaurus',
-            },
+            {label: 'GitHub', href: 'https://github.com/SecurePay-Riwi/SecurePay'},
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} My Project, Inc. Built with Docusaurus.`,
+      copyright: `Copyright © ${new Date().getFullYear()} SecurePay-Riwi team. Built with Docusaurus.`,
     },
     prism: {
       theme: prismThemes.github,
