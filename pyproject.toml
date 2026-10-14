@@ -21,4 +21,4 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
-testpaths = ["services", "generators"]
+testpaths = ["services", "generators", "sources"]
