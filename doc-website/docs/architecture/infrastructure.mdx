@@ -1,0 +1,660 @@
+---
+sidebar_position: 4
+title: AWS infrastructure
+description: Network, security groups, IAM roles, secrets, resource inventory and estimated figures for the AWS deployment.
+---
+
+# AWS infrastructure
+
+This is the infrastructure design that Terraform will create in AWS. As of October 14, 2026 nothing is deployed yet: the pieces built so far run locally on LocalStack (see the architecture document, section 13.5). The Spanish source is section 6 of the architecture document v2.0.
+
+The IAM permissions and ports were checked against the official AWS documentation on October 14; the links are at the end of the page.
+
+**Naming convention.** Every resource is named `pagoseguro-<ambiente>-<pieza>`, where the environment is `dev` or `prod`. This page uses the production environment; development uses the same names with `dev`. In ARNs, `<cuenta>` is the AWS account number and the region is always `us-east-2`.
+
+## Region and availability zones {/* #region-and-zones */}
+
+**Region: US East (Ohio), `us-east-2`.** Decided.
+
+Three reasons. First, pricing: Ohio sits in the same price band as N. Virginia, which is the cheapest in the catalog; the rates checked so far (SNS per request, SNS per email, NAT Gateway per hour and per GB, cross-zone data transfer) match N. Virginia's exactly. Second, service availability: every service this project uses, including EMR Serverless and ElastiCache Serverless for Valkey, is available there. Third, Ohio carries less concentrated load than N. Virginia, which because of its size has historically been the region with the most large-scale incidents.
+
+**Availability zones: two.** Decided.
+
+The assignment requires tolerating the loss of one zone, and two is the minimum that meets it. A third zone would add another NAT Gateway (about $32.85 a month, fixed) without changing whether the requirement is met, because with two zones the loss of one already leaves the system running.
+
+## Network design {/* #network */}
+
+A dedicated VPC with six subnets spread across the two zones and organized in three tiers, so that each resource has exactly the exposure it needs and no more. Decided.
+
+| Tier | Subnets | Range | What it holds | Internet egress |
+| :--- | :--- | :--- | :--- | :--- |
+| Public | `publica-a`, `publica-b` | 10.0.0.0/24, 10.0.1.0/24 | Load balancer and the two NAT Gateways | Direct, through the Internet Gateway |
+| Private application | `app-a`, `app-b` | 10.0.10.0/24, 10.0.11.0/24 | Fargate tasks (engine and admin task) and the Lambdas that need the database or the cache | Outbound only, through the NAT in its own zone |
+| Private data | `datos-a`, `datos-b` | 10.0.20.0/24, 10.0.21.0/24 | RDS PostgreSQL and the cache | None |
+
+VPC: `10.0.0.0/16`. The subnets use a /24 mask (251 usable addresses each), which is more than enough for the expected number of tasks and leaves room to grow without redesigning the addressing. Calculation: at peak there are 12 engine tasks per zone, plus the network interfaces of the Lambdas inside the VPC (Lambda shares one interface per combination of subnet and security group), so a zone uses a few dozen addresses.
+
+**Route tables.** One for the public subnets, with a default route to the Internet Gateway. One for each private application subnet, each pointing to the NAT Gateway in its own zone: this detail is what keeps the loss of one zone from cutting off egress for the other. One shared by the data subnets, with no default route: those resources never go out to the internet. The three private tables also carry the routes for the two gateway endpoints.
+
+**Gateway VPC endpoints for S3 and DynamoDB.** They are free and keep that traffic inside the AWS network, so it does not go through the NAT Gateway, which charges $0.045 per GB processed.
+
+**Why NAT and not interface endpoints.** The engine and the Lambdas in the private subnets need to reach SNS, ECR, CloudWatch Logs, X-Ray and Parameter Store, which live outside the VPC. With the real traffic (~150 GB a month), two NATs and five interface endpoints cost practically the same, and the NAT covers any new service with no extra work. This is [ADR-08](./decisions.mdx#adr-08); the endpoints remain the hardening step if the system ever went into real production.
+
+### What runs inside the VPC and what runs outside
+
+Rule: only what talks to the database or the cache runs inside the VPC, because those two resources have no public address. Everything else runs outside, where it reaches AWS services without going through the NAT.
+
+| Inside the VPC (application subnets) | Why | Outside the VPC | Why it can be outside |
+| :--- | :--- | :--- | :--- |
+| Decision engine (Fargate) | Reads and writes the cache | Analytics consumer | Only writes to Firehose |
+| Admin task (Fargate, on demand) | Schema migrations and seed against the database | Restricted list service | Only reads its file in S3 at startup |
+| Case consumer | Writes cases to the database | Exchange rate task | Calls Frankfurter on the internet and writes to DynamoDB |
+| History consumer | Writes to DynamoDB and the cache | Statement reading (reconciliation) | Only reads the S3 raw layer |
+| Rules API | Reads and writes rules in the database | Spark jobs (EMR Serverless) | Only read and write S3 and the Glue catalog |
+| Cases API | Reads and writes cases in the database | | |
+| Alerts Lambda | Reads and updates cases in the database | | |
+| Daily list load | Writes the list to the cache | | |
+| Rule refresh in the cache | Reads the active rule from the database and writes it to the cache | | |
+| Difference writing (reconciliation) | Writes to the database | | |
+
+### The network path, step by step
+
+**1. A transaction from the core (synchronous path).**
+1. The core calls the load balancer's name over HTTPS. The load balancer lives in the two public subnets and is the only resource that accepts connections from the internet, only on port 443.
+2. The load balancer terminates TLS with the ACM certificate and forwards the request over HTTP to port 8080 of an engine task in `app-a` or `app-b`. The engine's security group only accepts that port, and only from the load balancer.
+3. The engine queries and updates the cache, which lives in `datos-a` and `datos-b`, on ports 6379 and 6380 with TLS. It reads the day's exchange rate from DynamoDB at startup, through the gateway endpoint, without going through the NAT.
+4. The engine responds to the load balancer and the load balancer to the core. Up to this point no packet has left the VPC.
+5. After responding, the engine publishes the decision to SNS. SNS is a public AWS service, so the packet goes out through the NAT in the task's zone: from `app-a` to the NAT in `publica-a` and from there to the Internet Gateway. This is ~85 % of the NAT traffic.
+
+**2. What happens next (asynchronous path).**
+1. SNS delivers the decision to the three SQS queues. That traffic is internal to AWS and does not touch the VPC.
+2. The Lambda service reads the queues and starts the consumers. The case and history consumers run with a network interface in the application subnets, from where they reach the database (5432) and the cache (6379 and 6380). The history consumer writes to DynamoDB through the gateway endpoint.
+3. The analytics consumer runs outside the VPC and writes to Firehose, which batches the records and drops the files in the Data Lake raw layer.
+
+**3. Scheduled processes.**
+1. EventBridge Scheduler triggers the Lambdas, Step Functions and the EMR jobs. None of those triggers goes through the VPC.
+2. The Lambdas inside the VPC (alerts, list load) go out through the NAT when they call something public: the alerts Lambda publishes to SNS and calls the engine through the load balancer to review transactions approved by fallback; the list load Lambda calls the list service through API Gateway.
+3. The Spark jobs have no VPC configuration: they read and write S3 and Glue directly.
+
+**4. People.**
+1. Analysts and the manager connect over HTTPS to API Gateway with a Cognito token. API Gateway is a managed service outside the VPC.
+2. API Gateway invokes the rules or cases Lambda, which runs with its interface in the application subnets and reaches the database on 5432.
+3. Nobody enters the VPC over SSH. Administrative access is through Session Manager, and migrations run as a Fargate task launched by the pipeline.
+
+**Tagging.** Every resource carries the tags `proyecto`, `ambiente` and `responsable`, which the assignment requires and which also make it possible to split spending by environment in the budget alerts.
+
+## Perimeter security: security groups {/* #security-groups */}
+
+One group per function, and the rules are written between groups instead of between address ranges. That way, when a Fargate task is replaced and its address changes, no rule has to be touched. Security groups keep the state of each connection, so the response to an allowed connection does not need an outbound rule. Decided.
+
+| Group | Allowed inbound | Allowed outbound |
+| :--- | :--- | :--- |
+| `sg-alb` | 443/TCP from the internet (0.0.0.0/0) | 8080/TCP to `sg-motor` |
+| `sg-motor` | 8080/TCP from `sg-alb` | 6379 and 6380/TCP to `sg-cache`; 443/TCP to the internet (SNS, ECR, CloudWatch, X-Ray, Parameter Store, DynamoDB through its endpoint, list service) |
+| `sg-lambda` | None (Lambdas do not receive connections) | 5432/TCP to `sg-rds`; 6379 and 6380/TCP to `sg-cache`; 443/TCP to the internet |
+| `sg-admin` | None | 5432/TCP to `sg-rds`; 443/TCP to the internet (ECR, CloudWatch, Parameter Store) |
+| `sg-rds` | 5432/TCP from `sg-lambda` and `sg-admin` | None |
+| `sg-cache` | 6379 and 6380/TCP from `sg-motor` and `sg-lambda` | None |
+
+**Changes from version 1.0:**
+- **The engine no longer reaches the database.** The engine never queries PostgreSQL: it reads the active rules and the restricted list from the cache, and the day's exchange rate from DynamoDB. The components that read the database to fill the cache are Lambdas (rule refresh, list load). The 5432 rule was removed from `sg-motor`, and so was the inbound rule from `sg-motor` in `sg-rds`. Today the engine code still queries the restricted list in PostgreSQL; this is temporary until the sprint 2 story for rejection by restricted list, which moves it to the cache.
+- **Port 6380 on the cache.** ElastiCache Serverless uses 6379 (writes and consistent reads) and 6380 (reads from a replica), and many clients open both even if they do not use the second one. With only 6379 the connection could fail.
+- **`sg-admin`**, for the Fargate task that runs the schema migrations and the seed against the database. It had no group before.
+
+With this configuration, neither the database nor the cache accepts connections from outside the VPC, and neither has a public address. The only entry point from the internet is port 443 on the load balancer, plus API Gateway, which is managed by AWS and does not live inside the VPC.
+
+## Identity and access {/* #iam */}
+
+**One role per component, with the minimum policy that component needs.** No role is shared between components and there is no permission over all resources of a service, with three exceptions that AWS does not allow to be scoped and that are marked where they appear: `ecr:GetAuthorizationToken`, the network interface actions of the Lambdas inside the VPC, and the X-Ray actions. Designed.
+
+### How to read this section
+
+- **Execution role and application role.** In Fargate there are two roles per task: ECS uses the execution role to pull the image, write logs and inject secrets; the code uses the task role. In Lambda there is only one.
+- **Logs.** Terraform creates each log group with its retention, so no role needs `logs:CreateLogGroup`: `logs:CreateLogStream` and `logs:PutLogEvents` on its own group are enough. In the tables this is summarized as "own logs".
+- **Lambdas inside the VPC.** They need to create and delete their network interface. They use the managed policy `AWSLambdaVPCAccessExecutionRole` (checked: logs plus `ec2:CreateNetworkInterface`, `DescribeNetworkInterfaces`, `DescribeSubnets`, `DeleteNetworkInterface`, `AssignPrivateIpAddresses` and `UnassignPrivateIpAddresses`). In the tables this is summarized as "VPC networking".
+- **How components connect to the cache and the database.** Decided by Jorge on October 14, 2026.
+  - **Cache: with IAM.** Each component connects with a token generated by its own role (`elasticache:Connect`), with no stored password. If the token leaks, it expires in 15 minutes. Checked limitations: the connection is cut after 12 hours and the client must regenerate the token on its own; it requires TLS and Valkey 7.2 or later.
+  - **Database: with a password.** One PostgreSQL user per component, each with only the permissions it needs, and its password in a `SecureString` parameter that only that component's role can read (`ssm:GetParameter`). RDS IAM authentication is not used because, according to the AWS documentation, it needs between 300 MB and 1 GB of free memory on the instance, and `db.t3.micro` has 1 GB in total. If the database moves to `db.t3.small` (2 GB, about $26 more a month with Multi-AZ, still to be checked in the pricing calculator), it can switch to IAM without touching the rest of the design.
+
+### Role summary
+
+| # | Role | Assumed by | What it can do, in one sentence |
+| :--- | :--- | :--- | :--- |
+| 1 | `rol-motor-ejecucion` | ECS (`ecs-tasks.amazonaws.com`) | Pull the engine image and write its logs |
+| 2 | `rol-motor` | ECS (`ecs-tasks.amazonaws.com`) | Publish decisions, use the cache, read the day's exchange rate and send traces |
+| 3 | `rol-consumidor-casos` | Lambda | Read the cases queue and write cases to the database |
+| 4 | `rol-consumidor-historial` | Lambda | Read the history queue, write device–account pairs to DynamoDB and the cache |
+| 5 | `rol-consumidor-analitica` | Lambda | Read the analytics queue and write to Firehose |
+| 6 | `rol-firehose-raw` | Firehose | Write to `raw/decisiones/` in the Data Lake |
+| 7 | `rol-api-reglas` | Lambda | Read and write rules, announce the change and launch the simulation on EMR |
+| 8 | `rol-api-casos` | Lambda | Read and write cases and store the evidence on closing |
+| 9 | `rol-actualiza-reglas-cache` | Lambda | Read the active rule from the database and write it to the cache |
+| 10 | `rol-alertas` | Lambda | Review and escalate cases, send emails and review transactions approved by fallback |
+| 11 | `rol-tasas` | Lambda | Write the day's exchange rate to DynamoDB |
+| 12 | `rol-carga-lista` | Lambda | Write the restricted list to the cache |
+| 13 | `rol-servicio-listas` | Lambda | Read the list provider's file |
+| 14 | `rol-lee-extractos` | Lambda | Read the partners' statements |
+| 15 | `rol-escribe-diferencias` | Lambda | Read the reconciliation result, write differences and notify treasury |
+| 16 | `rol-conciliacion` | Step Functions | Invoke the two reconciliation Lambdas and the Spark job |
+| 17 | `rol-emr-jobs` | EMR Serverless | Read and write the Data Lake and the Glue catalog |
+| 18 | `rol-scheduler` | EventBridge Scheduler | Trigger the scheduled tasks |
+| 19 | `rol-admin-ejecucion` | ECS | Pull the admin image, write logs and inject the master password |
+| 20 | `rol-admin` | ECS | Used by the seed code: export the restricted list to the provider's bucket |
+| 21 | `rol-despliegue` | GitHub Actions (OIDC) | Publish images and update the service and the Lambdas. No permissions on data |
+| 22 | `usuario-powerbi` | IAM user (Power BI Desktop) | Query the analytics layer through Athena |
+
+That is 21 roles and one user, compared with 12 in version 1.0. What changed: the engine's execution role was split from its application role; the escalation task became the alerts Lambda (which also reviews transactions approved by fallback); the daily list load, the list service, Firehose, the rule refresh in the cache, EventBridge Scheduler and the admin task were added; and statement ingestion was split into the two reconciliation Lambdas. The Power BI user is the only long-lived credential (Power BI Desktop does not assume roles): read only, with keys rotated every 90 days.
+
+### Detailed permissions per role
+
+Each table is the role's complete permission set. Actions are written as in the policy; resources are abbreviated (`tema:decisiones` is `arn:aws:sns:us-east-2:<cuenta>:pagoseguro-prod-decisiones`). At the end of the section there are three complete JSON policies as examples of how they are written in Terraform.
+
+**1. `rol-motor-ejecucion`** (used by ECS, not by the code)
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `ecr:GetAuthorizationToken` | `*` (AWS does not allow scoping it) | Authenticate to the registry |
+| `ecr:BatchGetImage`, `ecr:GetDownloadUrlForLayer` | repository `pagoseguro-prod-motor` | Pull the image |
+| `logs:CreateLogStream`, `logs:PutLogEvents` | group `/ecs/pagoseguro-prod-motor` | Own logs |
+
+**2. `rol-motor`** (used by the engine code)
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `sns:Publish` | `tema:decisiones` | Publish each decision. The same action authorizes `PublishBatch`, which is what the engine uses |
+| `elasticache:Connect` | the cache and the cache user `motor` | Connect to the cache with IAM |
+| `dynamodb:GetItem` | table `tasas-cambio` | Read the day's exchange rate at startup |
+| `xray:PutTraceSegments`, `xray:PutTelemetryRecords`, `xray:GetSamplingRules`, `xray:GetSamplingTargets` | `*` (X-Ray does not scope by resource) | Send traces |
+
+The engine calls the list service over HTTPS only if the cache is unavailable; that call does not go through IAM. It has no permission at all on the database.
+
+**3. `rol-consumidor-casos`** · VPC networking · own logs
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` | queue `casos` | What the Lambda service needs to read the queue in batches |
+| `ssm:GetParameter` | parameter `/pagoseguro/prod/rds/consumidor_casos` | Password of the database user `consumidor_casos`: write cases. In the database, that user only has `INSERT` and `SELECT` on the case tables |
+
+**4. `rol-consumidor-historial`** · VPC networking · own logs
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` | queue `historial` | Read the queue |
+| `dynamodb:PutItem` | table `dispositivo-cuenta` | Store the pair only if it is new (conditional write) |
+| `elasticache:Connect` | the cache and the user `historial` | Update the list of accounts per device |
+
+**5. `rol-consumidor-analitica`** · own logs (outside the VPC)
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` | queue `analitica` | Read the queue |
+| `firehose:PutRecordBatch` | stream `decisiones-raw` | Deliver the decisions to Firehose |
+
+**6. `rol-firehose-raw`** (assumed by Firehose)
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `s3:PutObject`, `s3:AbortMultipartUpload` | `pagoseguro-prod-datalake/raw/decisiones/*` | Write the batched files |
+| `s3:GetBucketLocation`, `s3:ListBucket`, `s3:ListBucketMultipartUploads` | bucket `pagoseguro-prod-datalake` | What Firehose requires on the destination bucket |
+| `logs:PutLogEvents` | the stream's log group | Record failed deliveries |
+
+The Firehose documentation also includes `s3:GetObject`; it is left out because the stream does not transform records or read what it writes. If Firehose requires it during testing, it is added, scoped to the same prefix.
+
+**7. `rol-api-reglas`** · VPC networking · own logs
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `ssm:GetParameter` | parameter `/pagoseguro/prod/rds/api_reglas` | Password of the database user `api_reglas`: read and write rules and versions |
+| `sns:Publish` | `tema:regla-cambiada` | Tell the cache that the active rule changed |
+| `emr-serverless:StartJobRun` | the EMR application | Launch the simulation of a rule version |
+| `emr-serverless:GetJobRun` | the application's job runs (`/applications/<id>/jobruns/*`) | Check the simulation's status |
+| `iam:PassRole` | `rol-emr-jobs`, only if the target is `emr-serverless.amazonaws.com` | Hand the job its role |
+
+**8. `rol-api-casos`** · VPC networking · own logs
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `ssm:GetParameter` | parameter `/pagoseguro/prod/rds/api_casos` | Password of the database user `api_casos`: read, assign, resolve and escalate cases |
+| `s3:PutObject` | `pagoseguro-prod-evidencia/*` | Store the evidence when a case is closed. The bucket applies only the 10-year retention, so `s3:PutObjectRetention` is not needed |
+| `s3:GetObject` | `pagoseguro-prod-evidencia/*` | Look up the evidence of a closed case |
+
+Change from version 1.0: the evidence is stored by the cases API when the case is closed, not by the case consumer, which only creates the case.
+
+**9. `rol-actualiza-reglas-cache`** · VPC networking · own logs
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `ssm:GetParameter` | parameter `/pagoseguro/prod/rds/lector_reglas` | Password of the database user `lector_reglas` (only `SELECT` on rules): read the active version |
+| `elasticache:Connect` | the cache and the user `reglas` | Write it to the cache |
+
+The subscription to the `regla-cambiada` topic is authorized by a permission on the Lambda itself (`lambda:InvokeFunction` for `sns.amazonaws.com`, with the topic as the source), not by this role.
+
+**10. `rol-alertas`** · VPC networking · own logs
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `ssm:GetParameter` | parameter `/pagoseguro/prod/rds/alertas` | Password of the database user `alertas`: find overdue cases, mark them as escalated and read the pending transactions approved by fallback |
+| `sns:Publish` | `tema:alertas-negocio` | Email to the supervisor and summary to compliance (with a filter by recipient) |
+
+To review the transactions approved by fallback it calls the engine over HTTPS through the load balancer; it needs no IAM permission for that.
+
+**11. `rol-tasas`** · own logs (outside the VPC)
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `dynamodb:PutItem` | table `tasas-cambio` | Store the day's exchange rate |
+
+**12. `rol-carga-lista`** · VPC networking · own logs
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `elasticache:Connect` | the cache and the user `carga_lista` | Replace the list in the cache |
+
+It requests the full list from the list service over HTTPS (`GET /lista`), without IAM.
+
+**13. `rol-servicio-listas`** · own logs (outside the VPC)
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `s3:GetObject` | `pagoseguro-prod-proveedor-listas/lista_restrictiva.jsonl` | Load the list at startup. No permission on the Data Lake |
+
+**14. `rol-lee-extractos`** · own logs (outside the VPC)
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `s3:ListBucket` | bucket `pagoseguro-prod-datalake`, only the `raw/extractos/` prefix (`s3:prefix` condition) | Find the day's files |
+| `s3:GetObject` | `pagoseguro-prod-datalake/raw/extractos/*` | Read and validate the statements |
+
+**15. `rol-escribe-diferencias`** · VPC networking · own logs
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `s3:GetObject` | `pagoseguro-prod-datalake/curated/conciliacion/*` | Read the differences Spark found |
+| `ssm:GetParameter` | parameter `/pagoseguro/prod/rds/conciliacion` | Password of the database user `conciliacion`: store the classified differences |
+| `sns:Publish` | `tema:alertas-negocio` | Notify treasury |
+
+**16. `rol-conciliacion`** (assumed by Step Functions)
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `lambda:InvokeFunction` | Lambdas `lee-extractos` and `escribe-diferencias` | Steps 1 and 3 |
+| `emr-serverless:StartJobRun` | the EMR application | Step 2 |
+| `emr-serverless:GetJobRun`, `emr-serverless:CancelJobRun` | the application's job runs | Wait for the job to finish (`.sync` integration) |
+| `events:PutTargets`, `events:PutRule`, `events:DescribeRule` | rule `StepFunctionsGetEventsForEMRServerlessJobRule` | Rule that Step Functions creates to learn that the job finished |
+| `iam:PassRole` | `rol-emr-jobs`, only to `emr-serverless.amazonaws.com` | Hand the job its role |
+
+**17. `rol-emr-jobs`** (assumed by EMR Serverless)
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `s3:GetObject`, `s3:ListBucket` | `pagoseguro-prod-datalake` (the whole bucket) | Read the three layers |
+| `s3:PutObject`, `s3:DeleteObject` | `pagoseguro-prod-datalake/curated/*` and `/analytics/*` | Write the curated and analytics layers. `DeleteObject` because Spark replaces partitions. It never writes to `raw/` |
+| `s3:GetObject` | artifacts bucket, `jobs/` prefix | Read the jobs' code |
+| `glue:GetDatabase`, `glue:GetTable`, `glue:GetTables`, `glue:CreateTable`, `glue:UpdateTable`, `glue:GetPartition`, `glue:GetPartitions`, `glue:CreatePartition`, `glue:BatchCreatePartition` | catalog, database `pagoseguro` and its tables | Register tables and partitions for Athena. No `DeleteTable` or `CreateDatabase`: Terraform creates the database |
+
+**18. `rol-scheduler`** (assumed by EventBridge Scheduler)
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `lambda:InvokeFunction` | Lambdas `tasas`, `alertas` and `carga-lista` | Daily tasks and the every-5-minutes task |
+| `states:StartExecution` | state machine `conciliacion` | The 02:00 reconciliation |
+| `emr-serverless:StartJobRun` | the EMR application | Daily ETL, rule effectiveness and device network (weekly) |
+| `iam:PassRole` | `rol-emr-jobs`, only to `emr-serverless.amazonaws.com` | Hand the job its role |
+
+The trust relationship limits the role to schedules in this account (`aws:SourceAccount`), as AWS recommends against the "confused deputy" problem.
+
+**19. `rol-admin-ejecucion`** (migrations and seed task)
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `ecr:GetAuthorizationToken` | `*` | Authenticate to the registry |
+| `ecr:BatchGetImage`, `ecr:GetDownloadUrlForLayer` | repository `pagoseguro-prod-admin` | Pull the image |
+| `logs:CreateLogStream`, `logs:PutLogEvents` | group `/ecs/pagoseguro-prod-admin` | Own logs |
+| `ssm:GetParameters` | parameter `/pagoseguro/prod/rds/master-password` | ECS injects the master password as an environment variable. AWS managed keys do not require `kms:Decrypt` |
+
+**20. `rol-admin`** (used by the seed code inside the admin task)
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `s3:PutObject` | `pagoseguro-prod-proveedor-listas/lista_restrictiva.jsonl` | Export the restricted list that the list service reads |
+
+The migrations and the seed connect to the database with the master password injected by `rol-admin-ejecucion`, not with IAM.
+
+**21. `rol-despliegue`** (GitHub Actions)
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `ecr:GetAuthorizationToken` | `*` | Authenticate to the registry |
+| `ecr:BatchCheckLayerAvailability`, `ecr:InitiateLayerUpload`, `ecr:UploadLayerPart`, `ecr:CompleteLayerUpload`, `ecr:PutImage`, `ecr:BatchGetImage` | the three repositories | Publish images |
+| `ecs:RegisterTaskDefinition`, `ecs:DescribeTaskDefinition` | `*` (ECS does not scope registration by resource) | New task revision |
+| `ecs:UpdateService`, `ecs:DescribeServices` | service `motor` | Deploy the engine |
+| `ecs:RunTask` | task definition `admin` | Run the migrations before deploying |
+| `lambda:UpdateFunctionCode` | the 12 Lambdas | Deploy the Lambdas |
+| `iam:PassRole` | `rol-motor-ejecucion`, `rol-motor`, `rol-admin-ejecucion` and `rol-admin`, only to `ecs-tasks.amazonaws.com` | Assign the roles to the new task |
+
+The trust relationship only accepts GitHub tokens for the `SecurePay-Riwi/SecurePay` repository on the `main` branch (the token's `aud` and `sub` conditions). No access keys are stored in GitHub.
+
+**22. `usuario-powerbi`** (read only)
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `athena:StartQueryExecution`, `athena:GetQueryExecution`, `athena:GetQueryResults`, `athena:StopQueryExecution`, `athena:GetWorkGroup` | workgroup `powerbi` | Run queries |
+| `glue:GetDatabase`, `glue:GetDatabases`, `glue:GetTable`, `glue:GetTables`, `glue:GetPartitions` | catalog and database `pagoseguro` | See the table schemas |
+| `s3:GetObject`, `s3:ListBucket` | `pagoseguro-prod-datalake/analytics/*` | Read only the analytics layer |
+| `s3:PutObject`, `s3:GetObject`, `s3:GetBucketLocation` | `pagoseguro-prod-datalake/athena-results/powerbi/*` | Query results |
+
+### Resource policies (attached to the resource, not the role)
+
+| Resource | Policy |
+| :--- | :--- |
+| Queues `casos`, `historial`, `analitica` | `sqs:SendMessage` for `sns.amazonaws.com` only if the source is `tema:decisiones` (`aws:SourceArn` condition). LocalStack does not check it; AWS does |
+| Bucket `pagoseguro-prod-evidencia` | Object Lock in COMPLIANCE mode with a default retention of 10 years (requires versioning). Not even the root account can delete objects or shorten the retention |
+| The three buckets | Block public access on, and deny every request without TLS (`aws:SecureTransport` = `false`) |
+| Lambda `actualiza-reglas-cache` | Allows `tema:regla-cambiada` to invoke it |
+| API Gateway | Cognito JWT authorizer on the rules and cases routes. The list service routes do not have it because they simulate a third party |
+
+### JSON examples
+
+This is how they are written in Terraform. `<cuenta>` and the identifiers are passed as variables.
+
+**Engine role** (`rol-motor`, permissions policy):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PublicarDecisiones",
+      "Effect": "Allow",
+      "Action": "sns:Publish",
+      "Resource": "arn:aws:sns:us-east-2:<cuenta>:pagoseguro-prod-decisiones"
+    },
+    {
+      "Sid": "UsarCacheConIAM",
+      "Effect": "Allow",
+      "Action": "elasticache:Connect",
+      "Resource": [
+        "arn:aws:elasticache:us-east-2:<cuenta>:serverlesscache:pagoseguro-prod-cache",
+        "arn:aws:elasticache:us-east-2:<cuenta>:user:motor"
+      ]
+    },
+    {
+      "Sid": "LeerTasaDelDia",
+      "Effect": "Allow",
+      "Action": "dynamodb:GetItem",
+      "Resource": "arn:aws:dynamodb:us-east-2:<cuenta>:table/pagoseguro-prod-tasas-cambio"
+    },
+    {
+      "Sid": "EnviarTrazas",
+      "Effect": "Allow",
+      "Action": [
+        "xray:PutTraceSegments",
+        "xray:PutTelemetryRecords",
+        "xray:GetSamplingRules",
+        "xray:GetSamplingTargets"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+**Case consumer** (`rol-consumidor-casos`, in addition to the managed policy `AWSLambdaVPCAccessExecutionRole`):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "LeerColaCasos",
+      "Effect": "Allow",
+      "Action": [
+        "sqs:ReceiveMessage",
+        "sqs:DeleteMessage",
+        "sqs:GetQueueAttributes"
+      ],
+      "Resource": "arn:aws:sqs:us-east-2:<cuenta>:pagoseguro-prod-casos"
+    },
+    {
+      "Sid": "ContrasenaDeLaBase",
+      "Effect": "Allow",
+      "Action": "ssm:GetParameter",
+      "Resource": "arn:aws:ssm:us-east-2:<cuenta>:parameter/pagoseguro/prod/rds/consumidor_casos"
+    }
+  ]
+}
+```
+
+**EventBridge Scheduler** (`rol-scheduler`, trust relationship and permissions):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": { "Service": "scheduler.amazonaws.com" },
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringEquals": { "aws:SourceAccount": "<cuenta>" }
+      }
+    }
+  ]
+}
+```
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "TareasProgramadas",
+      "Effect": "Allow",
+      "Action": "lambda:InvokeFunction",
+      "Resource": [
+        "arn:aws:lambda:us-east-2:<cuenta>:function:pagoseguro-prod-tasas",
+        "arn:aws:lambda:us-east-2:<cuenta>:function:pagoseguro-prod-alertas",
+        "arn:aws:lambda:us-east-2:<cuenta>:function:pagoseguro-prod-carga-lista"
+      ]
+    },
+    {
+      "Sid": "Conciliacion",
+      "Effect": "Allow",
+      "Action": "states:StartExecution",
+      "Resource": "arn:aws:states:us-east-2:<cuenta>:stateMachine:pagoseguro-prod-conciliacion"
+    },
+    {
+      "Sid": "JobsDeSpark",
+      "Effect": "Allow",
+      "Action": "emr-serverless:StartJobRun",
+      "Resource": "arn:aws:emr-serverless:us-east-2:<cuenta>:/applications/<id-aplicacion>"
+    },
+    {
+      "Sid": "EntregarRolAlJob",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::<cuenta>:role/pagoseguro-prod-rol-emr-jobs",
+      "Condition": {
+        "StringEquals": { "iam:PassedToService": "emr-serverless.amazonaws.com" }
+      }
+    }
+  ]
+}
+```
+
+**Access for people.** No bastion host and no SSH keys. Administrative access to any resource in the VPC goes through Session Manager, which records every session in CloudTrail. Team members sign in to the console with their own users with MFA, never with the root account. Terraform runs with a separate admin role that no component uses.
+
+**Analysts and the manager.** They are application users, not AWS identities: they sign in to a Cognito user pool with two groups (`analista` and `gerente`) that the API checks in the token. Decided on October 14; it is implemented when AWS is set up, and locally it is simulated with a fixed header. Their actions on cases are recorded in the `caso_evento` table (see the architecture document, section 8.3).
+
+## Encryption and secrets management {/* #encryption */}
+
+| What | How |
+| :--- | :--- |
+| Encryption at rest | Enabled on RDS, S3, DynamoDB, SQS, SNS, Firehose and the cache, with AWS managed keys |
+| Encryption in transit | HTTPS on the load balancer and on API Gateway with an ACM certificate; SSL/TLS required on PostgreSQL (`rds.force_ssl = 1` in the parameter group); encryption in transit enabled on the cache; the buckets reject requests without TLS |
+| Secrets | In Parameter Store, type `SecureString`. They are read at runtime by the component's role (next table) |
+| What is never stored | No credentials in the repository or inside the images. The pipeline fails if it detects a secret |
+
+**Parameters that exist.**
+
+| Parameter | Who reads it | Note |
+| :--- | :--- | :--- |
+| `/pagoseguro/prod/rds/master-password` | Only the admin task (migrations and seed) | Generated by Terraform. Nobody else uses the master user |
+| `/pagoseguro/prod/kaggle/token` | The Kaggle download script, if it runs in AWS | Today each team member runs it locally with their own token |
+| `/pagoseguro/prod/rds/<usuario>` (6) | Each component, only its own: `consumidor_casos`, `api_reglas`, `api_casos`, `lector_reglas`, `alertas`, `conciliacion` | Passwords generated by Terraform. The cache has no password: it uses IAM (see [Identity and access](#iam)) |
+
+AWS managed keys were chosen instead of customer managed KMS keys because they encrypt just as well and cost nothing; a customer managed key adds manual rotation and fine-grained policies, which no requirement of this project asks for, at $1 a month per key. For the same reason, Parameter Store instead of Secrets Manager: the advantage of Secrets Manager is automatic rotation, and these secrets do not rotate.
+
+### Database backup strategy
+
+The program requires an explicit backup strategy, not just having backups turned on. Designed.
+
+| What | Configuration | Purpose |
+| :--- | :--- | :--- |
+| Automated backups | Daily, with 7-day retention | Recover from a deletion or a badly applied migration |
+| Point-in-time recovery | Enabled, with the 5-minute granularity RDS provides | Go back to the moment before an incident, not to the end of the previous day |
+| Manual snapshot | Before every schema migration and before the final demo | Migrations are the moment of highest risk |
+| Maintenance window | Outside the reconciliation schedule | So that an AWS restart does not collide with the 07:00 deadline |
+| Restore test | Once, before the demo | An untested backup is not a backup |
+
+A 7-day retention is enough because the database holds operational state, not the historical record: transactions and evidence live in S3, with their own retention periods (see the architecture document, section 12.3).
+
+## Resource inventory {/* #inventory */}
+
+This is the inventory of what Terraform must create, not of what exists today. Designed. The "Status" column says whether the configuration is decided or is an expected value to be confirmed by measuring (see [Estimated figures](#estimates)).
+
+### Network
+
+| Resource | Name | Qty. | Configuration | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| VPC | `pagoseguro-prod-vpc` | 1 | `10.0.0.0/16`, DNS enabled | Decided |
+| Subnets | `publica-a/b`, `app-a/b`, `datos-a/b` | 6 | /24, one of each tier per zone (see [Network design](#network)) | Decided |
+| Internet Gateway | `pagoseguro-prod-igw` | 1 | | Decided |
+| NAT Gateway | `pagoseguro-prod-nat-a/b` | 2 | One per zone, each with its Elastic IP | Decided ([ADR-08](./decisions.mdx#adr-08)) |
+| Route tables | | 4 | 1 public, 2 application (one per zone), 1 data | Decided |
+| Gateway VPC endpoints | S3 and DynamoDB | 2 | Associated with the three private tables | Decided |
+| Security groups | `sg-alb`, `sg-motor`, `sg-lambda`, `sg-admin`, `sg-rds`, `sg-cache` | 6 | See [Security groups](#security-groups) | Decided |
+
+### Compute and ingress
+
+| Resource | Name | Qty. | Configuration | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| ACM certificate | | 1 | For the load balancer; free | Decided |
+| Application Load Balancer | `pagoseguro-prod-alb` | 1 | Public, in the two public subnets. Listener on 443 with TLS; one target group on port 8080 with a health check on `/health` | Decided |
+| ECS cluster | `pagoseguro-prod` | 1 | Fargate only | Decided |
+| ECS service for the engine | `motor` | 1 | 0.5 vCPU / 1 GB per task; minimum 4, maximum 24, spread across the two zones; scales at 25 requests per task on the load balancer; deployment circuit breaker with automatic rollback | Minimum and maximum calculated; the 25 is confirmed in the load test |
+| Task definitions | `motor`, `admin` | 2 | Image tagged with the commit, never just `latest`. `admin` runs migrations and seed on demand | Decided |
+| ECR repositories | `motor`, `generador`, `admin` | 3 | Image scanning on push; lifecycle rule that keeps the last 10 | Decided |
+| Lambda functions | see the next table | 12 | Python 3.12, 512 MB and 30 s by default | 512 MB expected (see [Estimated figures](#estimates)) |
+| Queue-to-Lambda mappings | | 3 | Batches of 10, failure reporting per message | Decided |
+| API Gateway (HTTP API) | `pagoseguro-prod-api` | 1 | Rules and cases routes with a Cognito JWT authorizer; list service routes (`GET /lista`, `GET /lista/{documento}`, `/health`) without an authorizer; request limit per route | Decided |
+| Cognito user pool | `pagoseguro-prod-usuarios` | 1 | Groups `analista` and `gerente`, one app client, MFA | Decided; implemented when AWS is set up |
+| EMR Serverless application | `pagoseguro-prod-spark` | 1 | Spark; stops on its own when idle; no VPC; runs the 5 jobs | Size per job expected (see [Estimated figures](#estimates)) |
+| Step Functions state machine | `conciliacion` | 1 | Standard: reads statements (Lambda), reconciles (Spark, `.sync`), writes differences (Lambda); retries per step | Decided |
+
+**The 12 Lambdas.**
+
+| Lambda | Trigger | In the VPC | Memory and timeout | Role |
+| :--- | :--- | :--- | :--- | :--- |
+| `consumidor-casos` | Queue `casos` | Yes | 512 MB, 60 s | 3 |
+| `consumidor-historial` | Queue `historial` | Yes | 512 MB, 60 s | 4 |
+| `consumidor-analitica` | Queue `analitica` | No | 512 MB, 60 s | 5 |
+| `api-reglas` | API Gateway | Yes | 512 MB, 30 s | 7 |
+| `api-casos` | API Gateway | Yes | 512 MB, 30 s | 8 |
+| `servicio-listas` | API Gateway | No | 512 MB, 30 s (the simulated latency reaches 3 s) | 13 |
+| `actualiza-reglas-cache` | Topic `regla-cambiada` | Yes | 512 MB, 30 s | 9 |
+| `alertas` | Scheduler, every 5 min | Yes | 512 MB, 60 s | 10 |
+| `tasas` | Scheduler, daily | No | 512 MB, 30 s | 11 |
+| `carga-lista` | Scheduler, daily | Yes | 512 MB, 60 s (the full list weighs ~4 MB) | 12 |
+| `lee-extractos` | Step Functions | No | 512 MB, 60 s | 14 |
+| `escribe-diferencias` | Step Functions | Yes | 512 MB, 60 s | 15 |
+
+### Data
+
+| Resource | Name | Qty. | Configuration | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| RDS instance | `pagoseguro-prod-db` | 1 | PostgreSQL `db.t3.micro`, Multi-AZ, 20 GB gp3, in the data subnets; TLS required; one user per component with its password in Parameter Store; 7-day backups | Decided |
+| Cache | `pagoseguro-prod-cache` | 1 | ElastiCache Serverless for Valkey, in the data subnets, encryption in transit; ports 6379 and 6380 | Memory expected (see [Estimated figures](#estimates)) |
+| DynamoDB tables | `dispositivo-cuenta`, `tasas-cambio` | 2 | On demand; 30-day TTL on the first; point-in-time recovery on both | Decided |
+| Data Lake bucket | `pagoseguro-prod-datalake` | 1 | Prefixes `raw/`, `curated/`, `analytics/`, `athena-results/`; versioning; block public access | Decided |
+| Evidence bucket | `pagoseguro-prod-evidencia` | 1 | Object Lock COMPLIANCE 10 years, Glacier Instant Retrieval, versioning. In development, 1-day retention so it can be destroyed | Decided |
+| List provider bucket | `pagoseguro-prod-proveedor-listas` | 1 | One file, `lista_restrictiva.jsonl`, exported by the seed. Separate from the Data Lake because it is third-party data | Decided |
+| Artifacts bucket | `pagoseguro-prod-artefactos` | 1 | Spark job code | Decided |
+| Terraform state bucket | `pagoseguro-tfstate` | 1 | Outside the main configuration, with versioning and locking, so that `terraform destroy` never deletes it | Decided |
+| Glue database | `pagoseguro` | 1 | Catalog for Athena; the jobs register the tables | Decided |
+| Athena workgroup | `powerbi` | 1 | Results in `athena-results/powerbi/`, limit on data scanned per query | Decided |
+
+### Messaging and scheduled processes
+
+| Resource | Name | Qty. | Configuration | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| SNS topics | `decisiones`, `regla-cambiada`, `alertas-negocio`, `alarmas-operativas` | 4 | `alertas-negocio` with a filter by recipient (compliance, supervisor, treasury) | Decided |
+| SQS queues | `casos`, `historial`, `analitica` and their `-dlq` | 6 | Raw message delivery from SNS; DLQ after 5 attempts with 14-day retention | Decided |
+| Firehose stream | `decisiones-raw` | 1 | Destination `raw/decisiones/`, files of ~5 MB or every 5 minutes | Decided; enters the cost table after the load test |
+| EventBridge Scheduler schedules | | 7 | Reconciliation (02:00), ETL (daily), exchange rates (daily), list load (daily), alerts (every 5 min), rule effectiveness and device network (weekly) | Decided |
+
+### Security and operations
+
+| Resource | Qty. | Configuration | Status |
+| :--- | :--- | :--- | :--- |
+| IAM roles | 21 | See [Identity and access](#iam) | Designed |
+| GitHub OIDC provider | 1 | For `rol-despliegue`, with no keys stored in GitHub | Designed |
+| Power BI IAM user | 1 | Read only on the analytics layer; keys rotated every 90 days | Designed |
+| Parameter Store parameters | 8 | Master password, 6 component passwords and the Kaggle token (see [Encryption and secrets management](#encryption)) | Designed |
+| Cache users | 5 | `motor`, `historial`, `reglas`, `carga_lista` and the disabled default user, in a user group with IAM authentication | Designed |
+| CloudWatch log groups | 15 | One per Lambda, two for ECS and one for Firehose; 30-day retention | Designed |
+| Metric filter | 1 | `EVENTO_NO_PUBLICADO` in the engine logs | Designed |
+| CloudWatch alarms | 10 | See the architecture document, section 14.4 | Designed |
+| Budgets | 2 | 80 % and 100 % of the credit | Decided |
+
+## Estimated figures and how they were calculated {/* #estimates */}
+
+Some figures in the inventory cannot be known before building and measuring. Each one comes with its calculation, the expected value, and what happens if the measurement says otherwise. None is presented as verified.
+
+**Engine tasks: minimum 4, maximum 24.**
+- Calculation: with two zones, losing one takes half the tasks. For the 2 surviving tasks to handle the sustained 50 tx/s, each task must serve 50 ÷ 2 = 25 requests per second. For the peak: 300 ÷ 25 = 12 live tasks, and 12 × 2 = 24 so that 12 survive if a zone goes down (see the architecture document, section 7.2, and [ADR-07](./decisions.mdx#adr-07)).
+- Expected: 25 requests per second per 0.5 vCPU task. **Still to be measured** in the load test.
+- If it comes out different: at 20 per task it would be 6 and 30; at 15, 8 and 40.
+
+**Memory of the consumer Lambdas: 512 MB.**
+- Calculation: 129.6 million decisions a month reach the 3 queues and are read in batches of 10, so that is 3 × 12.96 M = 38.88 M invocations. With 100 ms per batch and 0.5 GB: 38.88 M × 0.1 s × 0.5 GB = 1,944,000 GB-s. Minus the 400,000 free, at $0.0000166667, that is $25.73; plus $7.58 for invocations, **≈ $33 a month**.
+- Expected: 100 ms per batch of 10 messages. **Still to be measured.**
+- If it comes out different: with 1024 MB it would be 3,888,000 GB-s and ≈ $66 a month (≈ $32 more). It is raised only if the load test calls for it (decided on October 14).
+
+**Cache memory: ~300 MB expected (range 150–400 MB), plus ~100 MB for the velocity history.**
+- Calculation: idempotency ~180 thousand keys with a 1 h lifetime (~18 MB), 24 h sums for 0.5 to 1 million active accounts (100–200 MB), short windows (~15 MB) and the restricted list (~5 MB, 50 thousand documents). The 24 h velocity history per account adds ~1.7 million entries a day at 50 tx/s with ~40 % P2P transfers, about 100 MB.
+- **Still to be measured** with the seed in full mode and in the load test.
+- If it comes out different: every extra 100 MB is ~$6 a month. With 1 h of velocity history instead of 24 h, that block drops to ~5 MB.
+
+**NAT traffic: ~150 GB a month.**
+- Calculation: publishing the decisions to SNS is 129.6 M × ~1 KB = 129.6 GB, plus ~15 GB of logs, ~5 GB of ECR images and ~1.8 GB of X-Ray. 2 × 730 h × $0.045 + 151 GB × $0.045 = $65.70 + $6.81 = **$72.51 a month**.
+- Expected: ~1 KB per published decision. Confirmed with the real event size.
+- If it comes out different: the fixed NAT cost ($65.70) does not change; every extra 100 GB is $4.50.
+
+**Spark jobs: 4 workers with 2 vCPU and 8 GB, ~10 minutes per job.**
+- Calculation: (4 × 2 × 0.167 h × $0.052624) + (4 × 8 × 0.167 h × $0.0057785) ≈ $0.10 per run, times 72 runs a month ≈ $7.50.
+- **Still to be measured** with the first real runs. It is the weakest figure in the estimate.
+- If it comes out different: the cost is proportional to the time; at 5 minutes per job it drops to ~$4.
+
+**Case consumer on Lambda.**
+- Expected: the case is created in milliseconds (one `INSERT`), far below Lambda's 15-minute limit.
+- **Still to be measured.** If it turned out to be heavy, the alternative is to move it to Fargate (~$30 a month per task).
+
+### Official documentation consulted (October 14, 2026)
+
+- SQS consumer permissions: [AWSLambdaSQSQueueExecutionRole](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/AWSLambdaSQSQueueExecutionRole.html)
+- Lambdas in the VPC: [AWSLambdaVPCAccessExecutionRole](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/AWSLambdaVPCAccessExecutionRole.html)
+- `PublishBatch` with `sns:Publish`: [Amazon SNS API permissions](https://docs.aws.amazon.com/sns/latest/dg/sns-access-policy-language-api-permissions-reference.html)
+- Queue policy for SNS: [Subscribing an Amazon SQS queue to an Amazon SNS topic](https://docs.aws.amazon.com/sns/latest/dg/subscribe-sqs-queue-to-sns-topic.html)
+- Cache ports 6379 and 6380: [Setting up ElastiCache](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/set-up.html)
+- IAM authentication on the cache: [Authenticating with IAM](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/auth-iam.html)
+- IAM authentication on RDS, ruled out: [IAM database authentication](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.IAMDBAuth.html) (the memory requirement that rules it out on `db.t3.micro`)
+- ECS execution role and secrets: [Amazon ECS task execution IAM role](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html)
+- Firehose to S3: [Controlling access with Amazon Data Firehose](https://docs.aws.amazon.com/firehose/latest/dev/controlling-access.html)
+- EventBridge Scheduler: [Setting up Amazon EventBridge Scheduler](https://docs.aws.amazon.com/scheduler/latest/UserGuide/setting-up.html)
+- Step Functions with EMR Serverless: [IAM policies for EMR Serverless](https://docs.aws.amazon.com/step-functions/latest/dg/emr-serverless-iam.html)
+- EMR job role: [Job runtime roles for Amazon EMR Serverless](https://docs.aws.amazon.com/emr/latest/EMR-Serverless-UserGuide/security-iam-runtime-role.html)
+- Object Lock: [Locking objects with Object Lock](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html)
+- Publishing to ECR: [IAM permissions for pushing an image](https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-push-iam.html)
+- GitHub Actions without keys: [Configuring OpenID Connect in Amazon Web Services](https://docs.github.com/actions/security-for-github-actions/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services)
+- X-Ray: [AWSXrayWriteOnlyAccess](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/AWSXrayWriteOnlyAccess.html)

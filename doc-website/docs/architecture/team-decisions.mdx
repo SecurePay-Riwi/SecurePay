@@ -1,5 +1,5 @@
 ---
-sidebar_position: 4
+sidebar_position: 6
 title: Team decisions
 description: Decisions taken by the team while building Sprint 1, and why.
 ---
@@ -97,6 +97,19 @@ A resent transaction gets the same decision for 1 hour (`IDEMPOTENCY_TTL_SECONDS
 | Kinesis Data Firehose for the raw layer | Approved (~$1.89/month plus ~$0.07 of PUTs, against ~$64.80 without batching). Enters the cost table with the post-load-test correction. |
 | Who reviews fallback approvals | The alerts Lambda (see above). |
 | Analyst and risk manager login | Amazon Cognito with an API Gateway authorizer. Documented now, built when AWS is set up; locally simulated with a fixed header. |
+
+## Infrastructure
+
+**Decided by Jorge on 2026-10-14**, while writing the final infrastructure design. Details in [AWS infrastructure](./infrastructure.mdx).
+
+| Decision | Why |
+| :--- | :--- |
+| The **cache authenticates with IAM**; the **database uses one user per component, with its password in Parameter Store**. | RDS IAM authentication for PostgreSQL needs 300 to 1000 MiB of extra memory, and `db.t3.micro` has 1 GB. The cache's IAM token costs nothing extra. |
+| The **engine's security group has no access to RDS**. | The engine never reads PostgreSQL; the database is only read to load the cache. |
+| **Case evidence is written by the cases API** when a case closes, straight to the Object Lock bucket. | No queue in between: faster, and the evidence is protected from the first instant. |
+| **Power BI uses a read-only IAM user** to query Athena. | Power BI Desktop runs outside AWS and needs its own credentials; read-only keeps the blast radius small. |
+| The statement reader, the restricted-list service and EMR Serverless **stay outside the VPC**. | None of them needs RDS or the cache, so they do not need the private network or the NAT. |
+| **LocalStack is the local environment**, not RabbitMQ or Airflow. | The same code runs locally and on AWS. |
 
 ## Partner statements
 
