@@ -84,3 +84,18 @@ See [Messaging](../components/messaging.mdx).
 | `GEN_TX_PER_ACCOUNT_DAY` | `1` | Average daily transactions per account (sets the simulated clock speed). |
 
 See [Transaction generator](../components/generator.mdx).
+
+## Partner statements
+
+| Variable | Default | What it does |
+| :--- | :--- | :--- |
+| `EXT_OUTPUT` | `file` | `file` writes to `generated/extractos/`; `s3` also uploads to `raw/extractos/` in the Data Lake (LocalStack locally). |
+| `EXT_MISSING_PCT` | `2` | Our transactions the partner leaves out. |
+| `EXT_EXTRA_PCT` | `1` | Operations the partner reports that we do not have. |
+| `EXT_ROUNDING_PCT` | `3` | Amounts the partner rounds to the unit. |
+| `EXT_RESEND_PCT` | `10` | Files (with something to fix) resent as `_v2` with corrections. |
+| `EXT_BAD_CONTROL_PCT` | `10` | Files whose control record does not add up. |
+| `EXT_INPUT_DIR` | `GEN_OUTPUT_DIR` or `generated` | Where the generator's output is read from. |
+| `EXT_OUTPUT_DIR` | `generated/extractos` | Local output folder (emptied on every run). |
+
+It also uses `SEED` and `DATALAKE_BUCKET`. See [Partner statements](../components/partner-statements.mdx).

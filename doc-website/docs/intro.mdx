@@ -38,6 +38,7 @@ The decision must come back in **under 200 ms (p99)** at a sustained 50 transact
 | [Decision engine](./components/decision-engine.mdx) | `services/decision_engine/` | Running with two rules (restricted list and velocity), idempotency and out-of-order handling in Valkey. |
 | [Messaging](./components/messaging.mdx) | `services/decision_engine/publisher.py`, `infra/localstack/` | Done locally: SNS topic, three SQS queues with dead-letter queues, on LocalStack. |
 | [Consumers](./components/consumers.mdx) | `services/consumers/` | Analytics writes to S3; cases and history are skeletons. |
+| [Partner statements](./components/partner-statements.mdx) | `sources/csv_files/partner_statements/` | Done: daily files of the four payment partners, with their defects, locally and in LocalStack. |
 | AWS infrastructure (Terraform) | `infra/` | Designed, not built yet. |
 
 The details of what was delivered and what is pending are in the [Sprint 1 review](./product-backlog/sprint-1-review.mdx).

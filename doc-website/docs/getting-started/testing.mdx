@@ -20,7 +20,7 @@ Run everything from the repository root:
 uv run pytest
 ```
 
-At the end of Sprint 1 the suite has **107 tests**.
+At the end of Sprint 1 the suite had **107 tests**; with the partner statements it has **126**.
 
 ## What each group needs
 
@@ -33,6 +33,7 @@ At the end of Sprint 1 the suite has **107 tests**.
 | Publisher | `test_publisher.py` | Nothing: SNS is faked. |
 | Consumers | `services/consumers/tests/test_consumers.py` | Nothing: SQS and S3 are faked. |
 | End-to-end messaging | `services/consumers/tests/test_localstack_flow.py` | LocalStack. |
+| Partner statements | `sources/csv_files/partner_statements/tests/` | Nothing: they build their own operations and fake S3. |
 
 If a service is off, its tests are **skipped** (`s`) instead of failing, except the API tests, which fail with `503` when Valkey is down.
 
@@ -41,6 +42,7 @@ If a service is off, its tests are **skipped** (`s`) instead of failing, except 
 ```bash
 uv run pytest generators                 # only the generator
 uv run pytest services/decision_engine   # only the engine
+uv run pytest sources                    # only the partner statements
 uv run pytest -k velocity                # tests whose name contains "velocity"
 uv run pytest -rs                        # show why tests were skipped
 ```

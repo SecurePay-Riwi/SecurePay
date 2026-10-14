@@ -1,0 +1,106 @@
+---
+sidebar_position: 6
+title: Partner statements
+description: Daily files from the four payment partners, built from the generator's output, with the data defects the assignment asks for.
+---
+
+# Partner statements
+
+**Folder:** `sources/csv_files/partner_statements/` · **Run:** `uv run python -m sources.csv_files.partner_statements`
+
+Every day, each of the four payment partners (one bank and three networks) sends a file with what went through it, in its own format. The daily reconciliation compares those files against what PagoSeguro recorded. This component **simulates the partners**: it builds their files from the [transaction generator](./generator.mdx)'s output, so they match what the engine saw, and injects the defects the assignment asks for.
+
+## Input
+
+It reads `generated/instance-*/events.jsonl` (and `labels.jsonl`). The generator writes `events.jsonl` in both modes, `file` and `http`, for this reason. Run the generator first.
+
+Only what a partner would see with the money already moved is kept:
+
+| Kept out | Why |
+| :--- | :--- |
+| `P2P` transfers | They stay inside the wallet; no partner sees them. |
+| Core resends (same `id`) | They are one operation, counted once. |
+| `REJECT` and `HOLD`, when the engine's answer is known (`GEN_OUTPUT=http`) | No money moved. In `file` mode there is no answer and everything is kept. |
+
+Amounts with the extra-decimals defect (`88.910`) are read with their real precision (`88.91`).
+
+## The four partners
+
+Each partner sees a natural subset of the transactions, by the type and channel the generator already sends:
+
+| Partner | What it sees | Format | Dates |
+| :--- | :--- | :--- | :--- |
+| `banco_andino` | Top-ups through `APP` and `WEB` | CSV with commas and dot decimals, header, last row `TOTAL` | UTC |
+| `red_corresponsales` | Top-ups and withdrawals at a `CORRESPONSAL` | Fixed-width TXT with `H` (header), `D` (detail) and `T` (trailer) records; amounts in minor units, zero-padded | Bogotá (UTC−5) |
+| `cajeros_express` | Withdrawals at a `CAJERO` (ATM) | CSV with semicolons, comma decimals, `dd/mm/yyyy` date; last row `CONTROL` | Bogotá (UTC−5) |
+| `qr_pagos` | `QR` payments to merchants | TXT separated by `\|`, control line first (`#CTRL`), amounts in minor units | UTC, without saying so |
+
+Every record carries the PagoSeguro reference (the transaction `id`), the partner's own reference, amount, currency and date. The control record has the number of records and the sum of the amounts (a *hash total*: amounts in different currencies are added up anyway, it only proves the file arrived complete).
+
+A fixed-width detail line of `red_corresponsales` (88 characters):
+
+```text
+D20261001074529RC000000004 5fe95c21-6adb-57d9-bcd6-92d958c69913RECARGAUSD000000000002707
+│└ local date ─┘└ partner ─┘└──── PagoSeguro reference ───────┘└type─┘└┬┘└─ 27.07 USD ─┘
+```
+
+**The day of a file is the day in the partner's time zone.** A top-up at 23:30 in Bogotá lands in that day's file even though in UTC it is already the next day. That is why the reconciliation accepts ±1 day. A partner sends a file every day of the period, even an empty one.
+
+## Output
+
+Every day brings **four files, one from each partner** (plus a `_v2` when a partner resends with corrections), partitioned the same way locally and in the Data Lake:
+
+```text
+generated/extractos/<partner>/fecha=YYYY-MM-DD/<partner>_YYYYMMDD_vN.<ext>
+s3://pagoseguro-datalake/raw/extractos/<partner>/fecha=YYYY-MM-DD/<same name>   (EXT_OUTPUT=s3)
+```
+
+With seed 42 and the default `.env.example`, after `uv run python -m generators` it reads 598 operations and writes 47 files. After the full flow over HTTP it reads 595, because the 3 rejected or held ones that go through a partner are left out.
+
+## Defects
+
+All with a configurable percentage and the project's fixed seed (`SEED`):
+
+| Defect (assignment) | How it is injected | Variable | Default |
+| :--- | :--- | :--- | ---: |
+| Missing transactions | The partner leaves out one of our transactions | `EXT_MISSING_PCT` | 2 |
+| Missing in PagoSeguro | The partner reports an operation we do not have | `EXT_EXTRA_PCT` | 1 |
+| Rounded amounts | The partner rounds to the unit (to the ten if it was already whole), always beyond the 0.01 tolerance | `EXT_ROUNDING_PCT` | 3 |
+| Dates in another time zone | Not a percentage: two partners write Bogotá time | — | — |
+| Files resent with corrections | A `_v2` of the same day restores the missing records and fixes the rounding of `_v1` | `EXT_RESEND_PCT` | 10 (of files with something to fix) |
+| Control records that do not add up | The trailer declares a different count or total than the detail | `EXT_BAD_CONTROL_PCT` | 10 (of files) |
+
+## The answer key: `extracts_report.json`
+
+`generated/extractos/extracts_report.json` lists every file (with declared and actual control), every injected defect and, in `expected_differences`, what the reconciliation should find against the **latest version** of each day, using the three categories of the assignment:
+
+```json
+{"type": "AMOUNT_MISMATCH", "partner": "banco_andino", "day": "2026-10-06",
+ "reference": "35e8dce4-b518-581b-a5bc-5952038c99a7", "currency": "USD",
+ "pagoseguro_amount": "28.28", "partner_amount": "28.00"}
+```
+
+| `type` | Meaning |
+| :--- | :--- |
+| `MISSING_IN_PARTNER` | We have it, the partner does not. |
+| `MISSING_IN_PAGOSEGURO` | The partner has it, we do not. |
+| `AMOUNT_MISMATCH` | Both have it, the amount differs by more than 0.01. |
+
+A defect corrected by a `_v2` is marked `corrected_in_v2` and produces no expected difference. The reconciliation job (Sprint 5) will be tested against this file.
+
+## How it works inside
+
+| File | What it does |
+| :--- | :--- |
+| `reader.py` | Reads the generator's output and keeps the operations a partner would see. |
+| `partners.py` | The four partners: which operations each one sees, its time zone, and how it writes **and reads back** its file. The ingestion step will reuse the readers. |
+| `statements.py` | Groups by partner and day, injects the defects and builds the answer key. |
+| `output.py` | Writes locally and, with `EXT_OUTPUT=s3`, to the raw layer. |
+| `config.py` | `EXT_*` variables. |
+| `money.py` | Decimal places per currency. It does not import from `generators/`, so this folder can move to its own repository on its own. |
+
+Bogotá is a fixed UTC−5 offset (no daylight saving since 1993) instead of `ZoneInfo("America/Bogota")`, which on Windows needs the extra `tzdata` package.
+
+## Tests
+
+`uv run pytest sources` (no database needed): every format reads back to the same records, each operation goes to exactly one partner, same seed gives the same files, defects appear in the requested proportion, a `_v2` fixes everything it should, broken controls are detected, and a minimal reconciliation over the files finds exactly the differences of the answer key.

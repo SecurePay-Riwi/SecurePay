@@ -50,10 +50,4 @@ Figures were built with `us-east-1` rates. SNS, NAT Gateway, interface endpoints
 
 ## Other open items
 
-- **Restricted list in the cache:** nobody loads it every day yet. Natural option: a daily Lambda that reads PostgreSQL and loads the cache.
-- **When to call the restricted list service:** only when the cached copy is unavailable, not every time a document is "missing" from the cache.
-- **Circuit breaker of the list service:** automatic, pending team confirmation.
-- **Who reviews fallback approvals** after the engine recovers (see [Team decisions](./team-decisions.mdx#what-happens-with-approvals-by-fallback)).
-- **Analyst and risk manager login** to the API and where their roles live (for example Amazon Cognito).
-- **SNS filters per recipient** on the business alerts topic, so treasury does not get compliance emails.
-- **Consumer Lambda memory:** configured at 1024 MB but costed at 512 MB (~$32/month difference).
+The gaps that were listed here (who loads the restricted list into the cache, when to call the list service, its circuit breaker, who reviews fallback approvals, analyst login, SNS filters per recipient and consumer Lambda memory) were closed on 2026-10-14. See [Team decisions](./team-decisions.mdx#gaps-closed-on-2026-10-14).

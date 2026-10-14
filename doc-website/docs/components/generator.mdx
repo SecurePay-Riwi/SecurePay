@@ -23,7 +23,7 @@ Each run leaves three files in `generated/instance-<n>/`:
 
 | File | Content |
 | :--- | :--- |
-| `events.jsonl` | What the engine would receive, in sending order (`file` mode only). |
+| `events.jsonl` | What the engine would receive, in sending order. Written in both modes: the [partner statements](./partner-statements.mdx) read it. |
 | `labels.jsonl` | Per event: pattern, whether it is fraud, the rule it should trigger and, in `http` mode, the engine's answer. |
 | `generation_report.json` | Counts by type, pattern, defect and response status, plus every injected defect. |
 

@@ -33,7 +33,7 @@ When the engine is too slow, transactions under USD 50 are approved by default. 
 - Trigger **one alert per incident** to the tech team, not one per transaction.
 - Are **re-run through the rules when the engine recovers**: only those that trigger mule account, splitting or restricted list open a case. The money has already moved (the risk the assignment accepts, capped under USD 50), so the review is used to freeze the destination account if the money is still in the wallet, open the case and report.
 
-Pending: which component runs that later review (a job or a scheduled Lambda). It belongs to the Sprint 2 story "default decision on timeout".
+**Who runs that later review** (decided on 2026-10-14): the alerts Lambda, which already runs every 5 minutes, re-runs them through the rules once the engine answers again. The implementation belongs to the Sprint 2 story "default decision on timeout".
 
 **If the whole engine does not answer**, the fallback happens in the core: that transaction never reaches the queue, so the core resends it to the engine with the **same id** when it is back. The engine, being idempotent, decides and publishes it normally. In the simulation the generator plays that role.
 
@@ -69,6 +69,47 @@ A resent transaction gets the same decision for 1 hour (`IDEMPOTENCY_TTL_SECONDS
 | The seed loads only master data | Transactions come from the generator, like the real core. |
 | The core reports balances before and after | Like PaySim. The engine does not keep balances; the mule rule uses the balance in the transaction. |
 | No transfers between different currencies | The assignment does not ask for it and it adds complexity. |
+
+## Restricted list service
+
+**Decided on 2026-10-14.**
+
+| Decision | Why |
+| :--- | :--- |
+| The seed also **exports the restricted list to a file in S3**, the "provider's database". The service loads it into memory **once at startup**, with no periodic refresh. | With the same seed and settings the list is always the same. If the seed parameters change, the service is restarted; the single-command Compose starts it after the seed. |
+| In AWS its Lambda runs **outside the VPC**. | It does not read PostgreSQL, so it needs no private subnet. A real provider would have its own endpoint with the list up to date. |
+| Two endpoints: `GET /lista` returns the whole list; `GET /lista/{documento}` answers whether one document is listed. Both with the simulated latency (50 ms to 3 s) and outages. | One for the daily load into the cache, one as the engine's backup. |
+| A **daily Lambda** (EventBridge) calls `GET /lista` and loads the list into the engine's cache, like the exchange-rate task with Frankfurter. | Closes the gap of who loads the list into the cache every day. |
+| The engine checks **only the cache**. It calls `GET /lista/{documento}` only when the cache is unavailable, behind an automatic circuit breaker and with the default decision if it does not answer in time. | The cache holds the complete list: a document that is not there is not listed, so asking the service again would mean calling it on almost every transaction. |
+
+## Gaps closed on 2026-10-14
+
+| Gap | Decision |
+| :--- | :--- |
+| Circuit breaker of the list service | Automatic. |
+| Consumer Lambda memory | 512 MB, as in the cost table; raised to 1024 MB only if the load test asks for it (~$32 more a month). |
+| SNS filters per recipient on the business alerts topic | Treasury and compliance only get their own emails. No extra cost. |
+| Device history in the cache | A sorted set by date pruned to 30 days per account, like the other windows, instead of a set that expires whole. DynamoDB keeps the durable copy. |
+| Rebuilding the cache from DynamoDB | Ignores anything older than 30 days, because DynamoDB's automatic deletion takes a few days. |
+| Cost figures | Corrected after the load test and the AWS Pricing Calculator, not before. |
+| Case evidence | One object per case in S3 with Object Lock: no unprotected window, ~$3/month with only mule, splitting and restricted list opening cases. Confirmed with tests. |
+| Compliance summary | Every 5 minutes, like the escalation, for the "immediate report" the assignment asks for. |
+| Kinesis Data Firehose for the raw layer | Approved (~$1.89/month plus ~$0.07 of PUTs, against ~$64.80 without batching). Enters the cost table with the post-load-test correction. |
+| Who reviews fallback approvals | The alerts Lambda (see above). |
+| Analyst and risk manager login | Amazon Cognito with an API Gateway authorizer. Documented now, built when AWS is set up; locally simulated with a fixed header. |
+
+## Partner statements
+
+**Decided on 2026-10-14.** Details in [Partner statements](../components/partner-statements.mdx).
+
+| Decision | Why |
+| :--- | :--- |
+| The statements are **built from the transaction generator's output**, which now always writes `events.jsonl`. | They must match what the engine saw, so the reconciliation has something real to find. |
+| Each of the four partners sees **a subset by type and channel** (bank top-ups, cash-in/cash-out network, ATMs, QR acquirer); `P2P` never reaches a partner. | It is how money really leaves and enters a wallet, and it uses fields the generator already sends. |
+| **Rejected and held transactions are left out** when the engine's answer is known. | No money moved. |
+| The day of each file is the **day in the partner's time zone**. | It is the "dates in another time zone" defect, and the reason for the ±1 day tolerance. |
+| An **answer key** (`extracts_report.json`) lists the differences the reconciliation must find. | The reconciliation job will be tested against it. |
+| Same path locally and in the Data Lake: `raw/extractos/<partner>/fecha=YYYY-MM-DD/`. | One partition per partner and day, as each partner delivers it. |
 
 ## Messaging details
 

@@ -77,6 +77,16 @@ docker compose exec localstack awslocal sqs get-queue-attributes \
   --attribute-names ApproximateNumberOfMessages
 ```
 
+## 5. Generate the partner statements
+
+With the generator's output in place, build the four partners' daily files (only approved transactions go through a partner):
+
+```bash
+uv run python -m sources.csv_files.partner_statements
+```
+
+With seed 42 it reads 595 operations and writes 47 files to `generated/extractos/`. Add `EXT_OUTPUT=s3` to also upload them to `s3://pagoseguro-datalake/raw/extractos/`. See [Partner statements](../components/partner-statements.mdx).
+
 ## Things worth trying
 
 | Experiment | What it shows |

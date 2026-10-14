@@ -21,6 +21,9 @@ services/
   consumers/         consumidores de las colas (casos, historial, analítica), con firma de Lambda
 shared/              modelos, conexión a PostgreSQL, clientes de AWS y formato del evento de decisión
 generators/          generador de transacciones con fraude y sus pruebas
+sources/
+  csv_files/
+    partner_statements/  extractos diarios de los 4 socios de pago (CSV y TXT) y sus pruebas
 db/
   seed/              seed de PostgreSQL: usuarios, cuentas, dispositivos, comercios y listas
 infra/
@@ -226,7 +229,9 @@ uv run python -m generators
 Con la semilla 42 y los valores de `.env.example`, debería terminar en
 `Listo: 1035 eventos`. Deja tres archivos:
 
--   `events.jsonl`: lo que recibiría el motor, en orden de envío
+-   `events.jsonl`: lo que recibiría el motor, en orden de envío. Se
+    escribe también con `GEN_OUTPUT=http`, porque de ahí leen los
+    extractos de los socios (paso 13)
 -   `labels.jsonl`: qué patrón es cada evento y qué regla debería disparar
 -   `generation_report.json`: conteos por patrón, por tipo y por defecto
 
@@ -351,6 +356,71 @@ Con la semilla 42 y los consumidores corriendo, `GET /health` termina en
 `publicados: 1000` (1.023 respuestas menos los 23 reenvíos), los archivos
 de `raw/decisiones/` suman 1.000 líneas, una por transacción, y las colas
 y sus `-dlq` quedan en 0.
+
+### Paso 13 --- Generar los extractos de los socios
+
+Cada día, los 4 socios de pago (un banco y tres redes) mandan un archivo
+con lo que pasó por ellos, cada uno en su formato, para la conciliación.
+El generador de extractos los arma a partir de la salida del generador de
+transacciones, así cuadran con lo que vio el motor. Corre primero el
+paso 9 (o el 12) y luego:
+
+``` bash
+uv run python -m sources.csv_files.partner_statements
+```
+
+Con la semilla 42, después del paso 9 debería decir `598 operaciones pasan
+por algún socio` y `Listo: 47 archivos`. Después del paso 12 son 595,
+porque las rechazadas y retenidas no movieron dinero y el socio no las ve.
+
+Solo entran recargas, retiros y pagos QR (las P2P son internas de la
+billetera). Cada socio ve lo suyo según el tipo y el canal:
+
+| Socio | Qué ve | Formato | Fechas |
+|---|---|---|---|
+| `banco_andino` | Recargas por APP y WEB | CSV con comas, fila final `TOTAL` | UTC |
+| `red_corresponsales` | Recargas y retiros en CORRESPONSAL | TXT de ancho fijo (registros H, D y T), montos en unidades mínimas | Bogotá (UTC−5) |
+| `cajeros_express` | Retiros en CAJERO | CSV con punto y coma y coma decimal, línea final `CONTROL` | Bogotá (UTC−5) |
+| `qr_pagos` | Pagos QR | TXT separado por `\|`, control en la primera línea, unidades mínimas | UTC |
+
+Los archivos quedan en
+`generated/extractos/<socio>/fecha=AAAA-MM-DD/<socio>_AAAAMMDD_vN.<ext>`,
+así que cada día llegan los 4 archivos, uno de cada socio (aunque venga
+vacío), más un `_v2` cuando el socio reenvía con correcciones. El día es
+el de la zona horaria del socio.
+
+Defectos que pide el enunciado, con porcentaje configurable en el `.env`:
+
+| Variable | Defecto | Por defecto |
+|---|---|---|
+| `EXT_MISSING_PCT` | El socio no reporta una transacción nuestra | 2 |
+| `EXT_EXTRA_PCT` | El socio reporta una operación que PagoSeguro no tiene | 1 |
+| `EXT_ROUNDING_PCT` | El socio redondea el monto a la unidad | 3 |
+| `EXT_RESEND_PCT` | El socio reenvía el archivo del día (`_v2`) corrigiendo faltantes y redondeos | 10 (de los archivos con algo que corregir) |
+| `EXT_BAD_CONTROL_PCT` | El registro de control no cuadra con el detalle | 10 (de los archivos) |
+
+La otra zona horaria no es un porcentaje: dos socios escriben sus fechas
+en hora de Bogotá.
+
+`generated/extractos/extracts_report.json` es la hoja de respuestas: cada
+defecto inyectado y, en `expected_differences`, lo que la conciliación
+debería encontrar contra la última versión de cada día
+(`MISSING_IN_PARTNER`, `MISSING_IN_PAGOSEGURO` o `AMOUNT_MISMATCH`).
+
+Para subirlos también a la capa raw del Data Lake, con LocalStack
+encendido (paso 5):
+
+``` powershell
+$env:EXT_OUTPUT="s3"
+uv run python -m sources.csv_files.partner_statements
+```
+
+En bash: `EXT_OUTPUT=s3 uv run python -m sources.csv_files.partner_statements`.
+Quedan en `s3://pagoseguro-datalake/raw/extractos/<socio>/fecha=AAAA-MM-DD/`:
+
+``` bash
+docker compose exec localstack awslocal s3 ls s3://pagoseguro-datalake/raw/extractos/ --recursive
+```
 
 ## HU-04 --- Inyección de defectos
 
