@@ -1,0 +1,171 @@
+---
+sidebar_position: 3
+title: Decision engine
+description: The FastAPI service that answers APPROVE, HOLD or REJECT for every transaction.
+---
+
+# Decision engine
+
+**Folder:** `services/decision_engine/` · **Run:** `uv run uvicorn services.decision_engine.main:app --reload`
+
+The engine receives every transaction from the wallet core and answers `APPROVE`, `HOLD` or `REJECT`. In AWS it runs on Fargate behind an ALB; locally, with uvicorn on port 8000. Interactive API docs: http://localhost:8000/docs.
+
+## Endpoints
+
+| Method | Path | What it does |
+| :--- | :--- | :--- |
+| `POST` | `/transactions` | Evaluates a transaction and returns the decision. |
+| `GET` | `/health` | Always `"ok"` while the process runs, plus the publisher counters. |
+
+```json
+GET /health
+{"status": "ok", "messaging": {"pendientes": 0, "publicados": 1000, "fallidos": 0}}
+```
+
+Messaging problems never change `"ok"`: if SNS fails the engine keeps deciding, and the load balancer must not take it out of service.
+
+## Request
+
+```json
+POST /transactions
+{
+  "id": "6f1c…",
+  "type": "P2P",
+  "channel": "APP",
+  "source_account_id": "a3e2…",
+  "destination_account_id": "9b71…",
+  "merchant_id": null,
+  "amount": "125000.00",
+  "currency": "COP",
+  "source_balance_before": "900000.00",
+  "source_balance_after": "775000.00",
+  "destination_balance_before": "10000.00",
+  "destination_balance_after": "135000.00",
+  "device_id": "51d0…",
+  "transaction_date": "2026-10-01T08:15:00+00:00"
+}
+```
+
+| Field | Rule |
+| :--- | :--- |
+| `id` | UUID, chosen by the core. The idempotency key. |
+| `type` | `P2P`, `QR`, `RECARGA` or `RETIRO`. |
+| `channel` | 1 to 30 characters. |
+| Accounts | `P2P`: source and destination. `QR`: source and `merchant_id`. `RECARGA`: destination only. `RETIRO`: source only. Source and destination cannot be the same. |
+| `amount` | Greater than 0. |
+| `currency` | `COP`, `USD`, `EUR` or `JPY`, and it must be the account's currency. |
+| Balances | Every account present must bring its balance before and after. |
+| Decimals | At most 2 (JPY: 0). `88.910` is accepted as `88.91`; `88.913` is rejected, because rounding would change what the core sent. |
+| `device_id` | UUID. It does not need to exist in the database. |
+| `transaction_date` | With time zone. |
+
+There is no `user_id`: the owner comes from the account.
+
+## Response
+
+```json
+{
+  "transaction_id": "6f1c…",
+  "decision": "HOLD",
+  "decision_reason": "Velocidad: 6 transferencias salientes en 10 minutos desde la misma cuenta.",
+  "processed_at": "2026-10-14T00:10:03.512+00:00",
+  "idempotent_replay": false
+}
+```
+
+`idempotent_replay` is `true` when the answer is a stored decision returned to a resend.
+
+## Status codes
+
+| Code | When |
+| :--- | :--- |
+| `200` | Decided (or a resend of an already decided id). |
+| `400` | Invalid body: missing fields, wrong types, wrong accounts for the type, too many decimals. Includes the validator's `errors`. |
+| `409` | The same id is still being decided by another request, or the same id arrived with a different body. |
+| `422` | The body is valid but references something unusable: an account or merchant that does not exist, or a currency that is not the account's. |
+| `503` | Valkey (idempotency) is not available. |
+| `500` | Database error. |
+
+## Rules running today
+
+| Rule | Decision | How |
+| :--- | :--- | :--- |
+| Restricted list | `REJECT` | The owner's document, normalized to digits only, is in `listas_restrictivas`. |
+| Velocity | `HOLD` | More than 5 outgoing **P2P** transfers in 10 minutes from the same account, measured by event time. |
+| Anything else | `APPROVE` | "La transacción no activó las reglas configuradas." |
+
+The restricted list wins over velocity. The velocity transfer is recorded even when another rule decides, because the attempt to transfer still counts. The other rules (mule account, splitting, shared device, account takeover, default decision on timeout, rules from the database) arrive in Sprint 2.
+
+## Request flow
+
+```python
+# services/decision_engine/decision_service.py (simplified)
+def process_transaction(session, payload):
+    transaccion = payload.model_dump(mode="json")
+    firma = idem.huella(transaccion)          # SHA-256 of the normalized body
+
+    previo = idem.reservar(payload.id, firma)  # SET NX in Valkey
+    if previo:
+        return previo, True                    # resend: same decision, not published again
+
+    try:
+        resultado = _decidir(session, payload)  # rules
+    except Exception:
+        idem.liberar(payload.id)               # no decision: let the retry decide
+        raise
+
+    idem.guardar(payload.id, firma, resultado)  # 1 h TTL
+    publisher.publicar(evento_decision(transaccion, resultado))  # does not wait for SNS
+    return resultado, False
+```
+
+The engine **does not write to PostgreSQL**. It only reads accounts, merchants, users and the restricted list. The decision is stored in Valkey and published; the [consumers](./consumers.mdx) store what needs storing.
+
+## Idempotency
+
+`services/decision_engine/idempotency.py`. One Valkey key per transaction, `idem:{id}`:
+
+1. The first request **reserves** the id with `SET NX` and a 30-second TTL, storing `PENDING` and a fingerprint of the body. `SET NX` is atomic, so of two simultaneous requests only one wins.
+2. It decides and **stores** `DONE` with the decision, with a 1-hour TTL (`IDEMPOTENCY_TTL_SECONDS`).
+3. A **resend** with the same body gets the stored decision. If it arrives while the first one is still deciding, it waits up to 100 ms and otherwise gets `409`.
+4. The **same id with a different body** is `409`: it is a core error, not a resend.
+5. If deciding **fails**, the reservation is deleted so the retry can decide. If the process dies mid-decision, the 30-second reservation expires by itself.
+
+## Velocity and out-of-order events
+
+`services/decision_engine/velocity.py`. One sorted set per source account, `vel:{account}`, with the transaction id as member and `transaction_date` in milliseconds as score. Valkey keeps it sorted by score, so **an event that arrives late lands in its real place**, not at the end.
+
+A Lua script does it all atomically (two requests for the same account cannot interleave):
+
+```lua
+-- simplified from velocity.py. KEYS[1] = vel:{account}; ARGV = id, event time (ms), window (ms), history (ms), history (s)
+redis.call('ZADD', KEYS[1], t, ARGV[1])
+-- drop what is older than the history, measured from the most recent event
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', '(' .. corte)
+redis.call('EXPIRE', KEYS[1], ARGV[5])
+-- return the neighbours within ±10 minutes
+return redis.call('ZRANGEBYSCORE', KEYS[1], t - ventana, t + ventana, 'WITHSCORES')
+```
+
+Python then finds the **busiest 10-minute window that contains this transfer**. If the transfer arrived late, transfers processed earlier but that happened after it also count. Decisions already returned never change: if a late transfer completes a window, the late one is held.
+
+| Variable | Default | Meaning |
+| :--- | ---: | :--- |
+| `VELOCITY_WINDOW_MINUTES` | 10 | Window size. |
+| `VELOCITY_LIMIT` | 5 | Held when the window has **more than** this. |
+| `VELOCITY_HISTORY_HOURS` | 24 | History kept per account. An event later than this is evaluated with incomplete history. |
+
+## Publishing the decision
+
+Each new decision is published to SNS by a background thread without making the core wait. See [Messaging](./messaging.mdx).
+
+## Code map
+
+| File | Role |
+| :--- | :--- |
+| `main.py` | FastAPI app, endpoints, error-to-status mapping, graceful shutdown of the publisher. |
+| `schemas.py` | Request and response models and their validation. |
+| `decision_service.py` | Idempotency + rules + publish. |
+| `idempotency.py` | `idem:{id}` keys in Valkey. |
+| `velocity.py` | `vel:{account}` sorted sets and the busiest-window calculation. |
+| `publisher.py` | Background SNS publisher. |

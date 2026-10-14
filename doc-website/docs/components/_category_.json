@@ -1,0 +1,8 @@
+{
+  "label": "Components",
+  "position": 4,
+  "link": {
+    "type": "generated-index",
+    "description": "One page per piece of code in the monorepo: what it does, how to run it and how it works inside."
+  }
+}

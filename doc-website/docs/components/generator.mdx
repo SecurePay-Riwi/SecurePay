@@ -1,0 +1,88 @@
+---
+sidebar_position: 2
+title: Transaction generator
+description: The simulated wallet core that sends transactions with labeled fraud patterns and data defects.
+---
+
+# Transaction generator
+
+**Folder:** `generators/` · **Run:** `uv run python -m generators`
+
+The generator **plays the wallet core**. It reads the seed from PostgreSQL once, keeps the balances in memory and produces a stream of transactions with fraud patterns and data quality defects. Every event carries a label the engine never sees, so we can check afterwards whether the engine got it right.
+
+## Output: file or HTTP
+
+| `GEN_OUTPUT` | What happens |
+| :--- | :--- |
+| `file` (default) | Writes the events to `generated/instance-0/events.jsonl` without sending them. Useful to inspect the stream without the engine. |
+| `http` | Sends each event to the engine (`GEN_ENGINE_URL`) at `GEN_RATE` events per second, and stores the answer. See [Simulate the full flow](../getting-started/simulate-full-flow.mdx). |
+
+`file` is the default on purpose: an old `.env` without `GEN_*` variables never sends events to an engine by accident.
+
+Each run leaves three files in `generated/instance-<n>/`:
+
+| File | Content |
+| :--- | :--- |
+| `events.jsonl` | What the engine would receive, in sending order (`file` mode only). |
+| `labels.jsonl` | Per event: pattern, whether it is fraud, the rule it should trigger and, in `http` mode, the engine's answer. |
+| `generation_report.json` | Counts by type, pattern, defect and response status, plus every injected defect. |
+
+With seed 42 and the default `.env.example` the run ends with `Listo: 1035 eventos`, identical on Windows and Linux.
+
+## What it sends
+
+Transactions go to `POST /transactions`. The format is described in [Decision engine](./decision-engine.mdx#request). Normal traffic is a mix of:
+
+| Type | Weight | Accounts | Channels |
+| :--- | ---: | :--- | :--- |
+| `P2P` | 40% | Source and destination | `APP`, `WEB` |
+| `QR` | 30% | Source + merchant | `APP` |
+| `RECARGA` (top-up) | 15% | Destination only | `APP`, `WEB`, `CORRESPONSAL` |
+| `RETIRO` (withdrawal) | 15% | Source only | `CORRESPONSAL`, `CAJERO` |
+
+Normal amounts are USD 1 to 150 (top-ups USD 10 to 300), converted to each account's currency with Frankfurter rates saved in `generators/data/tasas_2026-10-01.json`. Transfers only happen between accounts in the same currency.
+
+Security events (`DEVICE_CHANGE`, `PASSWORD_CHANGE`) go to `POST /security-events`, which the engine does not have yet: they answer `404` until the account takeover rule arrives.
+
+## Fraud patterns
+
+One pattern per rule, each with a **control case** that stays just on the side that must *not* fire the rule. If the engine flags a control case, the engine is wrong.
+
+| Pattern | Rule it imitates | Fraud | Control |
+| :--- | :--- | :--- | :--- |
+| `VELOCITY` | More than 5 outgoing transfers in 10 minutes from the same account | 6 transfers in 8 minutes | 5 transfers in 8 minutes |
+| `MULE` | Receives from 3 or more different senders and withdraws 80% or more of the balance in under 30 minutes | 3 senders, 90% withdrawn at minute 20 | 2 senders, same withdrawal |
+| `SPLITTING` | 3 or more transactions in 24 hours, each under the daily reporting limit (USD 10,000) and together above it | 3 withdrawals of USD 3,400–3,900 | 3 withdrawals of USD 2,000–3,000 |
+| `ACCOUNT_TAKEOVER` | Device change + password change + transaction over USD 200, all within 1 hour | Transaction 20 minutes after the device change | Transaction 70 minutes after |
+| `RESTRICTED_LIST` | The owner's document is in a restricted list | 1 transaction from a listed customer | None: being on the list is exact. The hard case (same document in another format) comes from the seed. |
+
+`GEN_FRAUD_PERCENTAGE` (default 5) sets how much of the stream belongs to a pattern. The thresholds live in one place, `REGLAS` in `generators/config.py`.
+
+## Data defects
+
+Applied on the generated stream, in sending order, without touching balances or labels. Each one is recorded in the report.
+
+| Defect | Variable | Default | What the engine must do |
+| :--- | :--- | ---: | :--- |
+| Resend: the same transaction, same id, twice | `GEN_DUPLICATE_PERCENTAGE` | 2% | Return the same decision (idempotency). |
+| Out of order: an event arrives after later ones | `GEN_OUT_OF_ORDER_PERCENTAGE` | 2% | Count it where it really belongs in time. |
+| Extra decimals: amount with more decimals than its currency allows | `GEN_DECIMAL_DEFECT_PERCENTAGE` | 1% | Accept `88.910` as `88.91`; reject `88.913` with `400`. |
+
+## How it works inside
+
+- **`catalog.py`** reads the accounts, devices and special accounts (restricted list, shared devices) once.
+- **`core.py`** is the simulated core: a clock, the balances and a schedule. Patterns do not emit their events at once; they schedule them for a future date and the core delivers them when the clock gets there, mixed with normal traffic. Balances move at delivery, so "before" and "after" always add up in date order.
+- **`patterns.py`** has one class per pattern; `CICLO` alternates fraud and control for each one.
+- **`defects.py`** applies the three defects.
+- **`sender.py`** has the outputs (`SalidaHttp`, `SalidaArchivo`) and the report. In `http` mode a network error is retried with the **same id**, which is safe because the engine is idempotent.
+- **`money.py`** converts between USD and each currency with the saved rates; `fetch_rates.py` downloaded them once from Frankfurter v2 (v1 has no COP).
+
+## Load test settings
+
+| Variable | Use |
+| :--- | :--- |
+| `GEN_MODE=prod` | 1,000,000 transactions over a sample of 50,000 accounts. |
+| `GEN_TRANSACTIONS`, `GEN_MAX_ACCOUNTS` | Override the volume or the account sample. |
+| `GEN_RATE` | Events per second (0 = as fast as possible). |
+| `GEN_INSTANCE_INDEX` / `GEN_INSTANCE_COUNT` | Run several generators at once: instance *i* of *n* only takes its own accounts, so two instances never move the same balance. |
+| `GEN_TX_PER_ACCOUNT_DAY` | Average transactions per account per day; sets how fast simulated time moves, so a normal account never fires a rule by chance. |
