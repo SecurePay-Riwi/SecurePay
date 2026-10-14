@@ -1,0 +1,51 @@
+---
+sidebar_position: 3
+title: Glossary
+description: Business and technical terms used across the project, in plain words.
+---
+
+# Glossary
+
+## Business terms
+
+| Term | Meaning |
+| :--- | :--- |
+| **Wallet core** | The system of the wallet that moves money. It asks the engine for a decision before each transaction. In the simulation the [generator](../components/generator.mdx) plays it. |
+| **APPROVE / HOLD / REJECT** | The three possible decisions. A transaction is only rejected when the owner is on a restricted list; the other rules hold. |
+| **Case** | A held transaction that goes to the analyst's inbox. Only mule account, splitting and restricted list open one ([Team decisions](../architecture/team-decisions.mdx)). |
+| **Fallback** | The default decision when the engine is too slow: approve under USD 50, hold from USD 50. Always flagged for review. |
+| **Velocity** | More than 5 outgoing transfers in 10 minutes from the same account. |
+| **Mule account** | An account that receives from 3 or more different senders and withdraws 80% or more of its balance in under 30 minutes. |
+| **Transaction splitting** | 3 or more transactions in 24 hours, each under the daily reporting limit but together above it, to avoid being reported. |
+| **Shared device** | One device used on more than 3 accounts in 30 days. Raises the risk of the accounts involved. |
+| **Account takeover** | Device change + password change + a transaction over USD 200, all within 1 hour. |
+| **Restricted list** | Documents of people the wallet must not serve. Stored with digits only. |
+| **Reconciliation** | Daily comparison of each payment partner's file against PagoSeguro's records. Accounting, not fraud detection. |
+| **Control case** | A generated pattern that stays just on the side that must *not* fire a rule. If the engine flags it, the engine is wrong. |
+| **Canonical document** | A document number with digits only (`1000000016`), no dots, prefix or spaces. |
+
+## Technical terms
+
+| Term | Meaning |
+| :--- | :--- |
+| **Idempotency** | Sending the same transaction twice gives the same result once. The engine stores each decision under `idem:{id}` for 1 hour. |
+| **Out-of-order event** | An event that arrives after others that happened later. The engine places it by `transaction_date`, not by arrival. |
+| **Valkey** | Open source fork of Redis. Locally a container; in AWS, ElastiCache Serverless. Holds everything the engine needs in under a millisecond. |
+| **Sorted set** | A Valkey structure that keeps members ordered by a score. Used for the velocity history, with the event time as score. |
+| **SNS vs SQS** | SNS pushes a copy of each message to every subscriber and does not store it. SQS stores a message until one consumer processes and deletes it. The engine publishes to SNS and SNS copies to three queues: that pattern is **fan-out**. |
+| **Dead-letter queue (DLQ)** | Where SQS moves a message after 5 failed attempts, so a broken message is not retried forever. Kept 14 days; sent back with **redrive** once the cause is fixed. |
+| **Raw message delivery** | SNS option that delivers the message to SQS as published, without its JSON envelope. |
+| **`ReportBatchItemFailures`** | A Lambda answering which messages of a batch failed, so only those return to the queue. |
+| **LocalStack** | Emulates AWS services (SNS, SQS, S3) on your machine. Development only. |
+| **`EVENTO_NO_PUBLICADO`** | Log mark for a decision event that could not be published to SNS. A CloudWatch alarm will watch it. |
+| **Medallion layers** | The three Data Lake layers: `raw` (bronze, as it arrived), `curated` (silver, clean and deduplicated Parquet) and `analytics` (gold, dimensional model for the dashboard). |
+| **Circuit breaker** | Code in the engine that stops calling the restricted list service for a while after several failures, instead of waiting on a dead service. |
+| **Fargate / ECS / ECR** | ECR stores Docker images, ECS keeps the containers running, Fargate runs them without servers. |
+| **Lambda** | Runs code only when something happens (a message, a request, a schedule). Pays per invocation and per millisecond. |
+| **EMR Serverless** | Runs Spark jobs without a cluster to manage; pays only while the job runs. |
+| **Step Functions** | Orchestrates multi-step processes (order, waits, retries). Used only for reconciliation. |
+| **EventBridge Scheduler** | The alarm clock: wakes up scheduled processes. |
+| **Glue Data Catalog / Athena** | The catalog describes the tables stored in S3; Athena runs SQL over them. Power BI connects to Athena. |
+| **Object Lock (COMPLIANCE)** | S3 setting that makes objects impossible to modify or delete until retention ends, not even by an administrator. Used for 10-year case evidence. |
+| **Terraform** | Describes the infrastructure in files. `plan` shows changes, `apply` creates, `destroy` deletes everything. |
+| **uv** | Python package and environment manager. `uv sync` installs, `uv run` executes. |
