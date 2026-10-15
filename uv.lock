@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 
 [[package]]
@@ -602,6 +602,7 @@ dependencies = [
     { name = "httpx" },
     { name = "psycopg", extra = ["binary"] },
     { name = "python-dotenv" },
+    { name = "securepay-sources-api" },
     { name = "sqlalchemy" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "valkey" },
@@ -620,6 +621,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" },
     { name = "python-dotenv", specifier = ">=1.2.4" },
+    { name = "securepay-sources-api", git = "https://github.com/SecurePay-Riwi/securepay-sources-api.git?rev=main" },
     { name = "sqlalchemy", specifier = ">=2.1.4" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
     { name = "valkey", specifier = ">=6.2.0" },
@@ -627,6 +629,14 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9.1.1" }]
+
+[[package]]
+name = "securepay-sources-api"
+version = "0.1.0"
+source = { git = "https://github.com/SecurePay-Riwi/securepay-sources-api.git?rev=main#ad9a8ac7a642985e01a3e1a9c1931f134538adce" }
+dependencies = [
+    { name = "httpx" },
+]
 
 [[package]]
 name = "six"
