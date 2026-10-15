@@ -37,16 +37,22 @@ All three queues are consumed by Lambda. If case processing turns out heavier, t
 
 Frequencies are defined; durations are not measured. That decides whether EMR Serverless stays at $7.50/month or drops to about $4.
 
+## 🔵 EKS against Fargate for the decision engine
+
+Measured in week 5 with a short EKS deployment (see [ADR-06](./decisions.mdx#adr-06)): p99 latency at 50, 150 and 300 tx/s, deployment and operation effort, and monthly cost at production size.
+
 ## 🟡 Ohio prices
 
 Figures were built with `us-east-1` rates. SNS, NAT Gateway, interface endpoints and cross-AZ transfer are verified in `us-east-2`. The rest is checked with the AWS Pricing Calculator export.
 
-## ❗ S3 PUT requests are not costed
+## 🟡 S3 PUT requests are not in the cost table yet
+
+Both writes were decided on 2026-10-14 ([Team decisions](./team-decisions.mdx#gaps-closed-on-2026-10-14)); their cost joins the table with the correction after the load test.
 
 | Write | Situation |
 | :--- | :--- |
-| Data Lake raw layer | One object per batch of 10 messages would be 12.96 M PUTs, $64.80/month, plus a small files problem. Grouping into ~5 MB objects with Kinesis Data Firehose costs ~$0.07 + ~$1.89. 🟡 Approved in principle, not in the cost table yet. |
-| Evidence in Glacier IR | One object per case costs ~$3/month at a realistic case rate; sealing in batches is cheaper but leaves a window where evidence is not yet immutable. The team chose not to sacrifice security. |
+| Data Lake raw layer | One object per batch of 10 messages would be 12.96 M PUTs, $64.80/month, plus a small files problem. Grouping into ~5 MB objects with Kinesis Data Firehose costs ~$0.07 + ~$1.89. Approved: Firehose writes the raw layer in AWS. |
+| Evidence in Glacier IR | One object per case costs ~$3/month at a realistic case rate; sealing in batches is cheaper but leaves a window where evidence is not yet immutable. Decided: one object per case, so there is no unprotected window. |
 
 ## Other open items
 

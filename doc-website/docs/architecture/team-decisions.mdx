@@ -70,6 +70,20 @@ A resent transaction gets the same decision for 1 hour (`IDEMPOTENCY_TTL_SECONDS
 | The core reports balances before and after | Like PaySim. The engine does not keep balances; the mule rule uses the balance in the transaction. |
 | No transfers between different currencies | The assignment does not ask for it and it adds complexity. |
 
+## Card payment history: Sparkov {/* #card-payment-history-sparkov */}
+
+**Decided on 2026-10-14, after talking with the professor.**
+
+The assignment names a Kaggle credit card dataset as the card payment history. After discussing it with the professor, we agreed not to use that dataset and to replace it with the one he suggested, [Sparkov](https://www.kaggle.com/datasets/kartik2112/fraud-detection) (`kartik2112/fraud-detection`), because its data is actually useful for the project.
+
+| Decision | Why |
+| :--- | :--- |
+| The assignment's card dataset is **not used**. | Its columns `V1`..`V28` are anonymized and it has no card number, merchant or sequence of operations, so no rule can be measured with it. |
+| **Sparkov** replaces it: ~1.85 million simulated card transactions (2019–2020, `fraudTrain.csv` and `fraudTest.csv`). | It has the card number (`cc_num`), merchant, category, amount, date and time, and the `is_fraud` label. |
+| It is a **separate history**, like PaySim: it is not linked to the seed users and never goes through the engine. | It is labeled history, not live traffic. |
+| Uses: measure candidate rules for merchant payments with Spark (for example, velocity per card, since today the velocity rule does not count QR payments), risk per merchant and category on the dashboard, and a reference fraud rate. | PaySim keeps covering transfers (mule account). |
+| Raw layer `raw/kaggle/sparkov/` as downloaded; the curated layer drops the fictitious personal data (name, address, birth date) and stores the card as a hash. | Same layers as every other source. |
+
 ## Restricted list service
 
 **Decided on 2026-10-14.**
@@ -92,7 +106,7 @@ A resent transaction gets the same decision for 1 hour (`IDEMPOTENCY_TTL_SECONDS
 | Device history in the cache | A sorted set by date pruned to 30 days per account, like the other windows, instead of a set that expires whole. DynamoDB keeps the durable copy. |
 | Rebuilding the cache from DynamoDB | Ignores anything older than 30 days, because DynamoDB's automatic deletion takes a few days. |
 | Cost figures | Corrected after the load test and the AWS Pricing Calculator, not before. |
-| Case evidence | One object per case in S3 with Object Lock: no unprotected window, ~$3/month with only mule, splitting and restricted list opening cases. Confirmed with tests. |
+| Case evidence | One object (file) per case in S3 with Object Lock: each file is locked the moment it is written, so there is no unprotected window. ~$3/month with only mule, splitting and restricted list opening cases. The tests check our Terraform configuration, not S3 itself: after a case closes, deleting or overwriting its evidence must fail with access denied (proving the bucket was created with the default retention), and they confirm the real cost per file (Glacier Instant Retrieval bills at least 128 KB each). |
 | Compliance summary | Every 5 minutes, like the escalation, for the "immediate report" the assignment asks for. |
 | Kinesis Data Firehose for the raw layer | Approved (~$1.89/month plus ~$0.07 of PUTs, against ~$64.80 without batching). Enters the cost table with the post-load-test correction. |
 | Who reviews fallback approvals | The alerts Lambda (see above). |

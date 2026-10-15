@@ -29,7 +29,7 @@ The decision must come back in **under 200 ms (p99)** at a sustained 50 transact
 - **Production is designed complete; development is cheap and intermittent**, created and destroyed with Terraform.
 - **The functionality the assignment asks for is mandatory**; the technologies can change when the change is argued (see [Architecture decisions](./architecture/decisions.mdx)).
 
-## What exists today (end of Sprint 1)
+## What exists today
 
 | Piece | Folder | Status |
 | :--- | :--- | :--- |
@@ -40,6 +40,7 @@ The decision must come back in **under 200 ms (p99)** at a sustained 50 transact
 | [Consumers](./components/consumers.mdx) | `services/consumers/` | Analytics writes to S3; cases and history are skeletons. |
 | [Partner statements](./components/partner-statements.mdx) | `sources/csv_files/partner_statements/` | Done: daily files of the four payment partners, with their defects, locally and in LocalStack. |
 | [Restricted list service](./components/restricted-list.mdx) | `sources/apis/restricted_list/` | Done: simulated external provider with full-list and per-document endpoints, random latency and outages; reads the list the seed exports. |
+| Kaggle history and daily exchange rates | — | In progress. |
 | AWS infrastructure (Terraform) | `infra/` | Designed, not built yet. |
 
 The details of what was delivered and what is pending are in the [Sprint 1 review](./product-backlog/sprint-1-review.mdx).
