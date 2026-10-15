@@ -34,6 +34,8 @@ At the end of Sprint 1 the suite had **107 tests**; with the partner statements 
 | Consumers | `services/consumers/tests/test_consumers.py` | Nothing: SQS and S3 are faked. |
 | End-to-end messaging | `services/consumers/tests/test_localstack_flow.py` | LocalStack. |
 | Partner statements | `sources/csv_files/partner_statements/tests/` | Nothing: they build their own operations and fake S3. |
+| Restricted list service | `sources/apis/restricted_list/tests/` | Nothing, except one test that reads from S3 in LocalStack (skipped when it is off). |
+| Seed export of the list | `db/seed/tests/` | Nothing. |
 
 If a service is off, its tests are **skipped** (`s`) instead of failing, except the API tests, which fail with `503` when Valkey is down.
 

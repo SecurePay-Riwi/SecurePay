@@ -222,6 +222,27 @@ There is no order yet; we have a list of what the client wants:
 - PR #6 merged: idempotency moved to Valkey and the new transaction format; the engine no longer writes to PostgreSQL.
 - PR #7 merged: velocity rule measured by event time, so out-of-order events are counted correctly.
 - PR #8 merged: asynchronous messaging with SNS + SQS on LocalStack, base Docker Compose and Lambda-style consumers.
+- PR #9 merged: this documentation site rewritten in English for Sprint 1 (setup, architecture, components, reference).
 - Team decision: only mule account, transaction splitting and restricted list open a case. Fallback approvals open no case; they are flagged and re-evaluated when the engine recovers.
 - Kerlys left the project; her stories are unassigned.
 - All Sprint 1 stories marked as done in Jira. See the [Sprint 1 review](./product-backlog/sprint-1-review.mdx).
+
+---
+
+**10/14/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Data sources and final architecture  
+
+**Description:**  
+- PR #10 merged: daily statements of the four payment partners, with their defects and an answer key for the reconciliation.
+- PR #11 merged: simulated restricted list provider (slow and with outages), fed by a file the seed exports.
+- Architecture document v2.0: final infrastructure design (network, security groups, IAM roles, secrets, resource inventory).
+- PR #12 merged: architecture summary and AWS infrastructure pages on this site.
+- Decision with the professor: the card payment history uses the Sparkov dataset instead of the one in the assignment (see [Team decisions](./architecture/team-decisions.mdx#card-payment-history-sparkov)).
