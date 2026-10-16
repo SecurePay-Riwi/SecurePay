@@ -1,7 +1,31 @@
 {
-  "USD": {
-    "COP": "3317.65",
-    "EUR": "0.88285",
-    "JPY": "157.77"
-  }
+  "fuente": "https://api.frankfurter.dev/v2/rates?date=2026-10-01&base=USD&quotes=COP,EUR,JPY",
+  "fecha": "2026-10-01",
+  "base": "USD",
+  "tasas": {
+    "USD": 1,
+    "COP": 3317.65,
+    "EUR": 0.88286,
+    "JPY": 157.78
+  },
+  "respuesta": [
+    {
+      "date": "2026-10-01",
+      "base": "USD",
+      "quote": "COP",
+      "rate": 3317.65
+    },
+    {
+      "date": "2026-10-01",
+      "base": "USD",
+      "quote": "EUR",
+      "rate": 0.88286
+    },
+    {
+      "date": "2026-10-01",
+      "base": "USD",
+      "quote": "JPY",
+      "rate": 157.78
+    }
+  ]
 }
