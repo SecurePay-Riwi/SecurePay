@@ -65,7 +65,7 @@ async def consultar(documento: str, request: Request):
 
 The wait uses `asyncio.sleep`, so one slow request does not block the others: 200 parallel requests finish in about the maximum latency (3.5 s measured), with about 5% of 503s.
 
-## How the system uses it
+## How the system uses it (bitácora 3.12)
 
 1. A daily Lambda (EventBridge) calls `GET /lista` and loads the full list into the engine's cache, like the exchange-rate task does with Frankfurter.
 2. The engine checks **only the cache**. A document that is not in the full cached list is not listed; the provider is not asked again.

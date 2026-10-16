@@ -61,6 +61,16 @@ See [Decision engine](../components/decision-engine.mdx).
 
 See [Messaging](../components/messaging.mdx).
 
+## Kaggle datasets
+
+| Variable | Default | What it does |
+| :--- | :--- | :--- |
+| `KAGGLE_API_TOKEN` | empty | Your personal Kaggle token ([kaggle.com/settings/api](https://www.kaggle.com/settings/api)). Only needed to download. **Only in your `.env`, never in the repository.** |
+| `KAGGLE_DOWNLOAD_DIR` | `data/kaggle` | Local folder for the CSV files (ignored by Git). |
+| `KAGGLE_FORCE_DOWNLOAD` | `false` | `true` downloads again even if the CSV is already in the folder. |
+
+It also uses `DATALAKE_BUCKET` and the shared AWS variables. See [Kaggle datasets](../components/kaggle-datasets.mdx).
+
 ## Docker Compose
 
 | Variable | Default | What it does |

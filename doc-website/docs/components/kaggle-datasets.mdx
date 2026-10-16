@@ -1,0 +1,67 @@
+---
+sidebar_position: 8
+title: Kaggle datasets
+description: Download, validate and load PaySim and Credit Card Fraud into the raw layer of the Data Lake, untouched, with a manifest and idempotent re-runs.
+---
+
+# Kaggle datasets
+
+**Folder:** `sources/csv_files/kaggle/` · **Run:** `uv run python -m sources.csv_files.kaggle`
+
+Two historical fraud datasets from Kaggle. **The engine does not use them.** They are loaded as they arrived into the `raw/` layer of the Data Lake so Spark can process them later. Nothing is cleaned, filtered or transformed.
+
+| Dataset | File | Rows (no header) | Columns |
+| :--- | :--- | :--- | :--- |
+| `ealaxi/paysim1` | `PS_20174392719_1491204439457_log.csv` | 6,362,620 | 11 (`step` … `isFlaggedFraud`) |
+| `mlg-ulb/creditcardfraud` | `creditcard.csv` | 284,807 | 31 (`Time`, `V1`–`V28`, `Amount`, `Class`) |
+
+:::caution
+`fraudTest.csv` (`kartik2112/fraud-detection`, used by the PostgreSQL ETL in `db/datasets/`) is a **different** dataset from `creditcard.csv`. It does not pass the Credit Card validation and cannot replace it.
+:::
+
+## What it does
+
+For each dataset, in order:
+
+1. **Download** with the Kaggle Python API into `KAGGLE_DOWNLOAD_DIR`. If the CSV is already there it is not downloaded again (PaySim weighs ~470 MB), unless `KAGGLE_FORCE_DOWNLOAD=true`. The token (`KAGGLE_API_TOKEN`) is only read from the environment.
+2. **Validate** that the file exists, the header matches exactly (names and order) and the row count matches. The file is read in blocks and by lines, never loaded whole. Any mismatch raises an error and nothing is uploaded.
+3. **Skip if already loaded:** if the manifest in S3 has the same SHA-256 and the CSV is there with the same size, it prints `ya cargado` and uploads nothing.
+4. **Upload** the CSV with the shared client (`shared.aws.cliente`) and, only when it finished, write the manifest. A failed upload never leaves a success manifest.
+
+If one dataset fails, the other is still processed and the command exits with code 1.
+
+## S3 layout
+
+| Object | Key |
+| :--- | :--- |
+| PaySim | `raw/kaggle/paysim/paysim.csv` |
+| PaySim manifest | `raw/kaggle/paysim/_manifest.json` |
+| Credit Card | `raw/kaggle/creditcard/creditcard.csv` |
+| Credit Card manifest | `raw/kaggle/creditcard/_manifest.json` |
+
+Keys carry no date: it is a one-time history, so a re-run overwrites the same file instead of creating copies.
+
+```json
+{
+  "dataset": "ealaxi/paysim1",
+  "archivo_original": "PS_20174392719_1491204439457_log.csv",
+  "filas": 6362620,
+  "columnas": ["step", "type", "amount", "..."],
+  "sha256": "(computed hash)",
+  "bytes": 0,
+  "cargado_en": "2026-10-15T14:03:11Z"
+}
+```
+
+## Check it
+
+```bash
+uv run python -m sources.csv_files.kaggle   # uploaded
+uv run python -m sources.csv_files.kaggle   # already loaded
+uv run python -c "from shared.aws import cliente; [print(o['Key'], o['Size']) for o in cliente('s3').list_objects_v2(Bucket='pagoseguro-datalake', Prefix='raw/kaggle/')['Contents']]"
+uv run pytest sources/csv_files/kaggle
+```
+
+The last command lists 4 objects. The tests need neither Kaggle nor internet; the S3 integration test skips itself when LocalStack is down.
+
+See [Configuration](../reference/configuration.mdx#kaggle-datasets) for the variables.

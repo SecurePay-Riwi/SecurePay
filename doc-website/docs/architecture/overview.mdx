@@ -1,5 +1,5 @@
 ---
-sidebar_position: 2
+sidebar_position: 1
 title: Architecture overview
 description: How a transaction travels through the AWS architecture, and what happens after the decision.
 ---
@@ -10,7 +10,7 @@ Event-driven microservices, serverless first, in Ohio (`us-east-2`) across two A
 
 ![PagoSeguro architecture flow on AWS](/img/architecture-flow.jpg)
 
-*The diagram labels are in Spanish; the legend at the bottom explains the colors of each flow.* <a href={require('@site/static/img/architecture-flow.jpg').default} target="_blank">Open full size</a>.
+*The diagram labels are in Spanish. Color = flow: orange is the real-time decision, blue the asynchronous processing, green the batch jobs and the Data Lake, purple analytics and the dashboard, gray rule and case management.* <a href={require('@site/static/img/architecture-flow.jpg').default} target="_blank">Open full size</a>.
 
 ## In one paragraph
 
@@ -24,10 +24,10 @@ Nothing comes from a real system:
 | :--- | :--- | :--- |
 | [Seed](../components/seed.mdx) | Users, accounts, devices, merchants and restricted lists in PostgreSQL. | Done |
 | [Transaction generator](../components/generator.mdx) | Plays the wallet core: transaction stream with fraud patterns and defects. | Done |
-| Kaggle datasets | PaySim (transfers) and Sparkov (card payments): labeled history for rule effectiveness, never sent through the engine (see [Team decisions](./team-decisions.mdx#card-payment-history-sparkov)). | In progress |
+| Kaggle datasets | Labeled historical transactions for rule effectiveness. | Planned |
 | [Partner statements](../components/partner-statements.mdx) | Daily files from four payment partners, for reconciliation, built from the generator's output with the assignment's defects. | Done (local and LocalStack) |
-| Exchange rates | Frankfurter public API (v2), once a day. | In progress (the generator already uses a saved snapshot) |
-| Restricted list service | A simulated service that is slow and fails on purpose, protected by a circuit breaker. It serves the list the seed exports to S3 (see [Restricted list service](../components/restricted-list.mdx)). | Done (local and LocalStack) |
+| Exchange rates | Frankfurter public API (v2), once a day. | Planned (the generator already uses a saved snapshot) |
+| Restricted list service | A simulated service that is slow and fails on purpose, protected by a circuit breaker. It serves the list the seed exports to S3 (see [Team decisions](./team-decisions.mdx#restricted-list-service)). | Designed |
 
 ## The path of a transaction, in under 200 ms
 
