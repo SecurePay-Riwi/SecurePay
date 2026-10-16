@@ -85,7 +85,22 @@ With the generator's output in place, build the four partners' daily files (only
 uv run python -m sources.csv_files.partner_statements
 ```
 
-With seed 42 it reads 595 operations and writes 47 files to `generated/extractos/`. Add `EXT_OUTPUT=s3` to also upload them to `s3://pagoseguro-datalake/raw/extractos/`. See [Partner statements](../components/partner-statements.mdx).
+With seed 42 it reads 595 operations and writes 47 files to `generated/extractos/`. Set `EXT_OUTPUT=s3` to also upload them to `s3://pagoseguro-datalake/raw/extractos/`:
+
+PowerShell:
+
+```powershell
+$env:EXT_OUTPUT="s3"
+uv run python -m sources.csv_files.partner_statements
+```
+
+Bash:
+
+```bash
+EXT_OUTPUT=s3 uv run python -m sources.csv_files.partner_statements
+```
+
+See [Partner statements](../components/partner-statements.mdx).
 
 ## Things worth trying
 

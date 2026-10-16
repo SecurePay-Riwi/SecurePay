@@ -182,9 +182,9 @@ usan los servicios reales.
     vuelve a crear todo vacío.
 
 Para apagar: `docker compose stop`. El Compose también trae PostgreSQL
-(`docker compose up -d` levanta los tres) en el puerto **5433**, para no
+(`docker compose up -d` levanta los tres) en el puerto **5434**, para no
 chocar con un PostgreSQL instalado. Si lo usas en vez de los pasos 3 y 4,
-pon el puerto 5433 en `DATABASE_URL`.
+pon el puerto 5434 en `DATABASE_URL`.
 
 ### Paso 6 --- Crear el `.env`
 
