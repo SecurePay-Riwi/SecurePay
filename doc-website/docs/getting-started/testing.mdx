@@ -1,5 +1,5 @@
 ---
-sidebar_position: 3
+sidebar_position: 4
 title: Testing
 description: How to run the tests, what each suite covers and how to read the results.
 ---
@@ -25,7 +25,7 @@ docker compose up -d
 **2. Load the seed.** The engine API tests need the users, accounts and restricted list in PostgreSQL:
 
 ```bash
-uv run python -m db.seed
+uv run python -m db.seed.seed
 ```
 
 **3. Run everything from the repository root:**
