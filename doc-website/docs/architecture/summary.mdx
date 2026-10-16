@@ -1,30 +1,10 @@
 ---
 sidebar_position: 1
 title: Architecture summary
-description: The problem, the solution, the services we use and why, how the design meets the requirements, and what it costs.
+description: The solution, the services we use, how the design meets the requirements, and what it costs.
 ---
 
 # Architecture summary
-
-A short version of the architecture for reviewers. Every section points to the page with the details.
-
-## The problem {/* #problem */}
-
-PagoSeguro is a digital wallet with 2.3 million users. It handles top-ups, transfers between people, QR payments at merchants and cash withdrawals at agents, in four currencies. Fraud grew 60% last year, mostly through three patterns: account takeover, mule accounts that receive money and withdraw it fast, and fake merchants. The financial supervisor also requires suspicious operations to be reported and the evidence to be kept for ten years.
-
-Today the antifraud rules are written inside the core system: changing one takes weeks and a deployment. Reconciliation with banks and agents is manual.
-
-| Current pain | Goal |
-| :--- | :--- |
-| Fraud losses of 0.35% of volume | Under 0.15% |
-| 70% false positives: legitimate customers blocked | Under 40% |
-| Changing a rule takes weeks | Risk activates or changes rules without deploying code |
-| Reconciliation differences unexplained for over 10 days | Reconcile 99.5% the next day, before 07:00 |
-| Supervisor reports built by hand | Automatic suspicious-operations report |
-
-**The technical requirement that shapes everything else:** every transaction gets a decision (approve, hold or reject) in under 200 ms, at 50 transactions per second sustained and 300 at peak, and the service keeps working if one AWS Availability Zone goes down. Seven of the twelve business rules need data that changes with every transaction, such as "more than 5 transfers in 10 minutes" or "3 different senders in 30 minutes". Querying a database for that on every transaction does not fit in 200 ms.
-
-## The solution {/* #solution */}
 
 **Event-driven microservices, managed services first**, in AWS Ohio (`us-east-2`) across two Availability Zones. The core idea is to split the system into two paths.
 
@@ -42,56 +22,11 @@ If one queue falls behind, the others keep going.
 
 ![PagoSeguro architecture flow on AWS](/img/architecture-flow.jpg)
 
-*Diagram labels are in Spanish.* <a href={require('@site/static/img/architecture-flow.jpg').default} target="_blank">Open full size</a>. Details in [Architecture overview](./overview.mdx).
+*Diagram labels are in Spanish.* <a href={require('@site/static/img/architecture-flow.jpg').default} target="_blank">Open full size</a>. The role of each service is in [System overview](./overview.mdx) and the step-by-step path in [Data flow](./data-flow.mdx).
 
-### Where the data comes from {/* #data-sources */}
+## The services we use {/* #services */}
 
-Nothing comes from a real system. The team built the simulators, which already run locally:
-
-| Source | What it is | Status |
-| :--- | :--- | :--- |
-| Users and devices database | Reproducible seed in PostgreSQL: users, accounts, devices, merchants and restricted list | Built |
-| Core stream | Generator acting as the core, with one labeled fraud pattern per rule and the defects the assignment asks for | Built |
-| Statements from 4 partners | Daily files in different formats with injected differences | Built |
-| Restricted lists | Simulated service, slow (50 ms to 3 s) and with outages | Built |
-| Exchange rates | Frankfurter public API, daily | In progress |
-| Labeled history | PaySim (transfers) and Sparkov (cards), from Kaggle | In progress |
-
-## The services we use and why {/* #services */}
-
-The general rule: **pay for capacity where volume is high and pay per use where it is low**, and always prefer a service AWS runs for us, because the team has six weeks and the time must go to the business rules.
-
-| Need | Service | Why this one | Discarded |
-| :--- | :--- | :--- | :--- |
-| Receive 129.6 million transactions a month | **Application Load Balancer** | ~$25/month and no added latency | API Gateway: ~$129/month and 10–20 ms more |
-| Run the decision engine | **ECS Fargate**, 4 to 24 tasks | Constant load: ~$72 against ~$235 on Lambda, no cold starts | Lambda for the engine; EKS ($73/month just for the control plane) |
-| State that changes with every transaction | **ElastiCache Serverless (Valkey)** | Memory in milliseconds, grows by itself, replicated across zones | DynamoDB per transaction: ~$105/month; fixed nodes, because the size must be guessed |
-| Decouple what happens afterwards | **SNS + 3 SQS queues** with dead-letter queues | Each consumer fails and recovers alone; the queues absorb the peak | RabbitMQ (we would run it); Kafka/MSK (~$70/month minimum) |
-| Low-volume components (APIs, consumers, tasks) | **Lambda** (12 functions) | Pay per use: ~$41 against ~$108 with containers always on | Everything on Fargate |
-| Business data: users, rules, cases, reconciliation | **RDS PostgreSQL** `db.t3.micro`, Multi-AZ | Relational, automatic failover; it does not store transactions, so the smallest instance is enough | Aurora (~3 times the cost); self-managed PostgreSQL on EC2 |
-| Durable, infrequent data | **DynamoDB** | Device-account pairs with automatic 30-day expiry, and the daily rates | |
-| Data Lake and evidence | **S3** in three layers (raw, curated, analytics) and **Firehose** to batch the writes | Cheap storage; Firehose avoids millions of small files (~$2 against ~$65/month) | |
-| Immutable evidence for 10 years | **S3 Object Lock** in COMPLIANCE mode, Glacier Instant Retrieval class | Nobody can delete it, not even the account administrator; ~83% cheaper than S3 Standard | Locking in the application |
-| Batch jobs with Spark | **EMR Serverless** | Managed Spark, paid per minute of use | Spark on our own containers; Glue ETL (minimum charge per run) |
-| Orchestration and scheduling | **Step Functions** (reconciliation) and **EventBridge Scheduler** | Free at our volume, no servers | Airflow with Celery |
-| Query and show | **Glue Data Catalog + Athena + Power BI** | SQL straight on S3, no data movement, no cluster running | Redshift (~$180/month minimum) |
-| Analyst and risk manager access | **API Gateway + Cognito** | Managed sign-in with groups per role | |
-| Infrastructure | **Terraform** and **GitHub Actions** | Create and destroy everything with one command; CI blocks the merge if anything fails | Creating resources by hand in the console |
-
-**Locally** we use **LocalStack**, which emulates the AWS services in a container. The same code runs on a laptop and on AWS.
-
-The highest-impact choices are recorded as [architecture decisions](./decisions.mdx):
-
-| ADR | Decision |
-| :--- | :--- |
-| [01](./decisions.mdx#adr-01) | The engine sits behind a load balancer, not API Gateway |
-| [02](./decisions.mdx#adr-02) | Fargate for the engine, Lambda for everything else |
-| [03](./decisions.mdx#adr-03) | The engine's state lives in ElastiCache Serverless for Valkey |
-| [04](./decisions.mdx#adr-04) | Messaging with SNS and three SQS queues |
-| [05](./decisions.mdx#adr-05) | Spark on EMR Serverless |
-| [06](./decisions.mdx#adr-06) | Managed services instead of the self-managed stack named in the assignment (RabbitMQ, Airflow, own Spark, EKS) |
-| [07](./decisions.mdx#adr-07) | Engine autoscaling goes up to 24 tasks, to cover the peak even with one zone down |
-| [08](./decisions.mdx#adr-08) | Private subnets reach AWS services through a NAT Gateway, not private endpoints (same cost, simpler) |
+The general rule: **pay for capacity where volume is high and pay per use where it is low**, and always prefer a service AWS runs for us, because the team has six weeks and the time must go to the business rules. Each service, its purpose and why it was chosen are in [AWS infrastructure](./infrastructure.mdx#services); the highest-impact choices are recorded as [architecture decisions](./decisions.mdx).
 
 ## How the design meets the requirements {/* #requirements */}
 
@@ -107,27 +42,11 @@ The highest-impact choices are recorded as [architecture decisions](./decisions.
 | **Suspicious-operations report** | Recorded immediately at decision time, summary to compliance every 5 minutes |
 | **Simulate a rule without touching production** | Spark evaluates the candidate rule on the labeled history, with the same interpreter as the engine, on separate compute |
 
-Network, security groups, IAM roles and the full resource list are in [AWS infrastructure](./infrastructure.mdx).
+Network, security groups and IAM roles are in [Security](./security.mdx); the full resource list in [AWS infrastructure](./infrastructure.mdx).
 
 ## What the solution costs {/* #cost */}
 
 **Production: ≈ $333 a month. Development: ≈ $17 a month**, because the development environment is destroyed between work sessions. Figures use AWS published prices for Ohio and a load of 50 tx/s sustained (129.6 million transactions a month).
-
-| Service | USD per month |
-| :--- | ---: |
-| NAT Gateway ×2 | 72.51 |
-| Fargate (engine) | 72.08 |
-| Lambda | 40.60 |
-| SQS | 31.10 |
-| RDS PostgreSQL Multi-AZ | 30.88 |
-| Application Load Balancer | 25.19 |
-| ElastiCache Serverless | 22.87 |
-| CloudWatch and alarms | 10.45 |
-| EMR Serverless | 7.50 |
-| SNS | 6.23 |
-| Others (X-Ray, S3, data transfer, Athena, API Gateway, DynamoDB, ECR, backups) | 13.80 |
-| 13 services free at our volume (EventBridge, Step Functions, IAM, KMS, Glue Catalog, among others) | 0.00 |
-| **Total** | **≈ 333.21** |
 
 **Why this is the lowest-cost option:**
 
@@ -137,13 +56,4 @@ Network, security groups, IAM roles and the full resource list are in [AWS infra
 | Everything on Fargate containers | ≈ $401 | Pays for idle containers for the low-volume components |
 | The assignment's stack: RabbitMQ, Airflow, own Spark, EKS | ≈ $320 without high availability | Adding broker and Airflow replicas to survive a zone outage makes it more expensive, and the team would run four systems |
 
-**What the load test calibrates.** Some numbers depend on the real code and are confirmed by the load test at 50, 150 and 300 tx/s, the full-size seed and the first Spark runs. They are **parameters adjusted without changing services or flow**:
-
-| Parameter | Expected value | If the measurement differs |
-| :--- | :--- | :--- |
-| Requests per second per engine task | 25 | The autoscaling minimum and maximum are adjusted |
-| Cache memory | ~300 MB plus ~100 MB of velocity history | Each extra 100 MB is ~$6/month |
-| Consumer Lambda memory | 512 MB | At 1024 MB it would be ~$33/month more |
-| Duration of each Spark job | ~10 minutes | The EMR cost is proportional to the time |
-
-A few small lines already identified join the table in that same correction: Firehose, the extra cache memory and the real messaging batch size. Together they add $12 to $15 a month, so the expected cost stays between $330 and $350. Full breakdown in [AWS services and costs](./aws-services-and-costs.mdx).
+Some figures, such as requests per task, cache memory and Spark job duration, are confirmed by the load test and the first real runs; they are parameters adjusted without changing services or flow. Full breakdown in [AWS services and costs](./aws-services-and-costs.mdx), and how each estimate was calculated in [AWS infrastructure](./infrastructure.mdx#estimates).

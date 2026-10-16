@@ -1,12 +1,12 @@
 ---
 sidebar_position: 3
 title: Testing
-description: How to run the test suite and what each group of tests needs.
+description: How to run the tests, what each suite covers and how to read the results.
 ---
 
 # Testing
 
-The tests live inside each component (`services/*/tests/`, `generators/tests/`, `sources/**/tests/`, `db/seed/tests/`). pytest finds them through `pyproject.toml`:
+The suite has **153 tests**. They live inside each component (`services/*/tests/`, `generators/tests/`, `sources/**/tests/`, `db/seed/tests/`), and pytest finds them through `pyproject.toml`:
 
 ```toml
 [tool.pytest.ini_options]
@@ -14,43 +14,94 @@ pythonpath = ["."]
 testpaths = ["services", "generators", "sources", "db"]
 ```
 
-Run everything from the repository root:
+## How to run the tests
+
+**1. Start the local services**, so that no test is skipped (see [Local setup](./local-setup.mdx)):
+
+```bash
+docker compose up -d
+```
+
+**2. Load the seed.** The engine API tests need the users, accounts and restricted list in PostgreSQL:
+
+```bash
+uv run python -m db.seed
+```
+
+**3. Run everything from the repository root:**
 
 ```bash
 uv run pytest
 ```
 
-At the end of Sprint 1 the suite had **107 tests**; with the partner statements it had **126**, and with the restricted list service it has **147**.
-
-## What each group needs
-
-| Tests | Folder | Needs |
-| :--- | :--- | :--- |
-| Generator (catalog, core, money, defects, rules, sender) | `generators/tests/` | Nothing: they do not touch the database. |
-| Request schema | `services/decision_engine/tests/test_schemas.py` | Nothing. |
-| API | `services/decision_engine/tests/test_api.py` | PostgreSQL **with the seed loaded** and Valkey. |
-| Idempotency and velocity | `test_idempotency_valkey.py`, `test_velocity_valkey.py` | Valkey. |
-| Publisher | `test_publisher.py` | Nothing: SNS is faked. |
-| Consumers | `services/consumers/tests/test_consumers.py` | Nothing: SQS and S3 are faked. |
-| End-to-end messaging | `services/consumers/tests/test_localstack_flow.py` | LocalStack. |
-| Partner statements | `sources/csv_files/partner_statements/tests/` | Nothing: they build their own operations and fake S3. |
-| Restricted list service | `sources/apis/restricted_list/tests/` | Nothing, except one test that reads from S3 in LocalStack (skipped when it is off). |
-| Seed export of the list | `db/seed/tests/` | Nothing. |
-
-If a service is off, its tests are **skipped** (`s`) instead of failing, except the API tests, which fail with `503` when Valkey is down.
-
-## Useful commands
+**Run only part of the suite:**
 
 ```bash
 uv run pytest generators                 # only the generator
 uv run pytest services/decision_engine   # only the engine
+uv run pytest services/consumers         # only the consumers and messaging
 uv run pytest sources/csv_files          # only the partner statements
-uv run pytest sources/apis db            # only the restricted list service and the seed export
+uv run pytest sources/apis               # restricted list service and exchange rates
+uv run pytest db                         # only the seed export
 uv run pytest -k velocity                # tests whose name contains "velocity"
-uv run pytest -rs                        # show why tests were skipped
+uv run pytest -rs                        # also show why each test was skipped
+uv run pytest -x                         # stop at the first failure
 ```
+
+## What each suite covers
+
+| Suite | Folder | Tests | What it checks | Needs |
+| :--- | :--- | ---: | :--- | :--- |
+| Generator | `generators/tests/` | 26 | Same seed gives the same events; ids never repeat; balances chain and never go negative; amounts respect each currency's decimals; fraud labels never reach the engine; each fraud pattern fires only its own rule and every control case stays legitimate; the three defects (resends, out-of-order events, extra decimals) appear and are listed in the report | Nothing |
+| Request schema | `services/decision_engine/tests/test_schemas.py` | 8 | Valid transactions of each type are accepted; invalid values, wrong accounts for the type and same source and destination are rejected; amounts written differently produce the same JSON | Nothing |
+| Engine API | `services/decision_engine/tests/test_api.py` | 16 | The HTTP endpoint end to end: `400`, `409`, `422` and `500` answers; a repeated transaction gets the same decision; simultaneous requests decide only once; a restricted-list owner is rejected; the sixth transfer in 10 minutes is held; the decision is published once; the engine still answers when SNS is down; response time | PostgreSQL **with the seed** and Valkey |
+| Idempotency | `test_idempotency_valkey.py` | 7 | The first request reserves the id; a retry while pending waits; a retry after the decision gets the saved result; the same id with a different body is rejected | Valkey |
+| Velocity | `test_velocity_valkey.py` | 12 | The 10-minute window and its edge; five transfers pass and six are held; late events count by event time, not arrival; a resent id is not counted twice; history older than the retention is pruned | Valkey |
+| Publisher | `test_publisher.py` | 6 | Batches of 10; publishing never makes the answer wait; only failed entries are retried; a full buffer or a missing topic is recorded without blocking | Nothing: SNS is faked |
+| Consumers | `services/consumers/tests/test_consumers.py` | 8 | Analytics writes the batch as JSON lines; a broken message fails alone; an unknown event version is rejected; only successful messages are deleted from the queue | Nothing: SQS and S3 are faked |
+| End-to-end messaging | `services/consumers/tests/test_localstack_flow.py` | 2 | Each decision reaches the three queues and the analytics consumer writes it to the raw layer | LocalStack |
+| Partner statements | `sources/csv_files/partner_statements/tests/` | 16 | Each format reads back; each operation belongs to one partner; the file day is the partner's time zone; defect proportions; the answer key matches what reconciliation must find; upload to the raw layer | Nothing: they build their own operations and fake S3 |
+| Restricted list service | `sources/apis/restricted_list/tests/` | 12 | Listed and unlisted documents; invalid document is `400`; full list; simulated outages (`503`) and latency; refuses to start without its file | Nothing, except one test that reads from S3 in LocalStack |
+| Exchange rates | `sources/apis/exchange_rates/tests/` | 6 | The four currencies come back as `Decimal`; a missing currency, mixed dates or a zero rate raise an error; a `503` is retried and then fails | Nothing: Frankfurter is faked |
+| Seed export | `db/seed/tests/` | 3 | One person per line sorted by document; same file whatever the database order; empty list | Nothing |
+
+## How to read the results
+
+pytest prints one character per test while it runs and a summary line at the end:
+
+| Mark | Meaning | What to do |
+| :--- | :--- | :--- |
+| `.` | Passed | Nothing. |
+| `s` | Skipped: a service it needs (Valkey or LocalStack) is off | Start it with `docker compose up -d` and run again. `-rs` says which service. |
+| `F` | Failed: the code did not do what the test expects | Read the assertion under `FAILURES`; it shows the expected and the actual value. |
+| `E` | Error while preparing the test (a fixture failed) | Usually configuration: a wrong `.env` value or a missing seed. |
+
+**A healthy run** with every service up and the seed loaded ends with all tests passed:
+
+```text
+153 passed in 15.20s
+```
+
+**The same run with nothing started** (no Docker) looks like this. It is expected, not a bug:
+
+```text
+14 failed, 121 passed, 18 skipped in 14.61s
+```
+
+- The **18 skipped** are the Valkey and LocalStack tests: they detect the service is off and skip themselves.
+- The **14 failed** are the engine API tests. They do not skip: the engine answers `503` when Valkey is down, so they fail on purpose to make the missing dependency visible.
+
+**Common causes of a failure:**
+
+| Symptom | Likely cause |
+| :--- | :--- |
+| API tests fail with `503` | Valkey is not running. |
+| API tests fail with `422` (account not found) | The seed is not loaded, or it was loaded with another seed value. Reload it with `SEED_RESET=true`. |
+| Velocity or idempotency results look shifted | Keys left over from a previous run. Clean Valkey (see [Simulate the full flow](./simulate-full-flow.mdx#1-clean-valkey)). |
+| A generator test with exact counts fails | Something changed the generator's randomness; with seed 42 it must always produce 1,035 events. |
 
 ## Conventions
 
 - Each rule's fraud pattern has a **control case** that sits just on the side that must *not* trigger the rule. If the engine flags a control case, the engine is wrong.
 - The generator is deterministic: with seed 42 it always produces 1,035 events, the same on Windows and Linux. Tests can rely on exact counts.
+- Test names describe the behavior they check (`test_sixth_transfer_in_ten_minutes_is_held`), so a failure line already says what broke.
