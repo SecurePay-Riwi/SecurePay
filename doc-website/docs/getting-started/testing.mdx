@@ -6,12 +6,12 @@ description: How to run the tests, what each suite covers and how to read the re
 
 # Testing
 
-The suite has **153 tests**. They live inside each component (`services/*/tests/`, `generators/tests/`, `sources/**/tests/`, `db/seed/tests/`), and pytest finds them through `pyproject.toml`:
+The suite has **181 tests**. They live inside each component (`services/*/tests/`, `generators/tests/`, `sources/**/tests/`, `db/seed/tests/`, `shared/tests/`), and pytest finds them through `pyproject.toml`:
 
 ```toml
 [tool.pytest.ini_options]
 pythonpath = ["."]
-testpaths = ["services", "generators", "sources", "db"]
+testpaths = ["services", "generators", "sources", "db", "shared"]
 ```
 
 ## How to run the tests
@@ -40,9 +40,10 @@ uv run pytest
 uv run pytest generators                 # only the generator
 uv run pytest services/decision_engine   # only the engine
 uv run pytest services/consumers         # only the consumers and messaging
-uv run pytest sources/csv_files          # only the partner statements
+uv run pytest sources/csv_files          # partner statements and Kaggle datasets
 uv run pytest sources/apis               # restricted list service and exchange rates
 uv run pytest db                         # only the seed export
+uv run pytest shared                     # only the shared database connection
 uv run pytest -k velocity                # tests whose name contains "velocity"
 uv run pytest -rs                        # also show why each test was skipped
 uv run pytest -x                         # stop at the first failure
@@ -63,7 +64,9 @@ uv run pytest -x                         # stop at the first failure
 | Partner statements | `sources/csv_files/partner_statements/tests/` | 16 | Each format reads back; each operation belongs to one partner; the file day is the partner's time zone; defect proportions; the answer key matches what reconciliation must find; upload to the raw layer | Nothing: they build their own operations and fake S3 |
 | Restricted list service | `sources/apis/restricted_list/tests/` | 12 | Listed and unlisted documents; invalid document is `400`; full list; simulated outages (`503`) and latency; refuses to start without its file | Nothing, except one test that reads from S3 in LocalStack |
 | Exchange rates | `sources/apis/exchange_rates/tests/` | 6 | The four currencies come back as `Decimal`; a missing currency, mixed dates or a zero rate raise an error; a `503` is retried and then fails | Nothing: Frankfurter is faked |
+| Kaggle datasets | `sources/csv_files/kaggle/tests/` | 24 | Header, column order and row count are validated before anything is uploaded; the SHA-256 and the manifest; the CSV is uploaded before the manifest and a failed upload leaves no manifest; an already loaded file is not uploaded again; download only when needed and a clear error without a token | Nothing, except one test that uploads to LocalStack |
 | Seed export | `db/seed/tests/` | 3 | One person per line sorted by document; same file whatever the database order; empty list | Nothing |
+| Database connection | `shared/tests/` | 4 | PostgreSQL URLs always use the psycopg 3 driver | Nothing |
 
 ## How to read the results
 
@@ -79,16 +82,16 @@ pytest prints one character per test while it runs and a summary line at the end
 **A healthy run** with every service up and the seed loaded ends with all tests passed:
 
 ```text
-153 passed in 15.20s
+181 passed
 ```
 
 **The same run with nothing started** (no Docker) looks like this. It is expected, not a bug:
 
 ```text
-14 failed, 121 passed, 18 skipped in 14.61s
+14 failed, 148 passed, 19 skipped in 16.17s
 ```
 
-- The **18 skipped** are the Valkey and LocalStack tests: they detect the service is off and skip themselves.
+- The **19 skipped** are the Valkey and LocalStack tests: they detect the service is off and skip themselves.
 - The **14 failed** are the engine API tests. They do not skip: the engine answers `503` when Valkey is down, so they fail on purpose to make the missing dependency visible.
 
 **Common causes of a failure:**

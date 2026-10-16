@@ -11,50 +11,18 @@ proyecto construye una plataforma antifraude basada en reglas
 configurables, con flujo de revisión de casos y conciliación diaria con
 socios de pago.
 
-## Estructura del repositorio
+## Funcionalidades desarrolladas
 
-Monorepo: una carpeta por cada pieza que se despliega por separado.
+El repositorio reúne los componentes trabajados hasta el momento:
 
-```
-services/
-  decision_engine/   motor de decisión (FastAPI, POST /transactions) y sus pruebas
-  consumers/         consumidores de las colas (casos, historial, analítica), con firma de Lambda
-shared/              modelos, conexión a PostgreSQL, clientes de AWS y formato del evento de decisión
-generators/          generador de transacciones con fraude y sus pruebas
-sources/
-  csv_files/
-    partner_statements/  extractos diarios de los 4 socios de pago (CSV y TXT) y sus pruebas
-  apis/
-    restricted_list/     servicio simulado del proveedor de listas restrictivas y sus pruebas
-db/
-  seed/              seed de PostgreSQL: usuarios, cuentas, dispositivos, comercios y listas
-infra/
-  localstack/init/   crea en LocalStack el tema SNS, las colas SQS y los buckets (Data Lake y proveedor de listas)
-docker-compose.yml   PostgreSQL, Valkey y LocalStack para desarrollo local
-```
-
-Las carpetas se nombran con guion bajo (`decision_engine`) porque Python
-no puede importar módulos con guion. Más adelante se agregan los
-APIs y las tareas programadas dentro de `services/`, `jobs/` para
-PySpark y Terraform dentro de `infra/`.
-
-## Cómo viaja una decisión
-
-```
-core (generador) ──HTTP──▶ motor ──▶ responde al core (no espera a nadie)
-                             │
-                             └─ hilo de fondo ──▶ SNS "decisiones"
-                                                   ├─▶ SQS "casos"      ─▶ consumidor de casos
-                                                   ├─▶ SQS "historial"  ─▶ consumidor de historial
-                                                   └─▶ SQS "analitica"  ─▶ consumidor de analítica ─▶ S3 raw/
-```
-
-Cada cola tiene su cola de errores (`casos-dlq`, ...): un mensaje que
-falla 5 veces pasa ahí y se guarda 14 días. En AWS, SNS, SQS y S3 son los
-servicios reales y los consumidores son Lambdas; en local los imita
-LocalStack y los consumidores corren con
-`uv run python -m services.consumers`. El código es el mismo: solo cambia
-`AWS_ENDPOINT_URL`, que en local apunta a LocalStack.
+- Motor antifraude con API FastAPI y reglas de decisión.
+- Seed de datos maestros para PostgreSQL y generador de transacciones de prueba.
+- Pruebas automatizadas para los componentes del proyecto.
+- Simulación local de mensajería con SNS/SQS y almacenamiento en S3 mediante LocalStack.
+- Generación de extractos de socios para el proceso de conciliación.
+- Servicio simulado de listas restrictivas.
+- HU-04: inyección configurable de defectos en los documentos generados por el seed.
+- Integración de datasets históricos de Kaggle para cargar muestras en PostgreSQL y para el flujo independiente de carga al Data Lake.
 
 ## Requisitos
 
@@ -64,6 +32,59 @@ LocalStack y los consumidores corren con
 -   [Docker Desktop](https://www.docker.com/products/docker-desktop/) (para Valkey y LocalStack)
 -   Una cuenta gratuita de [LocalStack](https://app.localstack.cloud) (plan Hobby) para su token
 -   Git
+
+## Datasets históricos (Kaggle)
+
+El ETL de PostgreSQL utiliza dos datasets históricos para cargar una muestra de transacciones en la tabla `transacciones`. Los CSV pesan cientos de MB, por lo que **no se guardan en Git**. Descárgalos y guárdalos en `data/raw/` en la raíz del proyecto.
+
+| Dataset | Página en Kaggle | Archivo requerido |
+|---|---|---|
+| PaySim (transacciones financieras sintéticas) | [kaggle.com/datasets/ealaxi/paysim1](https://www.kaggle.com/datasets/ealaxi/paysim1) | `PS_20174392719_1491204439457_log.csv` |
+| Fraud Detection | [kaggle.com/datasets/kartik2112/fraud-detection](https://www.kaggle.com/datasets/kartik2112/fraud-detection) | `fraudTest.csv` |
+
+### Cómo descargar y ubicar los CSV
+
+1. Inicia sesión en [Kaggle](https://www.kaggle.com).
+2. Abre los enlaces anteriores, descarga los datasets y descomprime los ZIP.
+3. En la raíz del proyecto, crea la carpeta `data/raw/` si todavía no existe.
+4. Copia allí los dos archivos con sus nombres originales:
+
+```text
+data/raw/PS_20174392719_1491204439457_log.csv
+data/raw/fraudTest.csv
+```
+
+No cambies los nombres de los archivos. No es necesario subirlos a GitHub ni incluirlos en un commit.
+
+### Descarga alternativa por terminal
+
+Si tienes instalada la [Kaggle CLI](https://github.com/Kaggle/kaggle-api) y configurado el token de tu cuenta en `~/.kaggle/kaggle.json`, puedes ejecutar:
+
+```bash
+mkdir -p data/raw
+kaggle datasets download -d ealaxi/paysim1 -p data/raw --unzip
+kaggle datasets download -d kartik2112/fraud-detection -f fraudTest.csv -p data/raw --unzip
+```
+
+### Verificar que Git ignora los CSV
+
+Desde la raíz del repositorio:
+
+```bash
+git check-ignore -v data/raw/fraudTest.csv data/raw/PS_20174392719_1491204439457_log.csv
+git status --short
+```
+
+El primer comando debe mostrar la regla de `.gitignore` que excluye los archivos. `git status` no debe listar los CSV. La carpeta `data/raw/` es local y no se publica en GitHub.
+
+### Dos flujos distintos de uso de Kaggle
+
+- **ETL de PostgreSQL (paso 8b):** usa `PS_20174392719_1491204439457_log.csv` y `fraudTest.csv`, ubicados en `data/raw/`. Carga una muestra en la tabla `transacciones`.
+- **Carga al Data Lake (paso 8c):** usa PaySim y el dataset independiente `creditcard.csv`, ubicado en `data/kaggle/`. No usa PostgreSQL ni modifica sus tablas.
+
+`fraudTest.csv` y `creditcard.csv` son datasets diferentes y no se sustituyen entre sí. Si ejecutas ambos flujos, revisa la ubicación que requiere cada uno; no es necesario guardar los CSV en Git.
+
+Para cargar una muestra de los datasets históricos en PostgreSQL, sigue el [Paso 8b](#paso-8b-----cargar-los-datasets-históricos-de-kaggle-etl).
 
 ## Instalación y ejecución
 
@@ -223,6 +244,222 @@ SELECT COUNT(*) FROM usuarios;
 
 Debería devolver `100`.
 
+### Paso 8b --- Cargar los datasets históricos de Kaggle (ETL)
+
+Es opcional y va **después del seed** (paso 7): el ETL reparte las
+transacciones de Kaggle entre los usuarios, dispositivos y comercios que el
+seed ya creó, así que sin seed no tiene a quién asignarlas. Además necesitas
+los dos CSV en `data/raw/` (ver "Datasets históricos (Kaggle)").
+
+``` bash
+# 1. Ver qué haría, sin escribir nada en la base de datos
+uv run python -m db.datasets.etl --dry-run
+
+# 2. Cargar las transacciones
+uv run python -m db.datasets.etl
+```
+
+Puede tardar desde unos segundos hasta un par de minutos según el computador,
+porque lee las 6,3 millones de filas de PaySim.
+Solo **lee** usuarios, dispositivos y comercios, y solo **escribe** en la tabla
+`transacciones`. Se puede correr varias veces: no duplica nada. La
+semilla (`SEED`, 42) es la misma del seed y del generador.
+
+#### Qué hace, y por qué
+
+1.  **Verifica el SHA-256 de los CSV.** Con otra versión del archivo la
+    muestra saldría distinta, así que si el hash no coincide con el del
+    equipo se detiene y lo dice.
+2.  **Toma una muestra fija de cada dataset:** 50.000 filas de PaySim y 20.000
+    de fraudTest, con **3 % de fraude** en cada una. El fraude se fija a
+    propósito: al azar sería de 0,13 % (PaySim) y 0,39 % (fraudTest) y el
+    motor antifraude casi no tendría casos con qué validarse.
+3.  **Se queda solo con lo que `transacciones` puede guardar** (tabla de
+    abajo) y descarta las filas con monto 0 (16 en PaySim), que no son pagos
+    válidos.
+4.  **Genera lo que falta con la semilla:** usuario, dispositivo, comercio y
+    canal. Los fraudes y las transacciones normales se reparten al azar entre
+    todos los usuarios. Es reproducible porque el azar sale siempre de la
+    misma semilla y se consume en el mismo orden.
+5.  **Mantiene los datos coherentes:** ninguna transacción es anterior a la
+    existencia de su dispositivo ni del comercio, y se usan solo
+    dispositivos de uso propio, para no alterar los casos de dispositivo
+    compartido del seed.
+6.  **Inserta con IDs deterministas** (`uuid5` de la fila de origen), por eso
+    repetir el ETL no duplica y cada transacción se puede rastrear hasta su
+    fila del CSV.
+
+| Columna de `transacciones` | PaySim | fraudTest |
+|---|---|---|
+| `amount` | `amount` | `amt` |
+| `is_fraud` | `isFraud` | `is_fraud` |
+| `transaction_date` | `step` (la hora 1 queda 31 días antes de la fecha de referencia; minutos y segundos se sortean) | `trans_date_trans_time`, corrida para terminar justo antes de la fecha de referencia (los datos son de 2020 y ningún usuario del seed existía) |
+| `channel` | según `type`: TRANSFER → P2P, PAYMENT → QR, CASH_IN → RECARGA, CASH_OUT y DEBIT → RETIRO, con los canales que usa el generador para cada uno | categorías `*_net` → WEB; el resto → APP |
+| `merchant_id` | comercio activo al azar | comercio activo de la categoría equivalente (las 14 de fraudTest se agrupan en las 5 del seed; ver `CATEGORIA_FRAUDTEST`) |
+| `user_id`, `device_id` | al azar, entre los del seed | al azar, entre los del seed |
+| `fraud_pattern` | `kaggle_paysim_<type>` (solo en fraudes) | `kaggle_fraudtest_<category>` (solo en fraudes) |
+
+No se guardan los saldos de PaySim ni los demás campos de fraudTest (tarjeta,
+nombre, dirección, etc.) porque `transacciones` no tiene dónde ponerlos.
+Los montos se cargan tal cual vienen de Kaggle, sin convertirlos a la moneda
+de la cuenta: la tabla no guarda moneda.
+
+#### Comprobar que todos obtienen los mismos datos
+
+Al terminar, el ETL imprime una **huella SHA-256 del lote**. Con los mismos
+CSV, el mismo seed, la misma semilla y los valores por defecto de abajo, debe
+salir exactamente esta (modo `dev`: 100 usuarios, 50 comercios):
+
+```
+91cd7780583096db95f351cb09825a96515f87a065fe328ef94c42c85347cbf8
+```
+
+Ese valor se obtuvo en Linux con PostgreSQL 16. Si a alguien le sale otro:
+
+1.  Revisen el SHA-256 de los CSV (el ETL ya lo hace y avisa).
+2.  Revisen que el `.env` sea el mismo (`SEED`, `SEED_MODE`, `SEED_USERS`...) y
+    que la base se haya sembrado desde cero con `SEED_RESET=true`.
+3.  Revisen que nadie haya cambiado las variables `HIST_*` de abajo.
+4.  Ejecuten `uv sync` para tener las mismas versiones de `uv.lock`.
+
+#### Variables opcionales
+
+Si las cambian, **todos deben usar los mismos valores** y la huella cambiará.
+
+| Variable | Por defecto | Qué controla |
+|---|---|---|
+| `HIST_PAYSIM_FILAS` | 50000 | Transacciones que se toman de PaySim |
+| `HIST_PAYSIM_FRAUDE_PCT` | 3 | Porcentaje de ellas que son fraude |
+| `HIST_FRAUDTEST_FILAS` | 20000 | Transacciones que se toman de fraudTest |
+| `HIST_FRAUDTEST_FRAUDE_PCT` | 3 | Porcentaje de ellas que son fraude |
+| `HIST_RAW_DIR` | `data/raw` | Carpeta de los CSV |
+
+`SEED_RESET=true` en el seed vacía también `transacciones`: después de
+resembrar hay que volver a correr el ETL. Las pruebas del ETL (no usan la
+base de datos ni los CSV reales) se corren con:
+
+``` bash
+uv run pytest db/datasets
+```
+
+### Paso 8c --- Cargar PaySim y Credit Card Fraud al Data Lake (S3)
+
+Descarga los dos datasets de Kaggle, los valida y los deja **tal cual
+llegaron** (sin transformar) en la capa cruda del Data Lake, para que
+después los procese Spark. El motor no los consume. No usa PostgreSQL ni
+toca ninguna tabla.
+
+**Antes de empezar:** LocalStack levantado (paso 5, el bucket
+`pagoseguro-datalake` ya existe) y el `.env` creado (paso 6).
+
+#### Requisitos y configuración
+
+-   Python 3.12, `uv` y Docker Desktop (para LocalStack).
+-   Un token de Kaggle: [kaggle.com/settings/api](https://www.kaggle.com/settings/api)
+    → *Generate New Token*. Va **solo en tu `.env`**, nunca en el repo ni en
+    la consola compartida. En `.env.example` la variable está vacía.
+
+``` env
+KAGGLE_API_TOKEN=tu_token
+KAGGLE_DOWNLOAD_DIR=data/kaggle
+# KAGGLE_FORCE_DOWNLOAD=true   # vuelve a descargar aunque el CSV ya exista
+DATALAKE_BUCKET=pagoseguro-datalake
+```
+
+`data/` está en el `.gitignore`: los CSV nunca van a Git.
+
+#### Dónde van los CSV
+
+Si ya tienes los archivos, no hace falta token: coloca los archivos que requiere este flujo en
+`data/kaggle/` y el comando no vuelve a descargarlos. Este flujo es independiente del ETL de PostgreSQL del paso 8b.
+
+``` text
+data/kaggle/PS_20174392719_1491204439457_log.csv   # ealaxi/paysim1
+data/kaggle/creditcard.csv                         # mlg-ulb/creditcardfraud
+```
+
+#### Ejecutar
+
+``` bash
+uv run python -m sources.csv_files.kaggle
+```
+
+Para cada dataset: descarga (si falta), valida existencia, encabezado exacto
+(columnas y orden) y número de filas, calcula el SHA-256, sube el CSV y,
+**solo cuando terminó bien**, escribe el manifiesto. Si algo no coincide con
+el contrato no sube nada de ese dataset y el comando termina con código 1
+(el otro dataset se procesa igual).
+
+| Dataset | Archivo | Filas (sin encabezado) | Columnas |
+|---|---|---|---|
+| `ealaxi/paysim1` | `PS_20174392719_1491204439457_log.csv` | 6.362.620 | 11: `step, type, amount, nameOrig, oldbalanceOrg, newbalanceOrig, nameDest, oldbalanceDest, newbalanceDest, isFraud, isFlaggedFraud` |
+| `mlg-ulb/creditcardfraud` | `creditcard.csv` | 284.807 | 31: `Time, V1 … V28, Amount, Class` |
+
+Los valores del contrato están en `sources/csv_files/kaggle/config.py`. Si un
+archivo real no los cumple, **no los cambies en el código**: avisa a Jorge.
+
+#### Rutas en S3
+
+| Objeto | Ruta |
+|---|---|
+| PaySim | `s3://pagoseguro-datalake/raw/kaggle/paysim/paysim.csv` |
+| Manifiesto de PaySim | `s3://pagoseguro-datalake/raw/kaggle/paysim/_manifest.json` |
+| Credit Card | `s3://pagoseguro-datalake/raw/kaggle/creditcard/creditcard.csv` |
+| Manifiesto de Credit Card | `s3://pagoseguro-datalake/raw/kaggle/creditcard/_manifest.json` |
+
+Las rutas no llevan fecha: es un histórico, y volver a correr el comando
+sobrescribe el mismo archivo en vez de crear copias. El manifiesto es la
+señal de "carga completa" y trae `dataset`, `archivo_original`, `filas`,
+`columnas`, `sha256`, `bytes` y `cargado_en` (UTC).
+
+#### Verificar los objetos
+
+Deben verse 4 objetos:
+
+``` bash
+uv run python -c "from shared.aws import cliente; [print(o['Key'], o['Size']) for o in cliente('s3').list_objects_v2(Bucket='pagoseguro-datalake', Prefix='raw/kaggle/')['Contents']]"
+```
+
+#### Comprobar la idempotencia
+
+Corre el comando dos veces. La segunda debe mostrar `ya cargado` en los dos
+datasets y no subir nada (compara el SHA-256 del archivo local con el del
+manifiesto y comprueba que el CSV siga en S3 con el mismo tamaño):
+
+``` bash
+uv run python -m sources.csv_files.kaggle   # subido
+uv run python -m sources.csv_files.kaggle   # ya cargado
+```
+
+#### Pruebas
+
+No descargan de Kaggle ni usan internet: crean CSV pequeños en directorios
+temporales. La prueba contra S3 se salta sola si LocalStack no está levantado.
+
+``` bash
+uv run pytest sources/csv_files/kaggle
+```
+
+#### Advertencias de tamaño
+
+-   PaySim pesa ~470 MB y tiene 6,3 millones de filas; Credit Card, ~150 MB.
+    La descarga depende de tu conexión.
+-   El archivo se lee **por bloques y por líneas**, nunca entero en memoria
+    (no se usa pandas), pero se recorre dos veces (hash y conteo): espera
+    del orden de decenas de segundos por dataset en un computador normal,
+    más el tiempo de subida.
+-   Necesitas ~650 MB libres en `data/kaggle/`.
+
+#### Errores frecuentes
+
+| Mensaje | Causa y solución |
+|---|---|
+| `Falta KAGGLE_API_TOKEN en el .env` | Falta el token y el CSV no está en `data/kaggle/`. Ponlo en tu `.env` o copia el CSV a mano. |
+| `tiene N filas y se esperaban M` / `el encabezado ... no coincide` | El archivo no es el del contrato (versión distinta u otro dataset, p. ej. `fraudTest.csv` en vez de `creditcard.csv`). No se sube nada; avisa a Jorge. |
+| `no existe el archivo` | El CSV no está en `KAGGLE_DOWNLOAD_DIR` con el nombre exacto. |
+| `NoSuchBucket` / `Could not connect to the endpoint URL` | LocalStack apagado o sin el bucket: `docker compose up -d` y `docker compose ps` (debe estar `healthy`). |
+| `Read timeout` en la subida | Conexión lenta con un archivo grande; repite el comando (la carga no deja manifiesto de éxito si falló). |
+
 ### Paso 9 --- Ejecutar el generador de transacciones
 
 El generador hace de core de la billetera: lee las cuentas del seed una
@@ -256,6 +493,14 @@ de mentira y no lo necesitan.
 ``` bash
 uv run pytest
 ```
+
+Las pruebas de `sources/csv_files/kaggle` no necesitan servicios; solo la de
+integración con S3 usa LocalStack y se omite si no está levantado
+(`uv run pytest sources/csv_files/kaggle`).
+
+PostgreSQL: el proyecto instala **Psycopg 3** (`psycopg[binary]`) y
+`shared/db.py` fuerza ese controlador (`postgresql+psycopg://`) aunque tu
+`DATABASE_URL` empiece por `postgresql://`. No hace falta instalar `psycopg2`.
 
 ### Paso 11 --- Levantar la API
 

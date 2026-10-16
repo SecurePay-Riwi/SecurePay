@@ -88,7 +88,7 @@ Nothing comes from a real system:
 | :--- | :--- | :--- |
 | [Seed](../components/seed.mdx) | Users, accounts, devices, merchants and restricted lists in PostgreSQL. | Done |
 | [Transaction generator](../components/generator.mdx) | Plays the wallet core: transaction stream with fraud patterns and defects. | Done |
-| Kaggle datasets | PaySim (transfers) and Sparkov (card payments): labeled history for rule effectiveness, never sent through the engine (see [Team decisions](./team-decisions.mdx#card-payment-history-sparkov)). | In progress |
+| [Kaggle datasets](../components/kaggle-datasets.mdx) | PaySim (transfers) and Sparkov (card payments): labeled history for rule effectiveness, never sent through the engine (see [Team decisions](./team-decisions.mdx#card-payment-history-sparkov)). | In progress |
 | [Partner statements](../components/partner-statements.mdx) | Daily files from four payment partners, for reconciliation, built from the generator's output with the assignment's defects. | Done (local and LocalStack) |
 | Exchange rates | Frankfurter public API (v2), once a day. | In progress (the generator already uses a saved snapshot) |
 | Restricted list service | A simulated service that is slow and fails on purpose, protected by a circuit breaker. It serves the list the seed exports to S3 (see [Restricted list service](../components/restricted-list.mdx)). | Done (local and LocalStack) |

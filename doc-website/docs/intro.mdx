@@ -80,7 +80,9 @@ SecurePay/
 ├── db/seed/                    # PostgreSQL master data seed
 ├── generators/                 # transaction generator (simulated wallet core)
 ├── sources/
-│   ├── csv_files/partner_statements/   # daily files of the four payment partners
+│   ├── csv_files/
+│   │   ├── partner_statements/ # daily files of the four payment partners
+│   │   └── kaggle/             # loads the Kaggle datasets into the Data Lake
 │   └── apis/
 │       ├── restricted_list/    # simulated restricted-list provider
 │       └── exchange_rates/     # daily exchange rates from Frankfurter
@@ -98,7 +100,7 @@ SecurePay/
 | [Partner statements](./components/partner-statements.mdx) | Done |
 | [Restricted list service](./components/restricted-list.mdx) | Done |
 | Exchange rates | Client done; rates saved locally for now, to DynamoDB when AWS is set up |
-| Kaggle history (PaySim and Sparkov) | In progress |
+| [Kaggle datasets](./components/kaggle-datasets.mdx) | In progress |
 | AWS infrastructure (Terraform) | Designed, not built yet |
 
 ## 7. Links
