@@ -11,6 +11,19 @@ proyecto construye una plataforma antifraude basada en reglas
 configurables, con flujo de revisión de casos y conciliación diaria con
 socios de pago.
 
+## Funcionalidades desarrolladas
+
+El repositorio reúne los componentes trabajados hasta el momento:
+
+- Motor antifraude con API FastAPI y reglas de decisión.
+- Seed de datos maestros para PostgreSQL y generador de transacciones de prueba.
+- Pruebas automatizadas para los componentes del proyecto.
+- Simulación local de mensajería con SNS/SQS y almacenamiento en S3 mediante LocalStack.
+- Generación de extractos de socios para el proceso de conciliación.
+- Servicio simulado de listas restrictivas.
+- HU-04: inyección configurable de defectos en los documentos generados por el seed.
+- Integración de datasets históricos de Kaggle para cargar muestras en PostgreSQL y para el flujo independiente de carga al Data Lake.
+
 ## Estructura del repositorio
 
 Monorepo: una carpeta por cada pieza que se despliega por separado.
@@ -30,7 +43,9 @@ sources/
 db/
   seed/              seed de PostgreSQL: usuarios, cuentas, dispositivos, comercios y listas
   datasets/          ETL que carga muestras de PaySim y fraudTest (Kaggle) en la tabla transacciones y sus pruebas
-    raw/             los CSV; se descargan a mano y Git los ignora
+data/
+  raw/               CSV históricos para el ETL de PostgreSQL; Git los ignora
+  kaggle/            archivos del flujo independiente de carga al Data Lake (PaySim y creditcard.csv)
 infra/
   localstack/init/   crea en LocalStack el tema SNS, las colas SQS y los buckets (Data Lake y proveedor de listas)
 docker-compose.yml   PostgreSQL, Valkey y LocalStack para desarrollo local
@@ -70,59 +85,56 @@ LocalStack y los consumidores corren con
 
 ## Datasets históricos (Kaggle)
 
-El proyecto usa dos datasets históricos de fraude para análisis y pruebas.
-Pesan cientos de MB, por eso **no están en el repositorio**: `/db/datasets/raw/`
-está en el `.gitignore` y cada persona que clone el repo debe descargarlos
-y guardarlos ahí.
+El ETL de PostgreSQL utiliza dos datasets históricos para cargar una muestra de transacciones en la tabla `transacciones`. Los CSV pesan cientos de MB, por lo que **no se guardan en Git**. Descárgalos y guárdalos en `data/raw/` en la raíz del proyecto.
 
-| Dataset | Página en Kaggle | Archivo que se necesita |
+| Dataset | Página en Kaggle | Archivo requerido |
 |---|---|---|
 | PaySim (transacciones financieras sintéticas) | [kaggle.com/datasets/ealaxi/paysim1](https://www.kaggle.com/datasets/ealaxi/paysim1) | `PS_20174392719_1491204439457_log.csv` |
-| Detección de fraude | [kaggle.com/datasets/kartik2112/fraud-detection](https://www.kaggle.com/datasets/kartik2112/fraud-detection) | `fraudTest.csv` |
+| Fraud Detection | [kaggle.com/datasets/kartik2112/fraud-detection](https://www.kaggle.com/datasets/kartik2112/fraud-detection) | `fraudTest.csv` |
 
-### Cómo descargarlos
+### Cómo descargar y ubicar los CSV
 
-1.  Crea una cuenta gratuita en [Kaggle](https://www.kaggle.com) e inicia sesión
-    (sin sesión, el botón de descarga no funciona).
-2.  Abre cada enlace de la tabla y pulsa **Download**. Descomprime el ZIP si
-    Kaggle lo entrega comprimido.
-3.  Copia los CSV a `db/datasets/raw/` (créala si no existe: Git no guarda
-    carpetas vacías):
+1. Inicia sesión en [Kaggle](https://www.kaggle.com).
+2. Abre los enlaces anteriores, descarga los datasets y descomprime los ZIP.
+3. En la raíz del proyecto, crea la carpeta `data/raw/` si todavía no existe.
+4. Copia allí los dos archivos con sus nombres originales:
 
-```
-db/datasets/raw/PS_20174392719_1491204439457_log.csv
-db/datasets/raw/fraudTest.csv
+```text
+data/raw/PS_20174392719_1491204439457_log.csv
+data/raw/fraudTest.csv
 ```
 
-Alternativa por terminal con la [Kaggle CLI](https://github.com/Kaggle/kaggle-api)
-(requiere el token de API de tu cuenta en `~/.kaggle/kaggle.json`):
+No cambies los nombres de los archivos. No es necesario subirlos a GitHub ni incluirlos en un commit.
+
+### Descarga alternativa por terminal
+
+Si tienes instalada la [Kaggle CLI](https://github.com/Kaggle/kaggle-api) y configurado el token de tu cuenta en `~/.kaggle/kaggle.json`, puedes ejecutar:
 
 ```bash
-mkdir -p db/datasets/raw
-kaggle datasets download -d ealaxi/paysim1 -p db/datasets/raw --unzip
-kaggle datasets download -d kartik2112/fraud-detection -f fraudTest.csv -p db/datasets/raw --unzip
+mkdir -p data/raw
+kaggle datasets download -d ealaxi/paysim1 -p data/raw --unzip
+kaggle datasets download -d kartik2112/fraud-detection -f fraudTest.csv -p data/raw --unzip
 ```
 
-### Comprobar que Git los ignora
+### Verificar que Git ignora los CSV
+
+Desde la raíz del repositorio:
 
 ```bash
-git check-ignore -v db/datasets/raw/fraudTest.csv db/datasets/raw/PS_20174392719_1491204439457_log.csv
+git check-ignore -v data/raw/fraudTest.csv data/raw/PS_20174392719_1491204439457_log.csv
 git status --short
 ```
 
-El primer comando debe mostrar la regla `/db/datasets/raw/` para cada archivo,
-y `git status` no debe listar ningún CSV.
+El primer comando debe mostrar la regla de `.gitignore` que excluye los archivos. `git status` no debe listar los CSV. La carpeta `data/raw/` es local y no se publica en GitHub.
 
-Para cargar una muestra de estos datasets en la base de datos, ver el
-[Paso 8b](#paso-8b-----cargar-los-datasets-históricos-de-kaggle-etl).
+### Dos flujos distintos de uso de Kaggle
 
-> **Dos usos distintos de Kaggle.** El ETL de PostgreSQL (paso 8b) usa
-> `PS_...log.csv` y `fraudTest.csv` (`kartik2112/fraud-detection`, 23 columnas,
-> datos simulados) y los lee de `db/datasets/raw/`. La carga al Data Lake
-> (paso 8c) usa PaySim y **`creditcard.csv`** (`mlg-ulb/creditcardfraud`, 31
-> columnas anonimizadas) y los deja en `data/kaggle/`. **`fraudTest.csv` y
-> `creditcard.csv` son datasets diferentes: uno no sustituye al otro.** El
-> archivo de PaySim es el mismo en los dos casos.
+- **ETL de PostgreSQL (paso 8b):** usa `PS_20174392719_1491204439457_log.csv` y `fraudTest.csv`, ubicados en `data/raw/`. Carga una muestra en la tabla `transacciones`.
+- **Carga al Data Lake (paso 8c):** usa PaySim y el dataset independiente `creditcard.csv`, ubicado en `data/kaggle/`. No usa PostgreSQL ni modifica sus tablas.
+
+`fraudTest.csv` y `creditcard.csv` son datasets diferentes y no se sustituyen entre sí. Si ejecutas ambos flujos, revisa la ubicación que requiere cada uno; no es necesario guardar los CSV en Git.
+
+Para cargar una muestra de los datasets históricos en PostgreSQL, sigue el [Paso 8b](#paso-8b-----cargar-los-datasets-históricos-de-kaggle-etl).
 
 ## Instalación y ejecución
 
@@ -287,7 +299,7 @@ Debería devolver `100`.
 Es opcional y va **después del seed** (paso 7): el ETL reparte las
 transacciones de Kaggle entre los usuarios, dispositivos y comercios que el
 seed ya creó, así que sin seed no tiene a quién asignarlas. Además necesitas
-los dos CSV en `db/datasets/raw/` (ver "Datasets históricos (Kaggle)").
+los dos CSV en `data/raw/` (ver "Datasets históricos (Kaggle)").
 
 ``` bash
 # 1. Ver qué haría, sin escribir nada en la base de datos
@@ -370,7 +382,7 @@ Si las cambian, **todos deben usar los mismos valores** y la huella cambiará.
 | `HIST_PAYSIM_FRAUDE_PCT` | 3 | Porcentaje de ellas que son fraude |
 | `HIST_FRAUDTEST_FILAS` | 20000 | Transacciones que se toman de fraudTest |
 | `HIST_FRAUDTEST_FRAUDE_PCT` | 3 | Porcentaje de ellas que son fraude |
-| `HIST_RAW_DIR` | `db/datasets/raw` | Carpeta de los CSV |
+| `HIST_RAW_DIR` | `data/raw` | Carpeta de los CSV |
 
 `SEED_RESET=true` en el seed vacía también `transacciones`: después de
 resembrar hay que volver a correr el ETL. Las pruebas del ETL (no usan la
@@ -408,8 +420,8 @@ DATALAKE_BUCKET=pagoseguro-datalake
 
 #### Dónde van los CSV
 
-Si ya tienes los archivos, no hace falta token: copia los CSV a
-`data/kaggle/` y el comando no vuelve a descargarlos.
+Si ya tienes los archivos, no hace falta token: coloca los archivos que requiere este flujo en
+`data/kaggle/` y el comando no vuelve a descargarlos. Este flujo es independiente del ETL de PostgreSQL del paso 8b.
 
 ``` text
 data/kaggle/PS_20174392719_1491204439457_log.csv   # ealaxi/paysim1
