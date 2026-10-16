@@ -1,5 +1,5 @@
 ---
-sidebar_position: 5
+sidebar_position: 3
 title: Architecture decisions (ADRs)
 description: The highest-impact architecture decisions, with context, alternatives and consequences.
 ---
@@ -92,8 +92,6 @@ Each record follows the same format: context, decision, alternatives considered 
 **Alternatives.** Building the assignment's stack as is: about $320/month without replicating the broker or Airflow's metadata database, and the team maintaining four systems. The EKS control plane is $73/month fixed plus continuous operation.
 
 **Consequences.** The solution is tied to AWS. In exchange, high availability comes with each service and the team spends its time on the business rules instead of running infrastructure.
-
-**Kubernetes comparison.** The course program asks to deploy the decision engine on Kubernetes and compare it with Fargate. This is done as a one-off exercise, not as part of the architecture: in week 5 the engine runs on EKS for a few hours, with a Deployment, a Service and a namespace, under the same load as on Fargate; latency, operation effort and cost are measured, and the cluster is destroyed the same day. The control plane bills per hour, so the exercise costs a few dollars instead of $73/month. The results are recorded here and confirm or revise this decision.
 
 ## ADR-07 — The engine's autoscaling maximum goes from 12 to 24 tasks {/* #adr-07 */}
 

@@ -9,3 +9,6 @@ __pycache__/
 defect_report.json
 # Salida del generador de transacciones
 generated/
+
+# Datasets descargados de Kaggle
+/data/raw/
