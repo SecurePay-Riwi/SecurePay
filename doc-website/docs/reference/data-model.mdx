@@ -96,5 +96,8 @@ Still defined in `shared/models.py` but **no longer written**: the seed stopped 
 | Path | Written by | Format |
 | :--- | :--- | :--- |
 | `s3://pagoseguro-datalake/raw/decisiones/fecha=YYYY-MM-DD/HHMMSS-<uuid>.jsonl` | Analytics consumer | One `transaction.decided` event per line. |
+| `s3://pagoseguro-datalake/raw/extractos/<partner>/fecha=YYYY-MM-DD/<partner>_YYYYMMDD_vN.<ext>` | [Partner statements](../components/partner-statements.mdx) (`EXT_OUTPUT=s3`) | Each partner's own format (CSV or TXT). |
+| `s3://pagoseguro-datalake/raw/kaggle/<dataset>/<dataset>.csv` and `_manifest.json` | [Kaggle datasets](../components/kaggle-datasets.mdx) | The CSV exactly as Kaggle publishes it, plus a manifest with its rows, columns and SHA-256. |
+| `s3://pagoseguro-proveedor-listas/lista_restrictiva.jsonl` | Seed (`SEED_LIST_OUTPUT=s3`) | One listed person per line. Separate bucket: it is the simulated provider's data, not the Data Lake. |
 
 The `curated` and `analytics` layers arrive with the Spark ETL.

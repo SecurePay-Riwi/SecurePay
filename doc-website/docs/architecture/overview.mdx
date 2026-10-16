@@ -1,22 +1,86 @@
 ---
-sidebar_position: 1
-title: Architecture overview
-description: How a transaction travels through the AWS architecture, and what happens after the decision.
+sidebar_position: 2
+title: System overview
+description: The general diagram, the role of each AWS service in PagoSeguro, and where the data comes from.
 ---
 
-# Architecture overview
+# System overview
 
-Event-driven microservices, serverless first, in Ohio (`us-east-2`) across two Availability Zones.
+Event-driven microservices, managed services first, in Ohio (`us-east-2`) across two Availability Zones.
 
 ![PagoSeguro architecture flow on AWS](/img/architecture-flow.jpg)
 
-*The diagram labels are in Spanish. Color = flow: orange is the real-time decision, blue the asynchronous processing, green the batch jobs and the Data Lake, purple analytics and the dashboard, gray rule and case management.* <a href={require('@site/static/img/architecture-flow.jpg').default} target="_blank">Open full size</a>.
+*The diagram labels are in Spanish; the legend at the bottom explains the colors of each flow.* <a href={require('@site/static/img/architecture-flow.jpg').default} target="_blank">Open full size</a>.
 
 ## In one paragraph
 
 The wallet core sends each transaction over HTTPS to an **Application Load Balancer**, which spreads it across the **decision engine tasks on ECS Fargate** (FastAPI, 4 to 24 tasks). The engine reads and updates its state in **ElastiCache Serverless for Valkey** and answers in under 200 ms. It then publishes the decision to **SNS**, which copies it to **three SQS queues** (cases, history, analytics), each with its dead-letter queue and its **Lambda** consumer: cases writes to **RDS PostgreSQL** (Multi-AZ), history to **DynamoDB** and the cache, and analytics to the raw layer in **S3**. Batch jobs run on **EMR Serverless (PySpark)**, woken up by **EventBridge Scheduler**; the daily reconciliation is orchestrated by **Step Functions + Lambda**. The Data Lake has three layers (`raw`, `curated`, `analytics`), cataloged in **Glue Data Catalog**, queried with **Athena** and shown in **Power BI**. Analysts and the risk manager use **API Gateway + Lambda**; the evidence of closed cases goes to a separate S3 bucket with **Object Lock** and **Glacier Instant Retrieval**.
 
-## Where the data comes from
+The step-by-step path of a transaction and everything that happens afterwards is in [Data flow](./data-flow.mdx).
+
+## What each service does {/* #services */}
+
+Grouped by layer. Why each one was chosen, and what was discarded, is in [AWS infrastructure](./infrastructure.mdx#services).
+
+### Entry
+
+| Service | Role in PagoSeguro |
+| :--- | :--- |
+| **Application Load Balancer** | The only entry from the wallet core. Terminates HTTPS on port 443 and spreads each transaction across the engine tasks in both zones, checking their health. |
+| **API Gateway + Cognito** | Entry for people: analysts and the risk manager sign in with Cognito and use the rules and cases APIs. It also exposes the simulated restricted-list provider. |
+
+### Compute
+
+| Service | Role in PagoSeguro |
+| :--- | :--- |
+| **ECS Fargate** | Runs the decision engine (FastAPI), 4 to 24 tasks across the two zones, and the on-demand admin task for migrations and the seed. |
+| **Lambda** (12 functions) | Everything with low or irregular volume: the three queue consumers, the rules and cases APIs, the list service, the cache refresh, the alerts task, the exchange rates and list loads, and the two reconciliation steps. |
+
+### State and data
+
+| Service | Role in PagoSeguro |
+| :--- | :--- |
+| **ElastiCache Serverless (Valkey)** | The engine's memory: idempotency keys, time windows, 24-hour sums, devices per account, active rules and the full restricted list. Replicated across zones. |
+| **RDS PostgreSQL** (Multi-AZ) | Business data: users, accounts, devices, merchants, versioned rules, cases and reconciliation differences. It does not store transactions. |
+| **DynamoDB** | Durable device–account pairs with a 30-day expiry, and the daily exchange rates. |
+| **S3 Data Lake** | Three layers: `raw` (decisions and partner statements as they arrive), `curated` (clean Parquet) and `analytics` (dimensional model for the dashboard). |
+| **S3 evidence bucket** | Evidence of each closed case, locked with Object Lock in COMPLIANCE mode for 10 years, in Glacier Instant Retrieval. |
+
+### Messaging
+
+| Service | Role in PagoSeguro |
+| :--- | :--- |
+| **SNS** | The `decisiones` topic copies every decision to the three queues. Other topics refresh the cache when a rule changes and send emails to compliance, the supervisor, treasury and the tech team. |
+| **SQS** | Three independent queues (`casos`, `historial`, `analitica`), each with its dead-letter queue, so one consumer falling behind does not stop the others. |
+| **Kinesis Data Firehose** | Batches the analytics decisions into files of ~5 MB before writing them to the raw layer. |
+
+### Processing and orchestration
+
+| Service | Role in PagoSeguro |
+| :--- | :--- |
+| **EMR Serverless** (PySpark) | The five Spark jobs: Data Lake ETL, reconciliation, rule effectiveness, shared device network and rule simulation. |
+| **Step Functions** | Orchestrates the nightly reconciliation: read statements, reconcile with Spark, save differences, with retries per step. |
+| **EventBridge Scheduler** | Starts every scheduled process: reconciliation at 02:00, daily loads and ETL, alerts every 5 minutes and the weekly jobs. |
+
+### Analytics
+
+| Service | Role in PagoSeguro |
+| :--- | :--- |
+| **Glue Data Catalog** | Keeps the table definitions of the Data Lake. |
+| **Athena** | SQL straight on S3, without moving data or keeping a cluster running. |
+| **Power BI** | The dashboard, connected to Athena with its native connector. |
+
+### Operations
+
+| Service | Role in PagoSeguro |
+| :--- | :--- |
+| **CloudWatch** | Logs, metrics and the [alarms](./infrastructure.mdx#alarms). |
+| **X-Ray** | Traces each transaction through the engine. |
+| **Systems Manager** | Parameter Store keeps the database passwords; Session Manager gives the team access to the private network. |
+| **ECR** | Registry of the container images. |
+| **Terraform and GitHub Actions** | Create the whole infrastructure and deploy each new version after the tests pass. |
+
+## Where the data comes from {/* #data-sources */}
 
 Nothing comes from a real system:
 
@@ -24,65 +88,7 @@ Nothing comes from a real system:
 | :--- | :--- | :--- |
 | [Seed](../components/seed.mdx) | Users, accounts, devices, merchants and restricted lists in PostgreSQL. | Done |
 | [Transaction generator](../components/generator.mdx) | Plays the wallet core: transaction stream with fraud patterns and defects. | Done |
-| Kaggle datasets | Labeled historical transactions for rule effectiveness. | Planned |
+| [Kaggle datasets](../components/kaggle-datasets.mdx) | PaySim (transfers) and Sparkov (card payments): labeled history for rule effectiveness, never sent through the engine (see [Team decisions](./team-decisions.mdx#card-payment-history-sparkov)). | In progress |
 | [Partner statements](../components/partner-statements.mdx) | Daily files from four payment partners, for reconciliation, built from the generator's output with the assignment's defects. | Done (local and LocalStack) |
-| Exchange rates | Frankfurter public API (v2), once a day. | Planned (the generator already uses a saved snapshot) |
-| Restricted list service | A simulated service that is slow and fails on purpose, protected by a circuit breaker. It serves the list the seed exports to S3 (see [Team decisions](./team-decisions.mdx#restricted-list-service)). | Designed |
-
-## The path of a transaction, in under 200 ms
-
-1. **Idempotency check** in the cache. If the id was already decided, the same decision is returned and the request ends.
-2. **Read the active rules** from the cache, not from PostgreSQL.
-3. **Read and update the time windows** in the cache (transfers in the last 10 minutes, amounts received and withdrawn, 24-hour sums). The engine updates the counters itself, so the next transaction sees them instantly.
-4. **Shared device counter**, also in the cache. DynamoDB keeps the durable copy written by the history consumer, but the engine does not read it on every transaction.
-5. **Restricted list check** against the cache. The external list service is only called when the cached copy is not available, behind a circuit breaker.
-6. **Decide** `APPROVE`, `HOLD` or `REJECT`, and keep with the decision the rule version and which rules fired.
-
-**Fallback.** If something takes too long, the engine falls back to a default decision: under USD 50 it approves, from USD 50 up it holds. It exists in two layers, one inside the engine with an internal time budget and one in the core in case the whole engine does not answer. The amount is converted to USD with the day's rate first. Every fallback decision is flagged. See [Team decisions](./team-decisions.mdx).
-
-:::info[Built so far]
-Steps 1 and 3 (velocity only) and 6 run today, plus the restricted list read straight from PostgreSQL. The rest arrives in Sprint 2. See [Decision engine](../components/decision-engine.mdx).
-:::
-
-## What happens afterwards, without the core waiting
-
-The engine publishes the decision to the `decisiones` SNS topic, which fans it out to three SQS queues, each with its dead-letter queue:
-
-| Queue | Consumer | Writes to |
-| :--- | :--- | :--- |
-| `casos` | Opens a case when a rule that requires one fired. | PostgreSQL |
-| `historial` | Keeps the device–account pairs, writing only new pairs. | DynamoDB and the cache |
-| `analitica` | Drops the transaction in the raw layer of the Data Lake. | S3 (through Kinesis Data Firehose in AWS) |
-
-Keeping them separate means that if analytics falls behind, cases are still created. Details in [Messaging](../components/messaging.mdx).
-
-## The people
-
-| Who | What they do |
-| :--- | :--- |
-| **Fraud analyst** | Works the case inbox through the API. A held case unresolved for 4 hours is escalated to the supervisor by email. When a case closes, its evidence goes to S3 with Object Lock (10 years, cannot be modified or deleted). |
-| **Risk manager** | Creates and versions rules through the API, without deploying code. Activating a rule saves it in PostgreSQL and publishes a notice on SNS that refreshes the cache immediately, with a short TTL as backup. |
-| **Compliance** | Receives restricted-list rejections and suspicious operation reports. The record is written instantly; the email arrives as a summary every 5 minutes. |
-| **Treasury** | Receives the reconciliation result and the pending differences every morning. |
-
-## Scheduled processes
-
-| Process | When | Runs on |
-| :--- | :--- | :--- |
-| Daily reconciliation | 02:00, must finish before 07:00 | EventBridge → Step Functions (Lambda reads the four partner files, Spark reconciles, Lambda saves differences and notifies treasury) |
-| Exchange rates | Daily | EventBridge → Lambda → DynamoDB |
-| Alerts (escalate old cases, compliance summary) | Every 5 minutes | EventBridge → one Lambda |
-| Data Lake ETL | Daily | EventBridge → EMR Serverless |
-| Rule effectiveness | Weekly | EventBridge → EMR Serverless |
-| Shared device network | Weekly | EventBridge → EMR Serverless |
-| Rule simulation | On demand | Rules API → EMR Serverless |
-
-## The dashboard
-
-Raw data in S3 (bronze) goes through the Spark ETL to a curated layer (silver, columnar and partitioned Parquet) and from there to the dimensional model (gold, the `analytics` layer). Glue keeps the table definitions, Athena queries them with SQL without moving data, and Power BI connects to Athena with its native connector.
-
-## Related pages
-
-- [AWS services and costs](./aws-services-and-costs.mdx)
-- [Architecture decisions](./decisions.mdx)
-- [Open questions](./open-questions.mdx)
+| Exchange rates | Frankfurter public API (v2), once a day. | In progress (the generator already uses a saved snapshot) |
+| Restricted list service | A simulated service that is slow and fails on purpose, protected by a circuit breaker. It serves the list the seed exports to S3 (see [Restricted list service](../components/restricted-list.mdx)). | Done (local and LocalStack) |
