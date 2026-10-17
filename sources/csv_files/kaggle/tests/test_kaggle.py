@@ -141,24 +141,57 @@ def test_header_only_file_counts_zero_rows(tmp_path):
 
 
 def test_real_contracts_match_the_guide():
-    paysim, tarjeta = config.PAYSIM, config.CREDITCARD
+    paysim, sparkov = config.PAYSIM, config.FRAUDTEST
     assert len(paysim.columnas) == 11 and paysim.filas == 6_362_620
     assert paysim.columnas[0] == "step" and paysim.columnas[-1] == "isFlaggedFraud"
-    assert len(tarjeta.columnas) == 31 and tarjeta.filas == 284_807
-    assert tarjeta.columnas[:2] == ("Time", "V1") and tarjeta.columnas[-2:] == ("Amount", "Class")
+    assert sparkov.dataset == "kartik2112/fraud-detection"
+    assert sparkov.archivo == "fraudTest.csv" and sparkov.filas == 555_719
+    assert len(sparkov.columnas) == 23
+    # La primera columna del CSV no tiene nombre (índice de pandas).
+    assert sparkov.columnas[:2] == ("", "trans_date_trans_time")
+    assert sparkov.columnas[-2:] == ("merch_long", "is_fraud")
     assert paysim.clave_s3 == "raw/kaggle/paysim/paysim.csv"
     assert paysim.clave_manifiesto == "raw/kaggle/paysim/_manifest.json"
-    assert tarjeta.clave_s3 == "raw/kaggle/creditcard/creditcard.csv"
-    assert tarjeta.clave_manifiesto == "raw/kaggle/creditcard/_manifest.json"
+    assert sparkov.clave_s3 == "raw/kaggle/sparkov/fraudtest/fraudTest.csv"
+    assert sparkov.clave_manifiesto == "raw/kaggle/sparkov/fraudtest/_manifest.json"
 
 
-def test_fraudtest_does_not_pass_as_creditcard(tmp_path):
-    """fraudTest.csv (kartik2112/fraud-detection) es otro dataset: no puede
-    sustituir a creditcard.csv."""
-    ruta = tmp_path / config.CREDITCARD.archivo
-    ruta.write_text("idx,trans_date_trans_time,cc_num,amt,is_fraud\n0,2020-06-21,1,2.86,0\n")
-    with pytest.raises(ErrorValidacion):
-        validar(config.CREDITCARD, ruta)
+def test_contract_has_exactly_paysim_and_fraudtest():
+    assert [d.dataset for d in config.DATASETS] == [
+        "ealaxi/paysim1",
+        "kartik2112/fraud-detection",
+    ]
+
+
+def test_no_dataset_in_the_contract_has_anonymized_columns():
+    """El dataset de tarjetas con columnas V1..V28 se descartó por decisión del
+    equipo (sin tarjeta, comercio ni secuencia no se puede medir ninguna regla).
+    Esta prueba evita que vuelva a colarse en el contrato."""
+    for ds in config.DATASETS:
+        anonimas = [c for c in ds.columnas if c[:1] == "V" and c[1:].isdigit()]
+        assert not anonimas, f"{ds.clave} tiene columnas anonimizadas: {anonimas}"
+    assert not hasattr(config, "CREDITCARD")
+
+
+def test_creditcard_does_not_pass_as_fraudtest(tmp_path):
+    """creditcard.csv (mlg-ulb/creditcardfraud, Time, V1..V28, Amount, Class)
+    es otro dataset: aunque tenga el nombre correcto, no pasa la validación."""
+    ruta = tmp_path / config.FRAUDTEST.archivo
+    columnas = ["Time", *(f"V{i}" for i in range(1, 29)), "Amount", "Class"]
+    ruta.write_text(",".join(columnas) + "\n" + ",".join(["0"] * 31) + "\n")
+    with pytest.raises(ErrorValidacion, match="encabezado"):
+        validar(config.FRAUDTEST, ruta)
+
+
+def test_fraudtest_header_with_unnamed_first_column_passes(tmp_path):
+    """La primera columna sin nombre no debe confundir a la validación."""
+    ruta = tmp_path / config.FRAUDTEST.archivo
+    fila = ",".join(["0"] * len(config.FRAUDTEST.columnas))
+    ruta.write_text(",".join(config.FRAUDTEST.columnas) + "\n" + fila + "\n")
+    assert inspeccionar(ruta)[0] == list(config.FRAUDTEST.columnas)
+    # Solo falla por el número de filas, no por el encabezado.
+    with pytest.raises(ErrorValidacion, match="1 filas"):
+        validar(config.FRAUDTEST, ruta)
 
 
 # --- Hash y manifiesto -----------------------------------------------------
@@ -330,7 +363,7 @@ def s3_localstack():
 
 @pytest.mark.integracion
 def test_upload_and_idempotency_against_localstack(tmp_path, s3_localstack):
-    # Rutas propias de la prueba: no toca raw/kaggle/paysim ni /creditcard.
+    # Rutas propias de la prueba: no toca raw/kaggle/paysim ni /sparkov.
     base = f"raw/kaggle/_pruebas/{uuid4().hex}"
     ds = replace(PRUEBA, clave_s3=f"{base}/prueba.csv")
     ruta = escribir_csv(tmp_path)

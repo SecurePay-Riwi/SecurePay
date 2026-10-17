@@ -1,7 +1,7 @@
 ---
 sidebar_position: 8
 title: Kaggle datasets
-description: Download, validate and load PaySim and Credit Card Fraud into the raw layer of the Data Lake, untouched, with a manifest and idempotent re-runs.
+description: Download, validate and load PaySim and Sparkov (fraudTest) into the raw layer of the Data Lake, untouched, with a manifest and idempotent re-runs.
 ---
 
 # Kaggle datasets
@@ -13,11 +13,13 @@ Two historical fraud datasets from Kaggle. **The engine does not use them.** The
 | Dataset | File | Rows (no header) | Columns |
 | :--- | :--- | :--- | :--- |
 | `ealaxi/paysim1` | `PS_20174392719_1491204439457_log.csv` | 6,362,620 | 11 (`step` … `isFlaggedFraud`) |
-| `mlg-ulb/creditcardfraud` | `creditcard.csv` | 284,807 | 31 (`Time`, `V1`–`V28`, `Amount`, `Class`) |
+| `kartik2112/fraud-detection` (Sparkov) | `fraudTest.csv` | 555,719 | 23 (`trans_date_trans_time`, `cc_num`, `merchant`, `category`, `amt` … `is_fraud`) |
 
 :::caution
-`fraudTest.csv` (`kartik2112/fraud-detection`, used by the PostgreSQL ETL in `db/datasets/`) is a **different** dataset from `creditcard.csv`. It does not pass the Credit Card validation and cannot replace it.
+The Kaggle credit card dataset with anonymized columns (`mlg-ulb/creditcardfraud`, `creditcard.csv`: `Time`, `V1`–`V28`, `Amount`, `Class`) is **not used**. The team agreed not to use it after talking with the professor, and Sparkov replaces it. A `creditcard.csv` does not pass the `fraudTest.csv` validation: the header does not match and nothing is uploaded.
 :::
+
+The first column of `fraudTest.csv` has no name (it is the pandas index), so the contract lists an empty name for it. Only `fraudTest.csv` is loaded: the Sparkov dataset also ships `fraudTrain.csv`, and if the CSV is not in `KAGGLE_DOWNLOAD_DIR` the download brings both files, but `fraudTrain.csv` is neither validated nor uploaded.
 
 ## What it does
 
@@ -36,8 +38,8 @@ If one dataset fails, the other is still processed and the command exits with co
 | :--- | :--- |
 | PaySim | `raw/kaggle/paysim/paysim.csv` |
 | PaySim manifest | `raw/kaggle/paysim/_manifest.json` |
-| Credit Card | `raw/kaggle/creditcard/creditcard.csv` |
-| Credit Card manifest | `raw/kaggle/creditcard/_manifest.json` |
+| Sparkov (`fraudTest.csv`) | `raw/kaggle/sparkov/fraudtest/fraudTest.csv` |
+| Sparkov manifest | `raw/kaggle/sparkov/fraudtest/_manifest.json` |
 
 Keys carry no date: it is a one-time history, so a re-run overwrites the same file instead of creating copies.
 

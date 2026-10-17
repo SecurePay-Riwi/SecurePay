@@ -39,7 +39,7 @@ The decision must come back in **under 200 ms (p99)** at a sustained 50 transact
 | [Messaging](./components/messaging.mdx) | `services/decision_engine/publisher.py`, `infra/localstack/` | Done locally: SNS topic, three SQS queues with dead-letter queues, on LocalStack. |
 | [Consumers](./components/consumers.mdx) | `services/consumers/` | Analytics writes to S3; cases and history are skeletons. |
 | [Partner statements](./components/partner-statements.mdx) | `sources/csv_files/partner_statements/` | Done: daily files of the four payment partners, with their defects, locally and in LocalStack. |
-| [Kaggle datasets](./components/kaggle-datasets.mdx) | `sources/csv_files/kaggle/` | Done: PaySim and Credit Card Fraud downloaded, validated and loaded untouched into `raw/kaggle/` with a manifest; idempotent. |
+| [Kaggle datasets](./components/kaggle-datasets.mdx) | `sources/csv_files/kaggle/` | Done: PaySim and Sparkov (`fraudTest.csv`) downloaded, validated and loaded untouched into `raw/kaggle/` with a manifest; idempotent. |
 | [Restricted list service](./components/restricted-list.mdx) | `sources/apis/restricted_list/` | Done: simulated external provider with full-list and per-document endpoints, random latency and outages; reads the list the seed exports. |
 | AWS infrastructure (Terraform) | `infra/` | Designed, not built yet. |
 
