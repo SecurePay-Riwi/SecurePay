@@ -1,18 +1,34 @@
 ---
 sidebar_position: 1
 title: Introduction
-description: What PagoSeguro Anti-fraud is, what it solves and how this documentation is organized.
+description: What PagoSeguro is, the problem it has, our anti-fraud solution, its key features, tech stack, project structure and links.
 ---
 
 # Introduction
 
-PagoSeguro is a digital wallet with 2.3 million users that processes 1.8 million transactions a day in four currencies (COP, USD, EUR and JPY). This project builds its **anti-fraud platform**: transaction monitoring, configurable fraud rules, a case review workflow and daily reconciliation with payment partners.
+## 1. What is PagoSeguro?
 
-It is the RIWI bootcamp Project 05, built end-to-end on AWS (Ohio, `us-east-2`, two Availability Zones) in six weeks, designed as if it were a real company system that runs 24/7.
+PagoSeguro is a digital wallet with **2.3 million users**. Its customers top up their balance at banks and cash agents, send money to other people (P2P), pay merchants with QR codes and withdraw cash at agents and ATMs. It handles about **1.8 million transactions a day** in four currencies: COP, USD, EUR and JPY.
 
-## The problem
+Every movement of money goes through the wallet's **core system**, which must ask for an anti-fraud decision before it moves the money.
 
-Every transaction the wallet core receives must get a decision before money moves:
+## 2. The problem
+
+Fraud in the wallet grew 60% in the last year, mostly through three patterns: account takeover, mule accounts that receive money from several people and withdraw it quickly, and fake merchants.
+
+| Today | Goal |
+| :--- | :--- |
+| Fraud losses of 0.35% of the volume | Under 0.15% |
+| 70% false positives: legitimate customers blocked | Under 40% |
+| The fraud rules live inside the core; changing one takes weeks and a deployment | Risk analysts change rules without deploying code |
+| Reconciliation with banks and agents is manual; differences stay unexplained for more than 10 days | 99.5% reconciled the next day, before 07:00 |
+| Reports to the financial supervisor are built by hand | Suspicious operations are reported automatically, and the evidence is kept for 10 years |
+
+On top of that, the decision cannot slow the business down: it must come back in **under 200 ms (p99)** at 50 transactions per second sustained and 300 at peak, and keep working if an entire AWS Availability Zone goes down.
+
+## 3. Our solution: PagoSeguro Anti-fraud
+
+PagoSeguro Anti-fraud is the platform this project builds for the wallet. It is separate from the wallet's business systems: the core only sends each transaction and receives one of three answers.
 
 | Decision | Meaning |
 | :--- | :--- |
@@ -20,16 +36,12 @@ Every transaction the wallet core receives must get a decision before money move
 | `HOLD` | The transaction is held for review. |
 | `REJECT` | The transaction is refused. |
 
-The decision must come back in **under 200 ms (p99)** at a sustained 50 transactions per second and a peak of 300, and the system must survive the loss of one Availability Zone. Everything that is not needed for the decision (opening cases, keeping history, analytics) must happen afterwards, without making the core wait.
+The design splits the work into two paths:
 
-## Guiding principles
+- **The fast path, the decision.** The decision engine keeps everything it needs in an in-memory cache (recent activity per account, active rules, the restricted list) and answers without querying a database or waiting for another process. If it runs late, it falls back to a safe default by amount.
+- **The slow path, everything else.** After answering, the engine publishes the decision to a messaging topic. Independent consumers open cases for analysts, keep the device history and feed the Data Lake, and scheduled jobs reconcile the partners' statements, measure rule effectiveness and build the dashboard.
 
-- **Serverless first:** managed services before self-managed servers.
-- **Save money by choosing better services, never by giving up security, availability or reliability.**
-- **Production is designed complete; development is cheap and intermittent**, created and destroyed with Terraform.
-- **The functionality the assignment asks for is mandatory**; the technologies can change when the change is argued (see [Architecture decisions](./architecture/decisions.mdx)).
-
-## What exists today (end of Sprint 1)
+It runs on AWS (Ohio, `us-east-2`, two Availability Zones), managed services first, and is designed as a real company system that runs 24/7. The [Architecture summary](./architecture/summary.mdx) explains each choice and its cost.
 
 | Piece | Folder | Status |
 | :--- | :--- | :--- |
@@ -43,34 +55,82 @@ The decision must come back in **under 200 ms (p99)** at a sustained 50 transact
 | [Restricted list service](./components/restricted-list.mdx) | `sources/apis/restricted_list/` | Done: simulated external provider with full-list and per-document endpoints, random latency and outages; reads the list the seed exports. |
 | AWS infrastructure (Terraform) | `infra/` | Designed, not built yet. |
 
-The details of what was delivered and what is pending are in the [Sprint 1 review](./product-backlog/sprint-1-review.mdx).
+- **Real-time fraud decisions** in under 200 ms, with velocity, mule account, transaction splitting, shared device, account takeover and restricted list rules.
+- **Same answer for a repeated transaction** (idempotency) and correct handling of events that arrive out of order.
+- **Rules managed without deploying code:** versioned, enabled and disabled through an API, and simulated on history before activation.
+- **Case management** for analysts, with escalation after 4 hours and evidence locked for 10 years.
+- **Daily reconciliation** with four payment partners, each with its own file format and data defects.
+- **Reproducible data:** a seed and a transaction generator with labeled fraud patterns that produce the same data on Windows and Linux, plus daily exchange rates from a public API and a simulated restricted-list provider.
+- **Analytics** on a three-layer Data Lake, queried with SQL and shown in Power BI.
 
-## Tech stack
+## 5. Tech stack
 
-- **Python 3.12** managed with **uv**, **FastAPI** for the engine and APIs.
-- **PostgreSQL 16** for master data, **Valkey 8** for high-frequency state.
-- **Amazon SNS, SQS and S3**, emulated locally with **LocalStack**.
-- **Docker Compose** for the local environment.
-- Planned: **PySpark** on EMR Serverless for batch jobs and **Terraform** for the infrastructure.
+| Area | Technologies |
+| :--- | :--- |
+| Language and APIs | Python 3.12 with **uv**, **FastAPI**, **httpx** |
+| Data | **PostgreSQL 16** (master data, rules, cases), **Valkey 8** (high-frequency state) |
+| Messaging | **Amazon SNS + SQS** with dead-letter queues |
+| Batch processing | **PySpark** on EMR Serverless (planned) |
+| Local environment | **Docker Compose** and **LocalStack**, which emulates AWS on a laptop |
+| AWS | ALB, ECS Fargate, Lambda, ElastiCache Serverless, RDS, DynamoDB, S3, Step Functions, EventBridge Scheduler, Glue, Athena |
+| Infrastructure and CI/CD | **Terraform** and **GitHub Actions** (planned) |
+| Dashboard | **Power BI** |
+| Documentation | **Docusaurus**, deployed to GitHub Pages |
 
-## How to read this documentation
+## 6. Project structure
+
+Monorepo: one folder per piece that is deployed separately, each with its own tests. It will be split into several repositories after the first delivery.
+
+```text
+SecurePay/
+├── services/
+│   ├── decision_engine/        # decision engine (FastAPI)
+│   └── consumers/              # SQS consumers written as Lambda handlers
+├── shared/                     # models, clients and the decision event format
+├── db/seed/                    # PostgreSQL master data seed
+├── generators/                 # transaction generator (simulated wallet core)
+├── sources/
+│   ├── csv_files/
+│   │   ├── partner_statements/ # daily files of the four payment partners
+│   │   └── kaggle/             # loads the Kaggle datasets into the Data Lake
+│   └── apis/
+│       ├── restricted_list/    # simulated restricted-list provider
+│       └── exchange_rates/     # daily exchange rates from Frankfurter
+├── infra/localstack/           # creates SNS, SQS and S3 in LocalStack
+├── doc-website/                # this site
+└── docker-compose.yml          # PostgreSQL, Valkey and LocalStack
+```
+
+| Piece | Status |
+| :--- | :--- |
+| [Seed](./components/seed.mdx) | Done |
+| [Transaction generator](./components/generator.mdx) | Done |
+| [Decision engine](./components/decision-engine.mdx) | Running with two rules (restricted list and velocity); the rest arrive in the next sprints |
+| [Messaging](./components/messaging.mdx) and [consumers](./components/consumers.mdx) | Done locally; analytics writes to S3, cases and history are skeletons |
+| [Partner statements](./components/partner-statements.mdx) | Done |
+| [Restricted list service](./components/restricted-list.mdx) | Done |
+| Exchange rates | Client done; rates saved locally for now, to DynamoDB when AWS is set up |
+| [Kaggle datasets](./components/kaggle-datasets.mdx) | In progress |
+| AWS infrastructure (Terraform) | Designed, not built yet |
+
+## 7. Links
+
+| Link | What it is |
+| :--- | :--- |
+| [GitHub repository](https://github.com/SecurePay-Riwi/SecurePay) | Source code |
+| [Documentation site](https://securepay-riwi.github.io/SecurePay/) | This site |
+| [PaySim on Kaggle](https://www.kaggle.com/datasets/ealaxi/paysim1) | Labeled transfer history |
+| [Sparkov on Kaggle](https://www.kaggle.com/datasets/kartik2112/fraud-detection) | Labeled card payment history |
+| [Frankfurter](https://frankfurter.dev) | Public exchange rates API |
+
+Inside this site:
 
 | If you want to… | Go to |
 | :--- | :--- |
 | Run the project on your machine | [Local setup](./getting-started/local-setup.mdx) |
 | See the whole flow working | [Simulate the full flow](./getting-started/simulate-full-flow.mdx) |
-| Understand the AWS design and its costs | [Architecture overview](./architecture/overview.mdx) |
+| Understand the AWS design and its costs | [Architecture summary](./architecture/summary.mdx) |
 | Understand one piece of code | [Components](./components/seed.mdx) |
 | Look up a variable, a table or a term | [Reference](./reference/configuration.mdx) |
 | Contribute code | [Contributing](./contributing.mdx) |
 | Follow the plan and the sprints | [Product backlog](./product-backlog/Epics.mdx) |
-
-## Team
-
-| Member | Role |
-| :--- | :--- |
-| Habith | Scrum Master / Leader |
-| Yulianis | Developer |
-| Jorge | Developer |
-
-Kerlys was part of the team until October 13, 2026.

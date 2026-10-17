@@ -3,6 +3,6 @@
   "position": 3,
   "link": {
     "type": "generated-index",
-    "description": "The AWS design, what each service costs, the architecture decisions and the questions still open."
+    "description": "The AWS design: the services and how they connect, the data flow, the infrastructure, security, costs, decisions and the questions still open."
   }
 }

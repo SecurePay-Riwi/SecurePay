@@ -1,0 +1,168 @@
+---
+sidebar_position: 3
+title: Run the data sources
+description: Run every simulated data source on your machine and check that each one works.
+---
+
+# Run the data sources
+
+This page runs each data source on its own and tells you what you should see. Every source has its own command: none of them starts by itself with `docker compose up -d`, which only starts PostgreSQL, Valkey and LocalStack.
+
+## Before you start
+
+Do the [local setup](./local-setup.mdx) up to step 4: services `healthy` and seed loaded. The decision engine and the consumers are not needed on this page.
+
+All commands run from the repository root. The expected values are for seed 42 and the default `.env.example`.
+
+| Source | Needs | Command |
+| :--- | :--- | :--- |
+| [Simulated database (seed)](#1-simulated-database-seed) | PostgreSQL | `uv run python -m db.seed.seed` |
+| [Transactions (generator)](#2-transactions-generator) | Seed | `uv run python -m generators` |
+| [Partner statements](#3-partner-statements) | Generator output | `uv run python -m sources.csv_files.partner_statements` |
+| [Restricted list service](#4-restricted-list-service) | Seed | `uv run uvicorn sources.apis.restricted_list.main:app --port 8001` |
+| [Exchange rates](#5-exchange-rates) | Internet | `uv run python -m sources.apis.exchange_rates` |
+
+## 1. Simulated database (seed)
+
+```bash
+uv run python -m db.seed.seed
+```
+
+It must end with:
+
+```text
+  20 personas en la lista restrictiva (5 son clientes)
+Exportando la lista para el servicio de listas restrictivas...
+  Lista del proveedor: 20 personas en generated/listas/lista_restrictiva.jsonl
+
+Seed completado.
+```
+
+Besides loading PostgreSQL, it writes the restricted list provider file that the [restricted list service](#4-restricted-list-service) reads. More options in [Seed](../components/seed.mdx).
+
+## 2. Transactions (generator)
+
+In file mode (the default) the generator writes the events without sending them to the engine:
+
+```bash
+uv run python -m generators
+```
+
+It must end with:
+
+```text
+Listo: 1035 eventos. Archivos en generated/instance-0
+```
+
+`generated/instance-0/` now has `events.jsonl` (the events), `labels.jsonl` (the fraud label of each one) and `generation_report.json`. To send them to the engine instead, see [Simulate the full flow](./simulate-full-flow.mdx). More options in [Transaction generator](../components/generator.mdx).
+
+## 3. Partner statements
+
+It reads the generator output from step 2, so run that first:
+
+```bash
+uv run python -m sources.csv_files.partner_statements
+```
+
+It must end with:
+
+```text
+Listo: 47 archivos en generated/extractos
+  Por socio: {'banco_andino': 12, 'red_corresponsales': 12, 'cajeros_express': 12, 'qr_pagos': 11}
+```
+
+The daily files of the four partners are in `generated/extractos/`, and `extracts_report.json` lists the differences a reconciliation must find. To also upload them to the Data Lake in LocalStack:
+
+PowerShell:
+
+```powershell
+$env:EXT_OUTPUT="s3"
+uv run python -m sources.csv_files.partner_statements
+```
+
+Bash:
+
+```bash
+EXT_OUTPUT=s3 uv run python -m sources.csv_files.partner_statements
+```
+
+Check the upload (47 files):
+
+```bash
+docker compose exec localstack awslocal s3 ls s3://pagoseguro-datalake/raw/extractos/ --recursive
+```
+
+More in [Partner statements](../components/partner-statements.mdx).
+
+## 4. Restricted list service
+
+It reads `generated/listas/lista_restrictiva.jsonl`, the file the seed wrote in step 1. Start it and leave the terminal open:
+
+```bash
+uv run uvicorn sources.apis.restricted_list.main:app --port 8001
+```
+
+Open these addresses in the browser (or use `curl.exe` in PowerShell):
+
+| Address | Expected |
+| :--- | :--- |
+| http://localhost:8001/health | `{"status": "ok", "total": 20}` |
+| http://localhost:8001/lista | `{"total": 20, "registros": [...]}` |
+| http://localhost:8001/lista/1000000016 | `{"listado": true, "documento": "1000000016", "tipo": "sanciones", "fecha_inclusion": "2023-06-13"}` |
+| http://localhost:8001/lista/999 | `{"documento": "999", "listado": false}` |
+| http://localhost:8001/docs | Interactive documentation |
+
+The service simulates an external provider: each answer takes between 50 ms and 3 s, and about 5% of them fail with `503` on purpose. Reload the page if you get one.
+
+To read the list from S3 in LocalStack instead of the local file, export it with the seed and start the service with `LISTA_SOURCE=s3`:
+
+PowerShell:
+
+```powershell
+$env:SEED_LIST_OUTPUT="s3"
+uv run python -m db.seed.seed
+$env:LISTA_SOURCE="s3"
+uv run uvicorn sources.apis.restricted_list.main:app --port 8001
+```
+
+Bash:
+
+```bash
+SEED_LIST_OUTPUT=s3 uv run python -m db.seed.seed
+LISTA_SOURCE=s3 uv run uvicorn sources.apis.restricted_list.main:app --port 8001
+```
+
+LocalStack keeps nothing when it stops, so after restarting it run the seed with `SEED_LIST_OUTPUT=s3` again. More in [Restricted list service](../components/restricted-list.mdx).
+
+## 5. Exchange rates
+
+It calls the public Frankfurter API, so it needs internet. It needs no database and no token.
+
+```bash
+uv run python -m sources.apis.exchange_rates
+```
+
+It prints the day's rates and the file it saved:
+
+```text
+Fetching rates from Frankfurter...
+Rates date: 2026-10-15
+  1 USD = 1 USD
+  1 USD = ... COP
+  1 USD = ... EUR
+  1 USD = ... JPY
+
+Rates saved to: .../sources/apis/exchange_rates/data/rates_2026-10-15.json
+```
+
+The date is the last business day published by Frankfurter, and the values change every day. The file is not tracked by Git. More in [Exchange rates](../components/exchange_rates.mdx).
+
+## Check everything with the tests
+
+With the services up and the seed loaded, the whole suite must pass with no test skipped:
+
+```bash
+uv run pytest
+```
+
+See [Testing](./testing.mdx).

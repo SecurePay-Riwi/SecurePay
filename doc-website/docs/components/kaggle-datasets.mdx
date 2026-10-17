@@ -4,11 +4,14 @@ title: Kaggle datasets
 description: Download, validate and load PaySim and Sparkov (fraudTest) into the raw layer of the Data Lake, untouched, with a manifest and idempotent re-runs.
 ---
 
-# Kaggle datasets
+# Kaggle Datasets
 
-**Folder:** `sources/csv_files/kaggle/` · **Run:** `uv run python -m sources.csv_files.kaggle`
+## Overview
 
-Two historical fraud datasets from Kaggle. **The engine does not use them.** They are loaded as they arrived into the `raw/` layer of the Data Lake so Spark can process them later. Nothing is cleaned, filtered or transformed.
+The Kaggle integration provides historical labeled fraud data for two independent
+purposes: loading a reproducible transaction sample into **PostgreSQL** for local
+antifraud development, and ingesting raw datasets into the **Data Lake** (S3/LocalStack)
+for downstream analytics.
 
 | Dataset | File | Rows (no header) | Columns |
 | :--- | :--- | :--- | :--- |
@@ -23,16 +26,21 @@ The first column of `fraudTest.csv` has no name (it is the pandas index), so the
 
 ## What it does
 
-For each dataset, in order:
+```text
+sources/
+└── csv_files/
+    └── kaggle/              ← Data Lake loader entry point
 
-1. **Download** with the Kaggle Python API into `KAGGLE_DOWNLOAD_DIR`. If the CSV is already there it is not downloaded again (PaySim weighs ~470 MB), unless `KAGGLE_FORCE_DOWNLOAD=true`. The token (`KAGGLE_API_TOKEN`) is only read from the environment.
-2. **Validate** that the file exists, the header matches exactly (names and order) and the row count matches. The file is read in blocks and by lines, never loaded whole. Any mismatch raises an error and nothing is uploaded.
-3. **Skip if already loaded:** if the manifest in S3 has the same SHA-256 and the CSV is there with the same size, it prints `ya cargado` and uploads nothing.
-4. **Upload** the CSV with the shared client (`shared.aws.cliente`) and, only when it finished, write the manifest. A failed upload never leaves a success manifest.
+db/
+└── datasets/                ← PostgreSQL ETL
 
-If one dataset fails, the other is still processed and the command exits with code 1.
+data/
+├── raw/                     ← ETL input (fraudTest.csv + PaySim)
+└── kaggle/                  ← Data Lake input (creditcard.csv + PaySim)
+```
 
-## S3 layout
+The `data/` directories are local and must remain ignored by Git.
+Do not commit the CSVs, `.env`, or `.venv`.
 
 | Object | Key |
 | :--- | :--- |
@@ -55,15 +63,82 @@ Keys carry no date: it is a one-time history, so a re-run overwrites the same fi
 }
 ```
 
-## Check it
+### 3. Verify the upload
 
 ```bash
-uv run python -m sources.csv_files.kaggle   # uploaded
-uv run python -m sources.csv_files.kaggle   # already loaded
 uv run python -c "from shared.aws import cliente; [print(o['Key'], o['Size']) for o in cliente('s3').list_objects_v2(Bucket='pagoseguro-datalake', Prefix='raw/kaggle/')['Contents']]"
+```
+
+You should see the two CSV objects and their two manifests.
+
+## S3 object paths
+
+| **Dataset** | **Object** |
+| :--- | :--- |
+| PaySim CSV | `s3://pagoseguro-datalake/raw/kaggle/paysim/paysim.csv` |
+| PaySim manifest | `s3://pagoseguro-datalake/raw/kaggle/paysim/_manifest.json` |
+| Credit Card CSV | `s3://pagoseguro-datalake/raw/kaggle/creditcard/creditcard.csv` |
+| Credit Card manifest | `s3://pagoseguro-datalake/raw/kaggle/creditcard/_manifest.json` |
+
+Object paths are stable — a successful subsequent run updates the same locations
+instead of creating dated copies.
+
+## Tests
+
+The tests do not download real datasets or write to the database.
+The S3 integration test is skipped when LocalStack is unavailable.
+
+```bash
+# ETL tests
+uv run pytest db/datasets
+
+# Data Lake loader tests
 uv run pytest sources/csv_files/kaggle
 ```
 
-The last command lists 4 objects. The tests need neither Kaggle nor internet; the S3 integration test skips itself when LocalStack is down.
+## Error handling
 
-See [Configuration](../reference/configuration.mdx#kaggle-datasets) for the variables.
+If a dataset fails validation or upload:
+
+- No partial data is written — the manifest is only created after a successful upload.
+- Processing of the other dataset is still attempted.
+- In the ETL, a failed run leaves `transacciones` unchanged if it errors before commit.
+
+## ETL configuration
+
+| **Variable** | **Default** | **Purpose** |
+| :--- | ---: | :--- |
+| `HIST_PAYSIM_FILAS` | `50000` | Number of PaySim rows selected |
+| `HIST_PAYSIM_FRAUDE_PCT` | `3` | Fraud percentage in the PaySim sample |
+| `HIST_FRAUDTEST_FILAS` | `20000` | Number of `fraudTest` rows selected |
+| `HIST_FRAUDTEST_FRAUDE_PCT` | `3` | Fraud percentage in the `fraudTest` sample |
+| `HIST_RAW_DIR` | `data/raw` | Directory containing the ETL CSVs |
+| `KAGGLE_API_TOKEN` | — | Required only for automatic download |
+| `KAGGLE_DOWNLOAD_DIR` | `data/kaggle` | Local directory for Data Lake CSVs |
+| `DATALAKE_BUCKET` | `pagoseguro-datalake` | S3 bucket name |
+
+## Future improvements
+
+:::tip Out of scope for the current sprint
+- **Airflow DAG:** schedule the Data Lake ingestion as a recurring pipeline instead
+  of a manual command.
+- **Schema evolution:** versioned manifests to track schema changes across Kaggle
+  dataset releases.
+- **Delta detection:** skip re-upload when the local file hash matches the manifest.
+:::
+
+## Troubleshooting
+
+| **Symptom** | **Possible cause / action** |
+| :--- | :--- |
+| `Falta KAGGLE_API_TOKEN en el .env` | Token missing and CSV not in `data/kaggle/`. Add the token or place the file manually. |
+| Header or row count does not match | Wrong file version. Check filename and source; do not change the validation contract. |
+| `NoSuchBucket` or connection error | Start LocalStack and verify the `pagoseguro-datalake` bucket was initialized. |
+| ETL cannot find a CSV | Confirm files are in `data/raw/` and `HIST_RAW_DIR` points there. |
+| Different ETL fingerprint | Check CSV hashes, seed/config values, `HIST_*` settings, and locked dependencies. |
+
+## Related references
+
+- **Seed module (`db/seed/`):** creates the users, devices, and merchants the ETL assigns transactions to.
+- **Exchange Rates (F6):** daily USD conversion rates used by the decision engine alongside transaction data.
+- **Business rule:** transactions in `transacciones` carry a `is_fraud` label sourced from these datasets.

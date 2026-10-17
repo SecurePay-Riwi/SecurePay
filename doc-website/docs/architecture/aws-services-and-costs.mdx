@@ -1,5 +1,5 @@
 ---
-sidebar_position: 2
+sidebar_position: 7
 title: AWS services and costs
 description: The assumptions behind the numbers, every AWS service with its monthly cost, and how each one is configured.
 ---
@@ -73,15 +73,7 @@ This is what Terraform has to create.
 
 ### Network
 
-| Resource | Configuration |
-| :--- | :--- |
-| VPC | One VPC, 2 AZs |
-| Public subnets | 2 (one per AZ): ALB and NAT Gateway |
-| Private subnets | 2 (one per AZ): Fargate, RDS, cache, Lambdas that need data access |
-| NAT Gateway | 2, one per AZ, so losing a zone does not cut the other one off |
-| Gateway VPC endpoints | S3 and DynamoDB (free) |
-| Security groups | One per service, minimal rules between them |
-| Tags | `proyecto`, `ambiente`, `responsable` on every resource |
+The VPC, its six subnets in three tiers, the NAT Gateways, the gateway endpoints and the six security groups are in [Security](./security.mdx#network).
 
 ### Compute
 
@@ -89,7 +81,7 @@ This is what Terraform has to create.
 | :--- | :--- |
 | Fargate (decision engine) | 0.5 vCPU / 1 GB per task. Autoscaling min 4 / max 24 across 2 AZs, target 25 requests per task (to confirm in the load test) |
 | ALB | HTTPS listener with a free ACM certificate, active health checks |
-| Lambda | Inside the VPC only when it needs RDS or the cache. 512 MB and 30 s by default; the SQS consumers 1024 MB and 60 s (to tune when measured) |
+| Lambda | Inside the VPC only when it needs RDS or the cache. 512 MB and 30 s by default; the SQS consumers also 512 MB, with 60 s (raised to 1024 MB only if the load test asks for it) |
 | ECR | One repository per component, image scanning on push |
 
 ### Data
@@ -116,10 +108,10 @@ This is what Terraform has to create.
 
 | Resource | Configuration |
 | :--- | :--- |
-| IAM | One role per service, least privilege |
+| IAM | 21 least-privilege roles and one read-only user for Power BI. Each one in [Security](./security.mdx#iam) |
 | KMS | AWS managed keys for RDS, S3, DynamoDB, cache and SQS |
-| Parameter Store | RDS credentials and the Kaggle token as `SecureString` |
-| Session Manager | The only administrative access: no bastion, no public IPs |
+| Parameter Store | As `SecureString`: the RDS master password (read only by the admin task), one RDS password per component and the Kaggle token. The cache uses IAM authentication and has no password |
+| Session Manager | Administrative access to the private network, with no public IPs |
 | TLS | HTTPS on ALB and API Gateway, SSL/TLS on RDS, in-transit encryption on the cache |
 | CloudWatch Logs | Only errors, fallbacks and held transactions |
 | Budgets | Alerts at 80% and 100% of the USD 200 credit |

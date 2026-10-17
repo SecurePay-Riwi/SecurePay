@@ -1,0 +1,199 @@
+---
+sidebar_position: 9
+title: Exchange Rates (F6)
+description: Daily exchange rates consumed from the Frankfurter API, used by the decision engine to convert transaction amounts to USD.
+---
+
+
+# Exchange Rates (F6)
+
+## Overview
+
+F6 provides the daily exchange rates that the decision engine uses to convert
+transaction amounts to **USD**. Rates are fetched once a day from the public
+**Frankfurter** API.
+
+- **Source:** `https://api.frankfurter.dev/v2`
+- **Type:** Public REST API
+- **Authentication:** None required
+- **Update frequency:** Business days, around 16:00 CET
+- **Currencies used:** COP, USD, EUR, JPY
+
+:::note
+The API v1 does not include COP. The project uses **v2**, which sources COP
+from BANREP (Banco de la República de Colombia).
+:::
+
+## Where it lives
+
+The source is part of the monorepo, under `sources/apis/`:
+
+```text
+sources/
+└── apis/
+    └── exchange_rates/
+        ├── __init__.py
+        ├── __main__.py          ← local entry point
+        ├── frankfurter.py       ← API client and validation
+        ├── .gitignore           ← excludes local data/
+        └── tests/
+            ├── __init__.py
+            └── test_exchange_rates.py
+```
+
+The generated JSON lives in `sources/apis/exchange_rates/data/` and is
+excluded from Git.
+
+## How it works
+
+### Local (development and demonstration)
+
+A standalone entry point fetches the rates and saves them to a JSON file:
+
+```bash
+uv run python -m sources.apis.exchange_rates
+```
+
+This command:
+
+1. Calls the Frankfurter v2 API.
+2. Validates the response (currencies, dates, positive rates).
+3. Writes `data/rates_<date>.json` as evidence.
+4. Prints the fetched rates to the console.
+
+### Production (AWS)
+
+In production, the same code runs as a **Lambda function triggered by
+EventBridge Scheduler** and writes to **DynamoDB**:
+
+```text
+EventBridge Scheduler (daily)
+    ↓
+Lambda (exchange_rates.handler)
+    ↓
+Frankfurter API
+    ↓
+DynamoDB (pagoseguro-tasas)
+    ↓
+Decision engine (reads current rate)
+```
+
+Only the current day's rates are stored. Historical rates remain available
+through the Frankfurter API itself, so no local historical copy is needed.
+
+## Key decisions
+
+:::info Design decisions
+- **v2 over v1:** v1 does not include COP.
+- **Decimal over float:** boto3 rejects floats when writing to DynamoDB.
+  Rates are parsed with `parse_float=Decimal` at the source.
+- **Custom User-Agent:** Frankfurter returns 403 with the default Python UA.
+  The client sends `securepay-exchange-rates`.
+- **Retry only on 5xx:** a 4xx means the request is wrong and retrying would
+  just repeat the error. Up to 3 attempts with increasing waits (1s, 2s, 4s).
+- **Weekends and holidays:** the API returns the last business day's date.
+  The client keeps whatever date the API provides, never invents one.
+:::
+
+## How to run it locally
+
+### 1. Fetch the rates
+
+```bash
+uv run python -m sources.apis.exchange_rates
+```
+
+Expected output:
+
+```text
+Fetching rates from Frankfurter...
+Rates date: 2026-10-15
+  1 USD = 1 USD
+  1 USD = 4012.34 COP
+  1 USD = 0.87 EUR
+  1 USD = 157.78 JPY
+
+Rates saved to: sources/apis/exchange_rates/data/rates_2026-10-15.json
+```
+
+### 2. Inspect the generated JSON
+
+```bash
+cat sources/apis/exchange_rates/data/rates_2026-10-15.json
+```
+
+Expected content:
+
+```json
+{
+  "date": "2026-10-15",
+  "source": "https://api.frankfurter.dev/v2/rates?base=USD&quotes=COP,EUR,JPY",
+  "rates": {
+    "USD": "1",
+    "COP": "4012.34",
+    "EUR": "0.87",
+    "JPY": "157.78"
+  }
+}
+```
+
+### 3. Call the API directly (optional)
+
+To verify the API is responding:
+
+```bash
+curl "https://api.frankfurter.dev/v2/rates?base=USD&quotes=COP,EUR,JPY"
+```
+
+## Tests
+
+The tests do not call the internet. They mock the HTTP response and exercise
+the validation logic with fixed data.
+
+```bash
+uv run pytest sources/apis/exchange_rates/
+```
+
+Expected output:
+
+```text
+6 passed in 0.32s
+```
+
+Covered cases:
+
+- Correct response returns all four currencies (USD, COP, EUR, JPY).
+- Rates are returned as `Decimal`, never `float`.
+- Missing currency raises an error.
+- Mixed dates between records raise an error.
+- A rate of zero or negative raises an error.
+- A persistent 5xx is retried 3 times and then raises `RuntimeError`.
+
+## Error handling
+
+If the API is unavailable or returns invalid data:
+
+- The client raises an exception. **No partial data is ever written.**
+- In production, the Lambda marks the error, EventBridge retries, and a
+  CloudWatch alarm notifies the team.
+- The decision engine is not affected: it uses the last known rates stored
+  in DynamoDB until the next successful fetch.
+
+## Future improvements
+
+:::tip Out of scope for the current sprint
+- **DynamoDB storage:** the `store.py` module will write the rates to the
+  `pagoseguro-tasas` table. Already designed, pending implementation.
+- **Lambda handler:** the `handler.py` module will wrap `frankfurter.fetch()`
+  and `store.save()` for the EventBridge trigger.
+- **LocalStack init script:** `infra/localstack/init/02_exchange_rates.py`
+  will create the DynamoDB table when LocalStack starts.
+- **Historical retention:** use DynamoDB TTL to keep the last 30 days of
+  rates for auditing.
+:::
+
+## Related references
+
+- **Assignment source:** F6 — Exchange rates (API), 4 currencies.
+- **Business rule:** RN-11 — amounts are reported in USD with the day's rate.
+- **OpenAPI specification:** `https://api.frankfurter.dev/v2/openapi.json`
