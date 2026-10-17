@@ -88,7 +88,28 @@ Para cargar una muestra de los datasets históricos en PostgreSQL, sigue el [Pas
 
 ## Instalación y ejecución
 
-Desde la raíz del proyecto:
+Todos los comandos se ejecutan desde la raíz del proyecto.
+
+### Visión general: orden y dependencias
+
+Orden recomendado: **1 → 2 → 3 y 4 (o el PostgreSQL de Compose) → 6 → 5 → 7 →
+8 → 8b → 8c**. El `.env` (paso 6) se crea antes de levantar Docker (paso 5),
+porque Compose lee de ahí el token de LocalStack. Después, cada pieza se
+levanta por separado:
+
+| Quiero... | Comando | Necesita | Paso |
+|---|---|---|---|
+| Instalar las dependencias | `uv sync` | Nada encendido | 2 |
+| Crear los datos maestros | `uv run python -m db.seed.seed` | PostgreSQL | 7 |
+| Cargar el histórico de Kaggle en PostgreSQL | `uv run python -m db.datasets.etl` | PostgreSQL con el seed hecho y los 2 CSV | 8b |
+| Subir los CSV de Kaggle al Data Lake | `uv run python -m sources.csv_files.kaggle` | LocalStack (y el token de Kaggle si faltan los CSV); no usa PostgreSQL | 8c |
+| Generar transacciones de prueba | `uv run python -m generators` | Seed hecho | 9 |
+| Correr las pruebas | `uv run pytest` | Seed hecho; Valkey y LocalStack para algunas | 10 |
+| Levantar el motor de decisión | `uv run uvicorn services.decision_engine.main:app --reload` | PostgreSQL y Valkey (y LocalStack para publicar) | 11 |
+| Levantar los consumidores | `uv run python -m services.consumers` | LocalStack | 11b |
+| Generar los extractos de los socios | `uv run python -m sources.csv_files.partner_statements` | Salida del generador (paso 9 o 12) | 13 |
+| Levantar el servicio de listas restrictivas | `uv run uvicorn sources.apis.restricted_list.main:app --port 8001` | El archivo que exporta el seed | 14 |
+| Consultar las tasas de cambio | `uv run python -m sources.apis.exchange_rates` | Internet | 15 |
 
 ### Paso 1 --- Clonar el repo
 
@@ -113,6 +134,16 @@ No hace falta activar el entorno: los comandos se ejecutan con
 `uv run`.
 
 ### Paso 3 --- Descargar PostgreSQL
+
+Hay dos formas de tener PostgreSQL. Elige **una**:
+
+-   **Opción A: instalado en tu máquina** (pasos 3 y 4). Escucha en el puerto
+    **5432**.
+-   **Opción B: el de Docker Compose.** Te saltas los pasos 3 y 4: se levanta
+    en el paso 5 y escucha en el puerto **5433** (para no chocar con uno
+    instalado).
+
+Opción A, instalación:
 
 Windows: https://www.postgresql.org/download/windows/
 
@@ -181,10 +212,16 @@ usan los servicios reales.
     LocalStack no guarda nada al apagarse: cada vez que arranca, el script
     vuelve a crear todo vacío.
 
-Para apagar: `docker compose stop`. El Compose también trae PostgreSQL
-(`docker compose up -d` levanta los tres) en el puerto **5434**, para no
-chocar con un PostgreSQL instalado. Si lo usas en vez de los pasos 3 y 4,
-pon el puerto 5434 en `DATABASE_URL`.
+Para apagar: `docker compose stop`.
+
+**Opción B (PostgreSQL de Compose).** Si no instalaste PostgreSQL, levanta
+también el de Compose con `docker compose up -d postgres` (o
+`docker compose up -d` para los tres servicios). Crea solo la base y el
+usuario `pagoseguro` (contraseña `pagoseguro`, los valores `POSTGRES_*` del
+`.env`) y escucha en el puerto **5433**: pon ese puerto en `DATABASE_URL`
+(paso 6). Compose lee todo el `.env`, así que debe tener tu
+`LOCALSTACK_AUTH_TOKEN` aunque solo levantes PostgreSQL. Los datos se
+conservan al apagar; `docker compose down -v` los borra.
 
 ### Paso 6 --- Crear el `.env`
 
@@ -194,15 +231,21 @@ Copiar `.env.example` a `.env`:
 cp .env.example .env
 ```
 
-Ajustar `DATABASE_URL` con el usuario y la contraseña de tu base local
-y pegar tu token de LocalStack. El resto de variables de `.env.example`
-tienen valores por defecto válidos para desarrollo.
+Ajustar `DATABASE_URL` según la opción que elegiste en el paso 3 y pegar tu
+token de LocalStack. El resto de variables de `.env.example` tienen valores
+por defecto válidos para desarrollo.
 
 ``` env
+# Opción A: PostgreSQL instalado en tu máquina (puerto 5432)
 DATABASE_URL=postgresql://pagoseguro:pagoseguro@localhost:5432/pagoseguro
+# Opción B: PostgreSQL de Docker Compose (puerto 5433)
+# DATABASE_URL=postgresql://pagoseguro:pagoseguro@localhost:5433/pagoseguro
 VALKEY_URL=redis://localhost:6379/0
 LOCALSTACK_AUTH_TOKEN=ls-...
 ```
+
+Si el usuario o la contraseña de tu base son otros, cámbialos en la URL. Con
+la opción B, `DATABASE_URL` y los `POSTGRES_*` del `.env` deben coincidir.
 
 Las variables `AWS_*` apuntan a LocalStack con credenciales de mentira
 (`test`), a propósito. En AWS no se ponen: el motor y las Lambdas usan su
@@ -226,8 +269,9 @@ Al final exporta esa lista a `generated/listas/lista_restrictiva.jsonl`,
 que es la "base del proveedor" que lee el servicio de listas (paso 14).
 Con `SEED_LIST_OUTPUT=s3` también la sube a LocalStack.
 
-El seed solo carga datos maestros. Las transacciones no van en el seed:
-las manda el generador al motor, como lo haría el core.
+El seed solo carga datos maestros. Las transacciones de prueba no van en el
+seed: las manda el generador al motor, como lo haría el core. El histórico
+de Kaggle se carga aparte, en la tabla `transacciones`, con el paso 8b.
 
 ### Paso 8 --- Verificar
 
@@ -264,6 +308,33 @@ porque lee las 6,3 millones de filas de PaySim.
 Solo **lee** usuarios, dispositivos y comercios, y solo **escribe** en la tabla
 `transacciones`. Se puede correr varias veces: no duplica nada. La
 semilla (`SEED`, 42) es la misma del seed y del generador.
+
+Con el modo `dev` y los valores por defecto, esto es lo que debe ver (los
+conteos y la huella salen de una corrida real):
+
+``` text
+1/4 Verificando los CSV en data/kaggle ...
+  PS_20174392719_1491204439457_log.csv: SHA-256 OK
+  fraudTest.csv: SHA-256 OK
+...
+Huella SHA-256 del lote (70,000 filas): 91cd7780583096db95f351cb09825a96515f87a065fe328ef94c42c85347cbf8
+4/4 Cargando en la tabla transacciones...
+  insertadas: 70,000  |  ya existían: 0
+```
+
+Para comprobarlo en la base (con la opción B agrega `-p 5433`):
+
+``` bash
+psql -U pagoseguro -d pagoseguro -h localhost
+```
+
+``` sql
+SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE is_fraud) AS fraudes FROM transacciones;
+\q
+```
+
+Debe devolver `70000` y `2100` (50.000 + 20.000 filas, con 3 % de fraude).
+Si vuelves a correr el ETL, dice `insertadas: 0 | ya existían: 70,000`.
 
 #### Qué hace, y por qué
 
@@ -342,7 +413,17 @@ base de datos ni los CSV reales) se corren con:
 uv run pytest db/datasets
 ```
 
-### Paso 8c --- Cargar PaySim y Credit Card Fraud al Data Lake (S3)
+#### Errores frecuentes del ETL
+
+| Mensaje | Causa y solución |
+|---|---|
+| `Faltan estos archivos en ...` | Los dos CSV no están juntos en una de las carpetas que lista el mensaje. Ver "Dónde guardar los CSV". |
+| `El SHA-256 de ... no coincide con el del equipo` | Tienes otra versión del archivo, u otro dataset con ese nombre. Descárgalo de nuevo. `--omitir-hash` lo salta, pero los datos ya no serán iguales a los del equipo. |
+| `El seed no ha creado usuarios con dispositivo...` | Falta el paso 7 (o la base apunta a otro lugar: revisa `DATABASE_URL`). |
+| `Connection refused` / `could not connect` | PostgreSQL apagado o puerto equivocado en `DATABASE_URL`: 5432 si está instalado, 5433 si es el de Compose. |
+| La huella es distinta a la de tus compañeros | Ver "Comprobar que todos obtienen los mismos datos" (arriba). |
+
+### Paso 8c --- Cargar PaySim y fraudTest al Data Lake (S3)
 
 Descarga los dos datasets de Kaggle, los valida y los deja **tal cual
 llegaron** (sin transformar) en la capa cruda del Data Lake, para que
@@ -366,7 +447,7 @@ KAGGLE_DOWNLOAD_DIR=data/kaggle
 DATALAKE_BUCKET=pagoseguro-datalake
 ```
 
-`data/` está en el `.gitignore`: los CSV nunca van a Git.
+`data/kaggle/` está en el `.gitignore`: los CSV nunca van a Git.
 
 #### Dónde van los CSV
 
@@ -375,7 +456,7 @@ Si ya tienes los archivos, no hace falta token: coloca los archivos que requiere
 
 ``` text
 data/kaggle/PS_20174392719_1491204439457_log.csv   # ealaxi/paysim1
-data/kaggle/creditcard.csv                         # mlg-ulb/creditcardfraud
+data/kaggle/fraudTest.csv                          # kartik2112/fraud-detection
 ```
 
 #### Ejecutar
@@ -393,7 +474,7 @@ el contrato no sube nada de ese dataset y el comando termina con código 1
 | Dataset | Archivo | Filas (sin encabezado) | Columnas |
 |---|---|---|---|
 | `ealaxi/paysim1` | `PS_20174392719_1491204439457_log.csv` | 6.362.620 | 11: `step, type, amount, nameOrig, oldbalanceOrg, newbalanceOrig, nameDest, oldbalanceDest, newbalanceDest, isFraud, isFlaggedFraud` |
-| `mlg-ulb/creditcardfraud` | `creditcard.csv` | 284.807 | 31: `Time, V1 … V28, Amount, Class` |
+| `kartik2112/fraud-detection` | `fraudTest.csv` | 555.719 | 23: `(sin nombre), trans_date_trans_time, cc_num, merchant, category, amt, … , merch_long, is_fraud` |
 
 Los valores del contrato están en `sources/csv_files/kaggle/config.py`. Si un
 archivo real no los cumple, **no los cambies en el código**: avisa a Jorge.
@@ -404,8 +485,8 @@ archivo real no los cumple, **no los cambies en el código**: avisa a Jorge.
 |---|---|
 | PaySim | `s3://pagoseguro-datalake/raw/kaggle/paysim/paysim.csv` |
 | Manifiesto de PaySim | `s3://pagoseguro-datalake/raw/kaggle/paysim/_manifest.json` |
-| Credit Card | `s3://pagoseguro-datalake/raw/kaggle/creditcard/creditcard.csv` |
-| Manifiesto de Credit Card | `s3://pagoseguro-datalake/raw/kaggle/creditcard/_manifest.json` |
+| fraudTest | `s3://pagoseguro-datalake/raw/kaggle/sparkov/fraudtest/fraudTest.csv` |
+| Manifiesto de fraudTest | `s3://pagoseguro-datalake/raw/kaggle/sparkov/fraudtest/_manifest.json` |
 
 Las rutas no llevan fecha: es un histórico, y volver a correr el comando
 sobrescribe el mismo archivo en vez de crear copias. El manifiesto es la
@@ -442,7 +523,9 @@ uv run pytest sources/csv_files/kaggle
 
 #### Advertencias de tamaño
 
--   PaySim pesa ~470 MB y tiene 6,3 millones de filas; Credit Card, ~150 MB.
+-   PaySim pesa ~470 MB y tiene 6,3 millones de filas; fraudTest, ~150 MB. Si
+    el CSV no está en `data/kaggle/`, la descarga de `kartik2112/fraud-detection`
+    trae también `fraudTrain.csv`, que no se valida ni se sube.
     La descarga depende de tu conexión.
 -   El archivo se lee **por bloques y por líneas**, nunca entero en memoria
     (no se usa pandas), pero se recorre dos veces (hash y conteo): espera
@@ -455,7 +538,7 @@ uv run pytest sources/csv_files/kaggle
 | Mensaje | Causa y solución |
 |---|---|
 | `Falta KAGGLE_API_TOKEN en el .env` | Falta el token y el CSV no está en `data/kaggle/`. Ponlo en tu `.env` o copia el CSV a mano. |
-| `tiene N filas y se esperaban M` / `el encabezado ... no coincide` | El archivo no es el del contrato (versión distinta u otro dataset, p. ej. `fraudTest.csv` en vez de `creditcard.csv`). No se sube nada; avisa a Jorge. |
+| `tiene N filas y se esperaban M` / `el encabezado ... no coincide` | El archivo no es el del contrato (versión distinta u otro dataset, p. ej. `creditcard.csv` con columnas `V1` … `V28` en vez de `fraudTest.csv`). No se sube nada; avisa a Jorge. |
 | `no existe el archivo` | El CSV no está en `KAGGLE_DOWNLOAD_DIR` con el nombre exacto. |
 | `NoSuchBucket` / `Could not connect to the endpoint URL` | LocalStack apagado o sin el bucket: `docker compose up -d` y `docker compose ps` (debe estar `healthy`). |
 | `Read timeout` en la subida | Conexión lenta con un archivo grande; repite el comando (la carga no deja manifiesto de éxito si falló). |
@@ -496,7 +579,10 @@ uv run pytest
 
 Las pruebas de `sources/csv_files/kaggle` no necesitan servicios; solo la de
 integración con S3 usa LocalStack y se omite si no está levantado
-(`uv run pytest sources/csv_files/kaggle`).
+(`uv run pytest sources/csv_files/kaggle`). Las del ETL
+(`uv run pytest db/datasets`) y las de las tasas de cambio
+(`uv run pytest sources/apis/exchange_rates`) tampoco necesitan servicios,
+internet ni los CSV reales.
 
 PostgreSQL: el proyecto instala **Psycopg 3** (`psycopg[binary]`) y
 `shared/db.py` fuerza ese controlador (`postgresql+psycopg://`) aunque tu
@@ -733,6 +819,44 @@ Si LocalStack ya estaba encendido antes de esta versión, reinícialo
 Hoy el motor todavía busca la lista en PostgreSQL. Pasarlo a la caché,
 con este servicio como respaldo y circuit breaker, es la historia de
 rechazo por lista restrictiva del sprint 2.
+
+### Paso 15 --- Consultar las tasas de cambio (API Frankfurter)
+
+Pide a [Frankfurter](https://frankfurter.dev) (API pública de tasas de
+cambio, sin cuenta ni token) cuántos COP, EUR y JPY vale 1 USD, valida la
+respuesta y guarda el resultado como evidencia del consumo de la API. En AWS
+esta tarea corre como Lambda; en local escribe un archivo.
+
+``` bash
+uv run python -m sources.apis.exchange_rates
+```
+
+Muestra la fecha de las tasas y `1 USD = ... COP/EUR/JPY` (los mensajes del
+programa están en inglés) y guarda
+`sources/apis/exchange_rates/data/rates_AAAA-MM-DD.json`; Git ignora esa
+carpeta.
+
+-   **Necesita internet:** llama a la API real. Reintenta hasta 3 veces ante
+    errores del servidor o de red.
+-   **No guarda datos a medias:** si la respuesta viene incompleta o con tasas
+    inválidas, falla y no escribe nada.
+-   **Las tasas se guardan como texto**, no como número decimal, para no
+    perder precisión.
+-   **No lo usa el generador de transacciones:** ese lee las tasas fijas de
+    `generators/data/tasas_2026-10-01.json`, para que todas las corridas den
+    lo mismo sin internet. Ese archivo se regenera con
+    `uv run python -m generators.fetch_rates`.
+
+### Problemas frecuentes
+
+| Síntoma | Causa y solución |
+|---|---|
+| `Connection refused` a `localhost:5432` o `5433` | PostgreSQL apagado, o el puerto de `DATABASE_URL` no es el de tu opción: 5432 si lo instalaste (opción A), 5433 si es el de Compose (opción B). |
+| `Falta LOCALSTACK_AUTH_TOKEN en el .env` al hacer `docker compose up` | Pega tu token de LocalStack en el `.env` (paso 5). |
+| `POST /transactions` responde 503 | Valkey apagado: `docker compose up -d valkey` (paso 5). |
+| `Could not connect to the endpoint URL` | LocalStack apagado: `docker compose up -d localstack` y `docker compose ps` (debe quedar `healthy`). |
+| El ETL o los extractos no encuentran datos | Falta correr el seed (paso 7) o el generador (paso 9). |
+| Aparecen columnas `V1`, `V2`... en un dataset | Es `creditcard.csv`, que el proyecto no usa. Usa `fraudTest.csv` (ver "Datasets históricos"). |
 
 ## HU-04 --- Inyección de defectos
 

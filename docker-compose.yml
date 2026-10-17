@@ -16,7 +16,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pagoseguro}
       POSTGRES_DB: ${POSTGRES_DB:-pagoseguro}
     ports:
-      - "5434:5432"   # 5434 afuera para no chocar con un PostgreSQL instalado
+      - "5433:5432"   # 5433 afuera para no chocar con un PostgreSQL instalado
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

@@ -1,7 +1,7 @@
 ---
-sidebar_position: 10
-title: Kaggle Datasets
-description: Historical fraud datasets from Kaggle used for PostgreSQL seeding and Data Lake ingestion.
+sidebar_position: 8
+title: Kaggle datasets
+description: Download, validate and load PaySim and Sparkov (fraudTest) into the raw layer of the Data Lake, untouched, with a manifest and idempotent re-runs.
 ---
 
 # Kaggle Datasets
@@ -13,19 +13,18 @@ purposes: loading a reproducible transaction sample into **PostgreSQL** for loca
 antifraud development, and ingesting raw datasets into the **Data Lake** (S3/LocalStack)
 for downstream analytics.
 
-- **Datasets used:** PaySim, Fraud Detection, Credit Card Fraud
-- **Source:** [Kaggle](https://www.kaggle.com)
-- **Authentication:** Kaggle API token (only needed for automatic download)
-- **Update frequency:** Static — datasets are fixed historical snapshots
-- **CSV files:** Not committed to Git due to file size
+| Dataset | File | Rows (no header) | Columns |
+| :--- | :--- | :--- | :--- |
+| `ealaxi/paysim1` | `PS_20174392719_1491204439457_log.csv` | 6,362,620 | 11 (`step` … `isFlaggedFraud`) |
+| `kartik2112/fraud-detection` (Sparkov) | `fraudTest.csv` | 555,719 | 23 (`trans_date_trans_time`, `cc_num`, `merchant`, `category`, `amt` … `is_fraud`) |
 
-:::note
-The two workflows are independent. `fraudTest.csv` is used only by the PostgreSQL ETL.
-`creditcard.csv` is used only by the Data Lake loader. Do not substitute one for the other —
-they have different schemas.
+:::caution
+The Kaggle credit card dataset with anonymized columns (`mlg-ulb/creditcardfraud`, `creditcard.csv`: `Time`, `V1`–`V28`, `Amount`, `Class`) is **not used**. The team agreed not to use it after talking with the professor, and Sparkov replaces it. A `creditcard.csv` does not pass the `fraudTest.csv` validation: the header does not match and nothing is uploaded.
 :::
 
-## Where it lives
+The first column of `fraudTest.csv` has no name (it is the pandas index), so the contract lists an empty name for it. Only `fraudTest.csv` is loaded: the Sparkov dataset also ships `fraudTrain.csv`, and if the CSV is not in `KAGGLE_DOWNLOAD_DIR` the download brings both files, but `fraudTrain.csv` is neither validated nor uploaded.
+
+## What it does
 
 ```text
 sources/
@@ -43,120 +42,25 @@ data/
 The `data/` directories are local and must remain ignored by Git.
 Do not commit the CSVs, `.env`, or `.venv`.
 
-## Datasets
+| Object | Key |
+| :--- | :--- |
+| PaySim | `raw/kaggle/paysim/paysim.csv` |
+| PaySim manifest | `raw/kaggle/paysim/_manifest.json` |
+| Sparkov (`fraudTest.csv`) | `raw/kaggle/sparkov/fraudtest/fraudTest.csv` |
+| Sparkov manifest | `raw/kaggle/sparkov/fraudtest/_manifest.json` |
 
-| **Dataset** | **Kaggle source** | **File** | **Rows** | **Columns** |
-| :--- | :--- | :--- | ---: | :--- |
-| PaySim | [ealaxi/paysim1](https://www.kaggle.com/datasets/ealaxi/paysim1) | `PS_20174392719_1491204439457_log.csv` | 6,362,620 | 11 |
-| Fraud Detection | [kartik2112/fraud-detection](https://www.kaggle.com/datasets/kartik2112/fraud-detection) | `fraudTest.csv` | Version dependent | 23 |
-| Credit Card Fraud | [mlg-ulb/creditcardfraud](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) | `creditcard.csv` | 284,807 | 31 |
+Keys carry no date: it is a one-time history, so a re-run overwrites the same file instead of creating copies.
 
-Download the files from their Kaggle pages and preserve the exact filenames.
-Alternatively, configure a Kaggle API token and let the loader download them automatically.
-
-## How it works
-
-### PostgreSQL ETL (local development)
-
-The ETL in `db/datasets/` loads a controlled sample from PaySim and `fraudTest.csv`
-into the existing `transacciones` table. It depends on seed data — transactions are
-assigned to users, devices, and merchants created by the seed.
-
-```text
-data/raw/ (PaySim + fraudTest.csv)
-    ↓
-db/datasets/etl.py
-    ↓
-PostgreSQL → transacciones table
-```
-
-The default sample uses **50,000 PaySim rows** and **20,000 fraudTest rows**,
-each with a configured 3% fraud share. Transaction IDs are deterministic,
-so reruns do not insert duplicates.
-
-### Data Lake ingestion (S3 / LocalStack)
-
-The module `sources/csv_files/kaggle/` validates and uploads PaySim and
-Credit Card Fraud to the raw layer of the Data Lake. It does not transform
-the files or load them into PostgreSQL.
-
-```text
-data/kaggle/ (PaySim + creditcard.csv)
-    ↓
-sources/csv_files/kaggle/
-    ↓
-S3 / LocalStack → pagoseguro-datalake/raw/kaggle/
-```
-
-For each dataset the loader checks the file exists, validates the exact header
-and expected row count, calculates SHA-256, uploads the CSV, and writes a manifest
-only after a successful upload.
-
-## Key decisions
-
-:::info Design decisions
-- **Two separate input directories:** `data/raw/` for ETL and `data/kaggle/` for the
-  Data Lake loader. This avoids accidental cross-contamination between workflows.
-- **Strict header and row-count validation:** if a file does not match its expected
-  contract it is not uploaded. The contract is never relaxed just to pass a different file version.
-- **Deterministic transaction IDs in the ETL:** reruns are safe and do not create
-  duplicate rows in `transacciones`.
-- **Manifests written only after successful upload:** partial uploads leave no manifest,
-  making it easy to detect incomplete state.
-- **PaySim used by both workflows independently:** each workflow reads it from its own
-  configured local directory.
-:::
-
-## How to run it locally
-
-### 1. PostgreSQL ETL
-
-Make sure the database is running and the seed has been executed first.
-Place the two required CSVs in `data/raw/`, then run a dry-run to preview:
-
-```bash
-uv run python -m db.datasets.etl --dry-run
-```
-
-If the preview looks correct, run the ETL:
-
-```bash
-uv run python -m db.datasets.etl
-```
-
-Expected output:
-
-```text
-Loading PaySim sample: 50000 rows (3% fraud)
-Loading fraudTest sample: 20000 rows (3% fraud)
-Batch fingerprint (SHA-256): abc123...
-ETL complete.
-```
-
-### 2. Data Lake ingestion
-
-Start the local dependencies:
-
-```bash
-docker compose up -d valkey localstack
-docker compose ps
-```
-
-Then run the loader:
-
-```bash
-uv run python -m sources.csv_files.kaggle
-```
-
-Expected output:
-
-```text
-[paysim] Validating... OK (6362620 rows)
-[paysim] Uploading to s3://pagoseguro-datalake/raw/kaggle/paysim/paysim.csv ... OK
-[paysim] Manifest written.
-[creditcard] Validating... OK (284807 rows)
-[creditcard] Uploading to s3://pagoseguro-datalake/raw/kaggle/creditcard/creditcard.csv ... OK
-[creditcard] Manifest written.
+```json
+{
+  "dataset": "ealaxi/paysim1",
+  "archivo_original": "PS_20174392719_1491204439457_log.csv",
+  "filas": 6362620,
+  "columnas": ["step", "type", "amount", "..."],
+  "sha256": "(computed hash)",
+  "bytes": 0,
+  "cargado_en": "2026-10-15T14:03:11Z"
+}
 ```
 
 ### 3. Verify the upload
