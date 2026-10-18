@@ -54,17 +54,51 @@ PAYSIM = Dataset(
     clave_s3="raw/kaggle/paysim/paysim.csv",
 )
 
-CREDITCARD = Dataset(
-    clave="creditcard",
-    dataset="mlg-ulb/creditcardfraud",
-    archivo="creditcard.csv",
-    filas=284_807,
-    columnas=("Time", *(f"V{i}" for i in range(1, 29)), "Amount", "Class"),
-    clave_s3="raw/kaggle/creditcard/creditcard.csv",
+# Sparkov (kartik2112/fraud-detection): transacciones de tarjeta simuladas, con
+# número de tarjeta, comercio, categoría, monto y fecha. Reemplaza al dataset
+# de tarjetas de crédito con columnas anonimizadas (V1..V28) que nombra el
+# enunciado: el equipo acordó con el profesor no usarlo, porque sin tarjeta,
+# comercio ni secuencia de operaciones no se puede medir ninguna regla.
+# El dataset trae también fraudTrain.csv; aquí solo se carga fraudTest.csv.
+# La primera columna del archivo no tiene nombre (es el índice de pandas), y
+# por eso el primer elemento de `columnas` es una cadena vacía.
+FRAUDTEST = Dataset(
+    clave="fraudtest",
+    dataset="kartik2112/fraud-detection",
+    archivo="fraudTest.csv",
+    filas=555_719,
+    columnas=(
+        "",
+        "trans_date_trans_time",
+        "cc_num",
+        "merchant",
+        "category",
+        "amt",
+        "first",
+        "last",
+        "gender",
+        "street",
+        "city",
+        "state",
+        "zip",
+        "lat",
+        "long",
+        "city_pop",
+        "job",
+        "dob",
+        "trans_num",
+        "unix_time",
+        "merch_lat",
+        "merch_long",
+        "is_fraud",
+    ),
+    # Una carpeta por archivo: el manifiesto va en la misma carpeta que el CSV,
+    # y así fraudTrain.csv podría sumarse después sin pisar este manifiesto.
+    clave_s3="raw/kaggle/sparkov/fraudtest/fraudTest.csv",
 )
 
 # Orden en que se procesan.
-DATASETS = (PAYSIM, CREDITCARD)
+DATASETS = (PAYSIM, FRAUDTEST)
 
 
 # Se leen al llamar (no al importar) para que un .env o una prueba que

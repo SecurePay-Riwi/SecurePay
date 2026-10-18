@@ -12,3 +12,5 @@ generated/
 
 # Datasets descargados de Kaggle
 /data/raw/
+/data/kaggle/
+/db/datasets/raw/

@@ -43,7 +43,17 @@ The design splits the work into two paths:
 
 It runs on AWS (Ohio, `us-east-2`, two Availability Zones), managed services first, and is designed as a real company system that runs 24/7. The [Architecture summary](./architecture/summary.mdx) explains each choice and its cost.
 
-## 4. Key features
+| Piece | Folder | Status |
+| :--- | :--- | :--- |
+| [Seed](./components/seed.mdx) | `db/seed/` | Done: users, accounts, devices, device–account pairs, merchants and restricted lists in PostgreSQL. |
+| [Transaction generator](./components/generator.mdx) | `generators/` | Done: plays the wallet core, with labeled fraud patterns and data defects. |
+| [Decision engine](./components/decision-engine.mdx) | `services/decision_engine/` | Running with two rules (restricted list and velocity), idempotency and out-of-order handling in Valkey. |
+| [Messaging](./components/messaging.mdx) | `services/decision_engine/publisher.py`, `infra/localstack/` | Done locally: SNS topic, three SQS queues with dead-letter queues, on LocalStack. |
+| [Consumers](./components/consumers.mdx) | `services/consumers/` | Analytics writes to S3; cases and history are skeletons. |
+| [Partner statements](./components/partner-statements.mdx) | `sources/csv_files/partner_statements/` | Done: daily files of the four payment partners, with their defects, locally and in LocalStack. |
+| [Kaggle datasets](./components/kaggle-datasets.mdx) | `sources/csv_files/kaggle/` | Done: PaySim and Sparkov (`fraudTest.csv`) downloaded, validated and loaded untouched into `raw/kaggle/` with a manifest; idempotent. |
+| [Restricted list service](./components/restricted-list.mdx) | `sources/apis/restricted_list/` | Done: simulated external provider with full-list and per-document endpoints, random latency and outages; reads the list the seed exports. |
+| AWS infrastructure (Terraform) | `infra/` | Designed, not built yet. |
 
 - **Real-time fraud decisions** in under 200 ms, with velocity, mule account, transaction splitting, shared device, account takeover and restricted list rules.
 - **Same answer for a repeated transaction** (idempotency) and correct handling of events that arrive out of order.
