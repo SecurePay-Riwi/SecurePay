@@ -1,0 +1,30 @@
+.steps {
+  margin: 1.5rem 0 2rem;
+  padding-left: 1.2rem;
+  border-left: 2px solid var(--ifm-color-emphasis-200);
+}
+
+.step {
+  position: relative;
+  padding: 0.15rem 0 1.25rem 1rem;
+}
+
+.step::before {
+  position: absolute;
+  top: 0.4rem;
+  left: -1.58rem;
+  width: 0.72rem;
+  height: 0.72rem;
+  border: 3px solid var(--ifm-background-color);
+  border-radius: 50%;
+  background: var(--ifm-color-primary);
+  content: '';
+}
+
+.title {
+  margin: 0 0 0.45rem !important;
+  font-size: 1.05rem !important;
+}
+
+.content { line-height: 1.75; }
+.content > :last-child { margin-bottom: 0; }

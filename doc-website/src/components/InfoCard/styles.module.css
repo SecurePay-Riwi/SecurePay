@@ -1,0 +1,43 @@
+.card {
+  min-width: 0;
+  height: 100%;
+  padding: 1.15rem 1.2rem;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 0.9rem;
+  background: var(--ifm-background-surface-color);
+  transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.card:hover {
+  border-color: var(--ifm-color-primary-light);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 26px rgba(20, 24, 50, 0.06);
+}
+
+.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  margin-bottom: 0.85rem;
+  border-radius: 0.7rem;
+  color: var(--ifm-color-primary);
+  background: var(--ifm-color-emphasis-100);
+}
+
+.title {
+  margin: 0 0 0.5rem !important;
+  font-size: 1.05rem !important;
+  line-height: 1.4;
+}
+
+.content {
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.93rem;
+  line-height: 1.7;
+}
+
+.content > :last-child {
+  margin-bottom: 0;
+}

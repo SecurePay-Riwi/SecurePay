@@ -24,22 +24,30 @@ Fraud in the wallet grew 60% in the last year, mostly through three patterns: ac
 | Reconciliation with banks and agents is manual; differences stay unexplained for more than 10 days | 99.5% reconciled the next day, before 07:00 |
 | Reports to the financial supervisor are built by hand | Suspicious operations are reported automatically, and the evidence is kept for 10 years |
 
-On top of that, the decision cannot slow the business down: it must come back in **under 200 ms (p99)** at 50 transactions per second sustained and 300 at peak, and keep working if an entire AWS Availability Zone goes down.
+<Callout title="Performance and availability target" type="important">
+The decision cannot slow the business down: it must come back in **under 200 ms (p99)** at 50 transactions per second sustained and 300 at peak, and keep working if an entire AWS Availability Zone goes down.
+</Callout>
 
 ## 3. Our solution: PagoSeguro Anti-fraud
 
 PagoSeguro Anti-fraud is the platform this project builds for the wallet. It is separate from the wallet's business systems: the core only sends each transaction and receives one of three answers.
 
-| Decision | Meaning |
-| :--- | :--- |
-| `APPROVE` | The transaction goes through. |
-| `HOLD` | The transaction is held for review. |
-| `REJECT` | The transaction is refused. |
+<div className="decision-grid">
+  <InfoCard title="APPROVE">The transaction goes through.</InfoCard>
+  <InfoCard title="HOLD">The transaction is held for review.</InfoCard>
+  <InfoCard title="REJECT">The transaction is refused.</InfoCard>
+</div>
 
 The design splits the work into two paths:
 
-- **The fast path, the decision.** The decision engine keeps everything it needs in an in-memory cache (recent activity per account, active rules, the restricted list) and answers without querying a database or waiting for another process. If it runs late, it falls back to a safe default by amount.
-- **The slow path, everything else.** After answering, the engine publishes the decision to a messaging topic. Independent consumers open cases for analysts, keep the device history and feed the Data Lake, and scheduled jobs reconcile the partners' statements, measure rule effectiveness and build the dashboard.
+<div className="path-grid">
+  <InfoCard title="Fast path — the decision">
+    The decision engine keeps everything it needs in an in-memory cache (recent activity per account, active rules, the restricted list) and answers without querying a database or waiting for another process. If it runs late, it falls back to a safe default by amount.
+  </InfoCard>
+  <InfoCard title="Slow path — everything else">
+    After answering, the engine publishes the decision to a messaging topic. Independent consumers open cases for analysts, keep the device history and feed the Data Lake, and scheduled jobs reconcile the partners' statements, measure rule effectiveness and build the dashboard.
+  </InfoCard>
+</div>
 
 It runs on AWS (Ohio, `us-east-2`, two Availability Zones), managed services first, and is designed as a real company system that runs 24/7. The [Architecture summary](./architecture/summary.mdx) explains each choice and its cost.
 

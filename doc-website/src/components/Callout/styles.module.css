@@ -1,0 +1,24 @@
+.callout {
+  margin: 1.5rem 0;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-left: 3px solid var(--ifm-color-primary);
+  border-radius: 0.75rem;
+  background: var(--ifm-background-surface-color);
+}
+
+.callout[data-type='tip'] { border-left-color: #16a36a; }
+.callout[data-type='warning'] { border-left-color: #d97706; }
+.callout[data-type='important'] { border-left-color: #dc4564; }
+
+.title {
+  margin: 0 0 0.35rem;
+  font-weight: 750;
+  color: var(--ifm-font-color-base);
+}
+
+.content {
+  line-height: 1.75;
+}
+
+.content > :last-child { margin-bottom: 0; }

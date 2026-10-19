@@ -34,7 +34,9 @@ uv sync
 cp .env.example .env
 ```
 
+<Callout title="Keep your token private" type="warning">
 Paste your LocalStack token (*Settings → Auth Tokens* in app.localstack.cloud) and check `DATABASE_URL`. The token goes only in your `.env`, never in the repository.
+</Callout>
 
 ```env
 DATABASE_URL=postgresql://pagoseguro:pagoseguro@localhost:5433/pagoseguro
@@ -89,7 +91,9 @@ In `dev` mode it creates 100 users, 100 accounts, 150 devices (4 of them shared)
 docker compose exec postgres psql -U pagoseguro -d pagoseguro -c "SELECT COUNT(*) FROM usuarios;"
 ```
 
+<Callout title="Verify the seed" type="tip">
 It must return `100`. More options (volumes, defects, reset) in [Seed](../components/seed.mdx).
+</Callout>
 
 :::caution[Reseed after pulling the generator changes]
 On October 13, 2026 the seed stopped taking dates from Faker (Faker gives different dates on Windows and Linux). If your database was loaded before that, reload it once with `SEED_RESET=true`.
