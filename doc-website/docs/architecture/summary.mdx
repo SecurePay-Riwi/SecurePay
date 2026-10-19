@@ -8,17 +8,23 @@ description: The solution, the services we use, how the design meets the require
 
 **Event-driven microservices, managed services first**, in AWS Ohio (`us-east-2`) across two Availability Zones. The core idea is to split the system into two paths.
 
-**The fast path: the decision.** The core sends the transaction over HTTPS to a load balancer, which spreads it across the decision engine tasks. The engine reads and updates everything it needs in an in-memory cache: idempotency, time windows, 24-hour sums, active rules and the full restricted list. With that it answers. It never queries a database or waits for another process. If it runs late, it decides by amount: it approves under USD 50 and holds from USD 50 up.
-
-**The slow path: everything else.** After answering, the engine publishes the decision to a messaging topic that copies it to three independent queues:
-
-- **Cases:** opens a case for the analysts only when mule account, transaction splitting or restricted list fired.
-- **History:** keeps which devices each account used in the last 30 days.
-- **Analytics:** takes the decision to the Data Lake.
-
-If one queue falls behind, the others keep going.
-
-**Scheduled processes.** Every night the statements of the four payment partners are reconciled. Every day the exchange rates and the restricted list are loaded. Every five minutes a task escalates overdue cases, notifies compliance and reviews the approvals made by the fallback policy. Spark processes the Data Lake, measures rule effectiveness on the labeled history and simulates a new rule before it is activated. Power BI shows the dashboard.
+<div className="path-grid">
+  <InfoCard title="Fast path · the decision">
+    The core sends the transaction over HTTPS to a load balancer, which spreads it across the decision engine tasks. The engine reads and updates everything it needs in an in-memory cache: idempotency, time windows, 24-hour sums, active rules and the full restricted list. With that it answers. It never queries a database or waits for another process. If it runs late, it decides by amount: it approves under USD 50 and holds from USD 50 up.
+  </InfoCard>
+  <InfoCard title="Slow path · everything else">
+    After answering, the engine publishes the decision to a messaging topic that copies it to three independent queues:
+    <ul>
+      <li><strong>Cases:</strong> opens a case for the analysts only when mule account, transaction splitting or restricted list fired.</li>
+      <li><strong>History:</strong> keeps which devices each account used in the last 30 days.</li>
+      <li><strong>Analytics:</strong> takes the decision to the Data Lake.</li>
+    </ul>
+    If one queue falls behind, the others keep going.
+  </InfoCard>
+  <InfoCard title="Scheduled processes">
+    Every night the statements of the four payment partners are reconciled. Every day the exchange rates and the restricted list are loaded. Every five minutes a task escalates overdue cases, notifies compliance and reviews the approvals made by the fallback policy. Spark processes the Data Lake, measures rule effectiveness on the labeled history and simulates a new rule before it is activated. Power BI shows the dashboard.
+  </InfoCard>
+</div>
 
 ![PagoSeguro architecture flow on AWS](/img/architecture-flow.jpg)
 

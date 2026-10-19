@@ -12,10 +12,18 @@ The generator **plays the wallet core**. It reads the seed from PostgreSQL once,
 
 ## Output: file or HTTP
 
-| `GEN_OUTPUT` | What happens |
-| :--- | :--- |
-| `file` (default) | Writes the events to `generated/instance-0/events.jsonl` without sending them. Useful to inspect the stream without the engine. |
-| `http` | Sends each event to the engine (`GEN_ENGINE_URL`) at `GEN_RATE` events per second, and stores the answer. See [Simulate the full flow](../getting-started/simulate-full-flow.mdx). |
+<div className="path-grid">
+  <InfoCard title="File mode · default">
+    **`GEN_OUTPUT=file`**
+
+    Writes the events to `generated/instance-0/events.jsonl` without sending them. Useful to inspect the stream without the engine.
+  </InfoCard>
+  <InfoCard title="HTTP mode">
+    **`GEN_OUTPUT=http`**
+
+    Sends each event to the engine (`GEN_ENGINE_URL`) at `GEN_RATE` events per second, and stores the answer. See [Simulate the full flow](../getting-started/simulate-full-flow.mdx).
+  </InfoCard>
+</div>
 
 `file` is the default on purpose: an old `.env` without `GEN_*` variables never sends events to an engine by accident.
 

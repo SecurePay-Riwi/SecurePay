@@ -14,13 +14,33 @@ Do the [local setup](./local-setup.mdx) up to step 4: services `healthy` and see
 
 All commands run from the repository root. The expected values are for seed 42 and the default `.env.example`.
 
-| Source | Needs | Command |
-| :--- | :--- | :--- |
-| [Simulated database (seed)](#1-simulated-database-seed) | PostgreSQL | `uv run python -m db.seed.seed` |
-| [Transactions (generator)](#2-transactions-generator) | Seed | `uv run python -m generators` |
-| [Partner statements](#3-partner-statements) | Generator output | `uv run python -m sources.csv_files.partner_statements` |
-| [Restricted list service](#4-restricted-list-service) | Seed | `uv run uvicorn sources.apis.restricted_list.main:app --port 8001` |
-| [Exchange rates](#5-exchange-rates) | Internet | `uv run python -m sources.apis.exchange_rates` |
+<div className="path-grid">
+  <InfoCard title="1 · Simulated database (seed)">
+    **Needs:** PostgreSQL
+
+    `uv run python -m db.seed.seed`
+  </InfoCard>
+  <InfoCard title="2 · Transactions (generator)">
+    **Needs:** Seed
+
+    `uv run python -m generators`
+  </InfoCard>
+  <InfoCard title="3 · Partner statements">
+    **Needs:** Generator output
+
+    `uv run python -m sources.csv_files.partner_statements`
+  </InfoCard>
+  <InfoCard title="4 · Restricted list service">
+    **Needs:** Seed
+
+    `uv run uvicorn sources.apis.restricted_list.main:app --port 8001`
+  </InfoCard>
+  <InfoCard title="5 · Exchange rates">
+    **Needs:** Internet
+
+    `uv run python -m sources.apis.exchange_rates`
+  </InfoCard>
+</div>
 
 ## 1. Simulated database (seed)
 
