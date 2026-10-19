@@ -24,6 +24,10 @@ The Kaggle credit card dataset with anonymized columns (`mlg-ulb/creditcardfraud
 
 The first column of `fraudTest.csv` has no name (it is the pandas index), so the contract lists an empty name for it. Only `fraudTest.csv` is loaded: the Sparkov dataset also ships `fraudTrain.csv`, and if the CSV is not in `KAGGLE_DOWNLOAD_DIR` the download brings both files, but `fraudTrain.csv` is neither validated nor uploaded.
 
+## How the ETL links the datasets to the seed users
+
+The assignment asks the team to decide how to link the card dataset to the users of the seed. The ETL links each **holder** to one seed user: the card (`cc_num`) in Sparkov and the source account (`nameOrig`) in PaySim. The first time a holder appears it gets a user that already existed on that date; every later transaction of that holder goes to the same user, on one of the user's own devices. A user can hold several cards, because `fraudTest.csv` has more cards than the seed has users in `dev` mode. In PaySim almost every source account appears only once, so there the link changes little.
+
 ## What it does
 
 ```text
@@ -35,8 +39,7 @@ db/
 └── datasets/                ← PostgreSQL ETL
 
 data/
-├── raw/                     ← ETL input (fraudTest.csv + PaySim)
-└── kaggle/                  ← Data Lake input (creditcard.csv + PaySim)
+└── kaggle/                  ← fraudTest.csv + PaySim, read by both the ETL and the Data Lake loader
 ```
 
 The `data/` directories are local and must remain ignored by Git.
@@ -112,7 +115,7 @@ If a dataset fails validation or upload:
 | `HIST_PAYSIM_FRAUDE_PCT` | `3` | Fraud percentage in the PaySim sample |
 | `HIST_FRAUDTEST_FILAS` | `20000` | Number of `fraudTest` rows selected |
 | `HIST_FRAUDTEST_FRAUDE_PCT` | `3` | Fraud percentage in the `fraudTest` sample |
-| `HIST_RAW_DIR` | `data/raw` | Directory containing the ETL CSVs |
+| `HIST_RAW_DIR` | `db/datasets/raw`, then `data/kaggle` | Directory containing the ETL CSVs |
 | `KAGGLE_API_TOKEN` | — | Required only for automatic download |
 | `KAGGLE_DOWNLOAD_DIR` | `data/kaggle` | Local directory for Data Lake CSVs |
 | `DATALAKE_BUCKET` | `pagoseguro-datalake` | S3 bucket name |
@@ -134,7 +137,7 @@ If a dataset fails validation or upload:
 | `Falta KAGGLE_API_TOKEN en el .env` | Token missing and CSV not in `data/kaggle/`. Add the token or place the file manually. |
 | Header or row count does not match | Wrong file version. Check filename and source; do not change the validation contract. |
 | `NoSuchBucket` or connection error | Start LocalStack and verify the `pagoseguro-datalake` bucket was initialized. |
-| ETL cannot find a CSV | Confirm files are in `data/raw/` and `HIST_RAW_DIR` points there. |
+| ETL cannot find a CSV | Confirm both files are together in `data/kaggle/` (or set `HIST_RAW_DIR`). |
 | Different ETL fingerprint | Check CSV hashes, seed/config values, `HIST_*` settings, and locked dependencies. |
 
 ## Related references

@@ -77,6 +77,8 @@ def reporte_transformacion(lote):
     print(f"\n[{lote.dataset}] transformación")
     print(f"  filas: {len(filas):,} repartidas entre {len(por_usuario):,} usuarios "
           f"(entre {min(por_usuario.values())} y {max(por_usuario.values())} por usuario)")
+    print(f"  titulares ({'cuentas' if lote.dataset == 'paysim' else 'tarjetas'}): "
+          f"{len(lote.titulares):,}, cada uno ligado a un solo usuario")
     print(f"  usuarios con al menos un fraude: {len(fraude_por_usuario):,} "
           f"(máximo {max(fraude_por_usuario.values(), default=0)} en uno solo)")
     print(f"  fechas: {min(fechas):%Y-%m-%d %H:%M} a {max(fechas):%Y-%m-%d %H:%M} UTC")
