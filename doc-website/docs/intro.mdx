@@ -43,17 +43,7 @@ The design splits the work into two paths:
 
 It runs on AWS (Ohio, `us-east-2`, two Availability Zones), managed services first, and is designed as a real company system that runs 24/7. The [Architecture summary](./architecture/summary.mdx) explains each choice and its cost.
 
-| Piece | Folder | Status |
-| :--- | :--- | :--- |
-| [Seed](./components/seed.mdx) | `db/seed/` | Done: users, accounts, devices, device–account pairs, merchants and restricted lists in PostgreSQL. |
-| [Transaction generator](./components/generator.mdx) | `generators/` | Done: plays the wallet core, with labeled fraud patterns and data defects. |
-| [Decision engine](./components/decision-engine.mdx) | `services/decision_engine/` | Running with two rules (restricted list and velocity), idempotency and out-of-order handling in Valkey. |
-| [Messaging](./components/messaging.mdx) | `services/decision_engine/publisher.py`, `infra/localstack/` | Done locally: SNS topic, three SQS queues with dead-letter queues, on LocalStack. |
-| [Consumers](./components/consumers.mdx) | `services/consumers/` | Analytics writes to S3; cases and history are skeletons. |
-| [Partner statements](./components/partner-statements.mdx) | `sources/csv_files/partner_statements/` | Done: daily files of the four payment partners, with their defects, locally and in LocalStack. |
-| [Kaggle datasets](./components/kaggle-datasets.mdx) | `sources/csv_files/kaggle/` | Done: PaySim and Sparkov (`fraudTest.csv`) downloaded, validated and loaded untouched into `raw/kaggle/` with a manifest; idempotent. |
-| [Restricted list service](./components/restricted-list.mdx) | `sources/apis/restricted_list/` | Done: simulated external provider with full-list and per-document endpoints, random latency and outages; reads the list the seed exports. |
-| AWS infrastructure (Terraform) | `infra/` | Designed, not built yet. |
+## 4. Key features
 
 - **Real-time fraud decisions** in under 200 ms, with velocity, mule account, transaction splitting, shared device, account takeover and restricted list rules.
 - **Same answer for a repeated transaction** (idempotency) and correct handling of events that arrive out of order.
@@ -87,7 +77,9 @@ SecurePay/
 │   ├── decision_engine/        # decision engine (FastAPI)
 │   └── consumers/              # SQS consumers written as Lambda handlers
 ├── shared/                     # models, clients and the decision event format
-├── db/seed/                    # PostgreSQL master data seed
+├── db/
+│   ├── seed/                   # PostgreSQL master data seed
+│   └── datasets/               # loads a Kaggle sample into PostgreSQL
 ├── generators/                 # transaction generator (simulated wallet core)
 ├── sources/
 │   ├── csv_files/
@@ -101,17 +93,18 @@ SecurePay/
 └── docker-compose.yml          # PostgreSQL, Valkey and LocalStack
 ```
 
-| Piece | Status |
-| :--- | :--- |
-| [Seed](./components/seed.mdx) | Done |
-| [Transaction generator](./components/generator.mdx) | Done |
-| [Decision engine](./components/decision-engine.mdx) | Running with two rules (restricted list and velocity); the rest arrive in the next sprints |
-| [Messaging](./components/messaging.mdx) and [consumers](./components/consumers.mdx) | Done locally; analytics writes to S3, cases and history are skeletons |
-| [Partner statements](./components/partner-statements.mdx) | Done |
-| [Restricted list service](./components/restricted-list.mdx) | Done |
-| Exchange rates | Client done; rates saved locally for now, to DynamoDB when AWS is set up |
-| [Kaggle datasets](./components/kaggle-datasets.mdx) | In progress |
-| AWS infrastructure (Terraform) | Designed, not built yet |
+| Piece | Folder | Status |
+| :--- | :--- | :--- |
+| [Seed](./components/seed.mdx) | `db/seed/` | Done: users, accounts, devices, device–account pairs, merchants and restricted lists in PostgreSQL. |
+| [Transaction generator](./components/generator.mdx) | `generators/` | Done: plays the wallet core, with labeled fraud patterns and data defects. |
+| [Decision engine](./components/decision-engine.mdx) | `services/decision_engine/` | Running with two rules (restricted list and velocity), idempotency and out-of-order handling in Valkey. |
+| [Messaging](./components/messaging.mdx) | `services/decision_engine/publisher.py`, `infra/localstack/` | Done locally: SNS topic, three SQS queues with dead-letter queues, on LocalStack. |
+| [Consumers](./components/consumers.mdx) | `services/consumers/` | Analytics writes to S3; cases and history are skeletons. |
+| [Partner statements](./components/partner-statements.mdx) | `sources/csv_files/partner_statements/` | Done: daily files of the four payment partners, with their defects, locally and in LocalStack. |
+| [Kaggle datasets](./components/kaggle-datasets.mdx) | `sources/csv_files/kaggle/`, `db/datasets/` | Done: PaySim and Sparkov (`fraudTest.csv`) downloaded, validated and loaded untouched into `raw/kaggle/` with a manifest; an ETL loads a sample of both into PostgreSQL. |
+| [Restricted list service](./components/restricted-list.mdx) | `sources/apis/restricted_list/` | Done: simulated external provider with full-list and per-document endpoints, random latency and outages; reads the list the seed exports. |
+| Exchange rates | `sources/apis/exchange_rates/` | Client done: daily rates from Frankfurter, saved locally for now; to DynamoDB when AWS is set up. |
+| AWS infrastructure (Terraform) | `infra/` | Designed, not built yet. |
 
 ## 7. Links
 

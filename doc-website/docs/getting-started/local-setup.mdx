@@ -37,13 +37,13 @@ cp .env.example .env
 Paste your LocalStack token (*Settings → Auth Tokens* in app.localstack.cloud) and check `DATABASE_URL`. The token goes only in your `.env`, never in the repository.
 
 ```env
-DATABASE_URL=postgresql://pagoseguro:pagoseguro@localhost:5434/pagoseguro
+DATABASE_URL=postgresql://pagoseguro:pagoseguro@localhost:5433/pagoseguro
 VALKEY_URL=redis://localhost:6379/0
 LOCALSTACK_AUTH_TOKEN=ls-...
 ```
 
-:::tip[Port 5434]
-The Compose PostgreSQL listens on **5434** on your machine so it does not collide with an installed PostgreSQL. If you use your own PostgreSQL instead, keep port 5432 in `DATABASE_URL`.
+:::tip[Port 5433]
+The Compose PostgreSQL listens on **5433** on your machine so it does not collide with an installed PostgreSQL. If you use your own PostgreSQL instead, keep port 5432 in `DATABASE_URL`.
 :::
 
 The `AWS_*` variables point to LocalStack with fake credentials (`test`) on purpose. In AWS they are not set: the engine and the Lambdas use their IAM role. Every variable is explained in [Configuration](../reference/configuration.mdx).
@@ -61,7 +61,7 @@ The three services must end up `healthy`:
 
 | Service | Image | Port | Used for |
 | :--- | :--- | :--- | :--- |
-| `postgres` | `postgres:16` | 5434 | Master data (users, accounts, devices, merchants, lists). |
+| `postgres` | `postgres:16` | 5433 | Master data (users, accounts, devices, merchants, lists). |
 | `valkey` | `valkey/valkey:8` | 6379 | Idempotency keys and the velocity history. ElastiCache in AWS. |
 | `localstack` | `localstack/localstack:2026.09.1` | 4566 | SNS, SQS and S3. |
 
