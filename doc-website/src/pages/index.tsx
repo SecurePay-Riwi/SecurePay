@@ -71,8 +71,8 @@ function DecisionFlow() {
           <p className={styles.flowFootnote}>One clear outcome. The right follow-up.</p>
         </div>
       </div>
-      <div className={styles.orbit orbitOne} aria-hidden="true" />
-      <div className={styles.orbit orbitTwo} aria-hidden="true" />
+      <div className={clsx(styles.orbit, styles.orbitOne)} aria-hidden="true" />
+      <div className={clsx(styles.orbit, styles.orbitTwo)} aria-hidden="true" />
     </div>
   );
 }
