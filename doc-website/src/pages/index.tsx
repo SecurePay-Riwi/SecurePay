@@ -11,6 +11,25 @@ import styles from './index.module.css';
 function DecisionFlow() {
   return (
     <div className={styles.visualWrap} aria-label="Illustration of SecurePay's transaction decision flow">
+      <div className={styles.networkField} aria-hidden="true">
+        <svg viewBox="0 0 560 500" fill="none" preserveAspectRatio="xMidYMid meet">
+          <path className={styles.networkTrace} d="M18 122 108 170 166 92 250 142 330 62 410 112 520 54" />
+          <path className={styles.networkTrace} d="M32 352 116 292 188 374 264 316 344 390 426 318 532 360" />
+          <path className={styles.networkTrace} d="M108 170 116 292M166 92 188 374M250 142 264 316M330 62 344 390M410 112 426 318" />
+          <path className={styles.networkTraceAccent} d="M18 122 108 170 250 142 330 62M188 374 264 316 426 318 532 360" />
+          {[[18,122],[108,170],[166,92],[250,142],[330,62],[410,112],[520,54],[32,352],[116,292],[188,374],[264,316],[344,390],[426,318],[532,360]].map(([cx,cy], i) => (
+            <circle key={i} className={i === 3 || i === 10 ? styles.networkNodeHot : styles.networkNode} cx={cx} cy={cy} r={i === 3 || i === 10 ? 4.5 : 3} />
+          ))}
+        </svg>
+      </div>
+      <div className={clsx(styles.signalTag, styles.signalTagTop)} aria-hidden="true">
+        <span className={styles.signalTagDot} />
+        <span><strong>DEVICE MATCH</strong><small>98.4% confidence</small></span>
+      </div>
+      <div className={clsx(styles.signalTag, styles.signalTagSide)} aria-hidden="true">
+        <span className={styles.signalTagIcon}>↗</span>
+        <span><strong>VELOCITY CHECK</strong><small>Pattern detected</small></span>
+      </div>
       <div className={styles.visualGlow} aria-hidden="true" />
       <div className={styles.flowCard}>
         <div className={styles.windowBar}>
