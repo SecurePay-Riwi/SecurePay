@@ -10,11 +10,29 @@ description: The three SQS consumers, written as Lambda handlers and run locally
 
 One consumer per queue. Each is a function with the **AWS Lambda signature**, `handler(event, context)`: it receives a batch of up to 10 SQS messages and returns which ones failed (`ReportBatchItemFailures`). In AWS, SQS triggers the Lambda; locally, a runner reads LocalStack and calls the same function.
 
-| Queue | Handler | Today | Next |
-| :--- | :--- | :--- | :--- |
-| `analitica` | `analytics.handler` | **Writes** each batch to S3 as JSON Lines. | Go through Kinesis Data Firehose in AWS. |
-| `casos` | `cases.handler` | Skeleton: reads, logs non-`APPROVE` decisions and acknowledges. | Open a case in PostgreSQL for mule account, splitting and restricted list ([Team decisions](../architecture/team-decisions.mdx)). |
-| `historial` | `history.handler` | Skeleton: reads and acknowledges. | Store new device–account pairs in DynamoDB and the cache. |
+<div className="decision-grid">
+  <InfoCard title="Analytics · `analitica`">
+    **Handler:** `analytics.handler`
+
+    **Today:** Writes each batch to S3 as JSON Lines.
+
+    **Next:** Go through Kinesis Data Firehose in AWS.
+  </InfoCard>
+  <InfoCard title="Cases · `casos`">
+    **Handler:** `cases.handler`
+
+    **Today:** Skeleton: reads, logs non-`APPROVE` decisions and acknowledges.
+
+    **Next:** Open a case in PostgreSQL for mule account, splitting and restricted list ([Team decisions](../architecture/team-decisions.mdx)).
+  </InfoCard>
+  <InfoCard title="History · `historial`">
+    **Handler:** `history.handler`
+
+    **Today:** Skeleton: reads and acknowledges.
+
+    **Next:** Store new device–account pairs in DynamoDB and the cache.
+  </InfoCard>
+</div>
 
 The skeletons acknowledge messages so the queues do not pile up.
 
