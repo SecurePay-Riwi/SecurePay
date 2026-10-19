@@ -720,3 +720,156 @@
     transition: none;
   }
 }
+
+
+/* Signature transaction-signal network: gives the hero visual a distinct anti-fraud identity. */
+.networkField {
+  position: absolute;
+  z-index: -1;
+  inset: -1.4rem -1.8rem -1.2rem -1.8rem;
+  opacity: 0.8;
+  pointer-events: none;
+  mask-image: radial-gradient(ellipse at center, black 18%, transparent 76%);
+}
+
+.networkField svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.networkTrace {
+  stroke: rgba(136, 145, 211, 0.26);
+  stroke-width: 1.1;
+  stroke-dasharray: 3 7;
+}
+
+.networkTraceAccent {
+  stroke: rgba(111, 222, 228, 0.48);
+  stroke-width: 1.25;
+  stroke-dasharray: 2 6;
+}
+
+.networkNode {
+  fill: #a49cff;
+  fill-opacity: 0.75;
+  stroke: rgba(164, 156, 255, 0.22);
+  stroke-width: 5;
+}
+
+.networkNodeHot {
+  fill: #85e5e7;
+  stroke: rgba(133, 229, 231, 0.2);
+  stroke-width: 7;
+}
+
+.signalTag {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgba(172, 180, 226, 0.22);
+  border-radius: 0.8rem;
+  background: rgba(14, 19, 37, 0.92);
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.26), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  backdrop-filter: blur(14px);
+  pointer-events: none;
+}
+
+.signalTag strong,
+.signalTag small {
+  display: block;
+  white-space: nowrap;
+}
+
+.signalTag strong {
+  color: #dfe4ff;
+  font-size: 0.58rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+}
+
+.signalTag small {
+  margin-top: 0.22rem;
+  color: #8994b5;
+  font-size: 0.66rem;
+}
+
+.signalTagTop {
+  top: -0.3rem;
+  right: -0.7rem;
+}
+
+.signalTagSide {
+  bottom: 2.8rem;
+  left: -1.1rem;
+}
+
+.signalTagDot {
+  width: 0.55rem;
+  height: 0.55rem;
+  flex: 0 0 0.55rem;
+  border-radius: 50%;
+  background: #7de1c4;
+  box-shadow: 0 0 0 4px rgba(125, 225, 196, 0.1), 0 0 14px rgba(125, 225, 196, 0.3);
+}
+
+.signalTagIcon {
+  display: grid;
+  place-items: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  flex: 0 0 1.65rem;
+  border: 1px solid rgba(255, 199, 120, 0.25);
+  border-radius: 0.5rem;
+  color: #f4c779;
+  background: rgba(255, 199, 120, 0.09);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+@media (max-width: 996px) {
+  .networkField {
+    inset: -1rem -1rem -0.5rem;
+  }
+
+  .signalTagTop {
+    right: -0.3rem;
+  }
+
+  .signalTagSide {
+    left: -0.3rem;
+    bottom: 2rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .networkField {
+    inset: 0 -0.5rem;
+    opacity: 0.45;
+  }
+
+  .signalTag {
+    padding: 0.55rem 0.65rem;
+  }
+
+  .signalTagTop {
+    top: -1rem;
+    right: -0.1rem;
+  }
+
+  .signalTagSide {
+    display: none;
+  }
+
+  .signalTag strong {
+    font-size: 0.49rem;
+  }
+
+  .signalTag small {
+    font-size: 0.58rem;
+  }
+}
