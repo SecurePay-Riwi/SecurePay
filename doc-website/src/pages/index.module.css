@@ -1,23 +1,722 @@
 /**
- * CSS files with the .module.css suffix will be treated as CSS modules
- * and scoped locally.
+ * SecurePay landing page — visual identity for a fintech anti-fraud engine.
  */
 
-.heroBanner {
-  padding: 4rem 0;
-  text-align: center;
+.hero {
   position: relative;
+  isolation: isolate;
   overflow: hidden;
+  padding: clamp(4.5rem, 8vw, 7.5rem) 0 clamp(4rem, 7vw, 6.5rem);
+  color: #f4f5ff;
+  background:
+    radial-gradient(ellipse at 74% 42%, rgba(95, 72, 210, 0.15), transparent 42%),
+    linear-gradient(118deg, #0b0e18 0%, #101326 53%, #111027 100%);
 }
 
-@media screen and (max-width: 996px) {
-  .heroBanner {
-    padding: 2rem;
-  }
+.heroGridPattern {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.24;
+  background-image:
+    linear-gradient(rgba(170, 163, 255, 0.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(170, 163, 255, 0.09) 1px, transparent 1px);
+  background-size: 54px 54px;
+  mask-image: linear-gradient(to bottom, black, transparent 92%);
+}
+
+.heroAura {
+  position: absolute;
+  z-index: -1;
+  width: 36rem;
+  height: 36rem;
+  right: -12rem;
+  top: -18rem;
+  border-radius: 50%;
+  background: rgba(107, 83, 255, 0.15);
+  filter: blur(90px);
+  pointer-events: none;
+}
+
+.heroLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.03fr) minmax(380px, 0.97fr);
+  align-items: center;
+  gap: clamp(2.5rem, 5vw, 5.5rem);
+}
+
+.heroCopy {
+  position: relative;
+  z-index: 2;
+  max-width: 650px;
+}
+
+.eyebrow,
+.sectionEyebrow,
+.bottomCtaEyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0 0 1.5rem;
+  color: #b9b3ff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  line-height: 1.5;
+}
+
+.eyebrowPulse {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: #79e7d0;
+  box-shadow: 0 0 0 4px rgba(121, 231, 208, 0.1), 0 0 16px rgba(121, 231, 208, 0.45);
+}
+
+.heroTitle {
+  margin: 0;
+  color: #f7f7ff;
+  font-size: clamp(3.1rem, 5.6vw, 5.3rem);
+  font-weight: 850;
+  letter-spacing: -0.075em;
+  line-height: 0.99;
+}
+
+.heroTitle span {
+  color: #aaa0ff;
+  background: linear-gradient(105deg, #d1cbff 0%, #a69cff 44%, #77dbe8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.heroDescription {
+  max-width: 540px;
+  margin: 1.8rem 0 0;
+  color: #b6bdd2;
+  font-size: clamp(1rem, 1.4vw, 1.12rem);
+  line-height: 1.85;
 }
 
 .buttons {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.85rem;
+  margin-top: 2rem;
+}
+
+.primaryButton,
+.secondaryButton {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 0.8rem;
+  min-height: 3.25rem;
+  padding: 0.8rem 1.15rem;
+  border-radius: 0.75rem;
+  font-size: 0.92rem;
+  font-weight: 750;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+
+.primaryButton {
+  color: #111225;
+  border: 1px solid #b9b0ff;
+  background: linear-gradient(135deg, #c4bcff 0%, #a79aff 54%, #8eebed 140%);
+  box-shadow: 0 8px 28px rgba(137, 119, 255, 0.22);
+}
+
+.primaryButton:hover {
+  color: #111225;
+  transform: translateY(-2px);
+  box-shadow: 0 12px 34px rgba(137, 119, 255, 0.32);
+}
+
+.secondaryButton {
+  color: #e4e7f6;
+  border: 1px solid rgba(185, 190, 220, 0.23);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.secondaryButton:hover {
+  color: #fff;
+  border-color: rgba(185, 176, 255, 0.62);
+  background: rgba(166, 156, 255, 0.08);
+  transform: translateY(-2px);
+}
+
+.buttonPlay {
+  display: inline-grid;
+  place-items: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border: 1px solid rgba(185, 190, 220, 0.35);
+  border-radius: 50%;
+  font-size: 0.85rem;
+}
+
+.heroMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 2.25rem;
+  color: #8f98b4;
+  font-size: 0.79rem;
+  font-weight: 550;
+}
+
+.metaMark {
+  display: inline-flex;
+  width: 1.2rem;
+  height: 1.2rem;
+  color: #82e4d0;
+}
+
+.metaMark svg {
+  width: 100%;
+  height: 100%;
+}
+
+.metaDot {
+  color: #5f6680;
+  padding: 0 0.15rem;
+}
+
+.visualWrap {
+  position: relative;
+  min-width: 0;
+  padding: 1.4rem 0.6rem 1.4rem 0.2rem;
+}
+
+.visualGlow {
+  position: absolute;
+  inset: 8% -5% 0 5%;
+  z-index: -1;
+  border-radius: 50%;
+  background: rgba(109, 85, 255, 0.18);
+  filter: blur(65px);
+}
+
+.flowCard {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(175, 174, 235, 0.2);
+  border-radius: 1.25rem;
+  background: linear-gradient(145deg, rgba(23, 27, 48, 0.96), rgba(14, 18, 33, 0.98));
+  box-shadow: 0 32px 90px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.015) inset;
+  transform: perspective(1200px) rotateY(-3deg) rotateX(1deg);
+}
+
+.windowBar {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  min-height: 3.1rem;
+  padding: 0.8rem 1.1rem;
+  border-bottom: 1px solid rgba(175, 174, 235, 0.12);
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.windowDots {
+  display: flex;
+  gap: 5px;
+}
+
+.windowDots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4b536b;
+}
+
+.windowDots span:first-child {
+  background: #ff8e9a;
+}
+
+.windowDots span:nth-child(2) {
+  background: #f6c878;
+}
+
+.windowDots span:nth-child(3) {
+  background: #70d9bd;
+}
+
+.windowLabel {
+  overflow: hidden;
+  color: #8e98b7;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.windowBadge {
+  margin-left: auto;
+  padding: 0.25rem 0.42rem;
+  border: 1px solid rgba(166, 156, 255, 0.2);
+  border-radius: 0.35rem;
+  color: #aaa2f5;
+  font-size: 0.52rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  white-space: nowrap;
+}
+
+.flowContent {
+  padding: clamp(1.15rem, 2.6vw, 1.75rem);
+}
+
+.flowIntro {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 1.65rem;
+}
+
+.flowIcon {
+  display: grid;
+  place-items: center;
+  width: 2.7rem;
+  height: 2.7rem;
+  flex: 0 0 2.7rem;
+  border: 1px solid rgba(166, 156, 255, 0.25);
+  border-radius: 0.8rem;
+  color: #b8b0ff;
+  background: linear-gradient(145deg, rgba(166, 156, 255, 0.16), rgba(166, 156, 255, 0.04));
+}
+
+.flowIcon svg {
+  width: 1.45rem;
+  height: 1.45rem;
+}
+
+.flowEyebrow {
+  margin: 0 0 0.25rem;
+  color: #8f98b7;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+}
+
+.flowTitle {
+  margin: 0;
+  color: #f2f3ff;
+  font-size: 1.02rem;
+  font-weight: 750;
+  letter-spacing: -0.025em;
+}
+
+.flowSteps {
+  display: flex;
+  flex-direction: column;
+}
+
+.flowNode {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.9rem;
+  border: 1px solid rgba(169, 177, 212, 0.13);
+  border-radius: 0.8rem;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.nodeMarker {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 2rem;
+  border-radius: 0.6rem;
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.markerViolet {
+  color: #c6beff;
+  background: rgba(166, 156, 255, 0.13);
+}
+
+.markerCyan {
+  color: #8de5eb;
+  background: rgba(102, 217, 226, 0.11);
+}
+
+.flowNode strong,
+.flowNode div span {
+  display: block;
+}
+
+.flowNode strong {
+  color: #e9ebfb;
+  font-size: 0.83rem;
+  font-weight: 750;
+}
+
+.flowNode div span {
+  margin-top: 0.22rem;
+  color: #8993b0;
+  font-size: 0.69rem;
+  line-height: 1.4;
+}
+
+.nodeIcon {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: 0 0 1.25rem;
+  margin-left: auto;
+  color: #777f9f;
+}
+
+.flowConnector {
+  display: flex;
+  align-items: center;
+  height: 1.15rem;
+  padding-left: 1.85rem;
+}
+
+.flowConnector span {
+  width: 1px;
+  height: 100%;
+  background: linear-gradient(to bottom, rgba(166, 156, 255, 0.6), rgba(102, 217, 226, 0.6));
+}
+
+.resultDivider {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 1.25rem 0 0.75rem;
+  color: #7f89a8;
+  font-size: 0.58rem;
+  font-weight: 850;
+  letter-spacing: 0.16em;
+}
+
+.resultDivider::before,
+.resultDivider::after {
+  height: 1px;
+  flex: 1;
+  content: '';
+  background: rgba(169, 177, 212, 0.14);
+}
+
+.decisionPills {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.decisionPills > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.38rem;
+  min-width: 0;
+  padding: 0.7rem 0.35rem;
+  border: 1px solid transparent;
+  border-radius: 0.6rem;
+  font-size: 0.62rem;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+}
+
+.decisionPills i {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.approve {
+  color: #82e4c0;
+  border-color: rgba(91, 213, 166, 0.18) !important;
+  background: rgba(91, 213, 166, 0.08);
+}
+
+.hold {
+  color: #f1c77f;
+  border-color: rgba(241, 199, 127, 0.18) !important;
+  background: rgba(241, 199, 127, 0.07);
+}
+
+.reject {
+  color: #ff9aa8;
+  border-color: rgba(255, 129, 151, 0.18) !important;
+  background: rgba(255, 129, 151, 0.07);
+}
+
+.flowFootnote {
+  margin: 0.95rem 0 0;
+  color: #7f89a8;
+  font-size: 0.68rem;
+  text-align: center;
+}
+
+.orbit {
+  position: absolute;
+  z-index: -1;
+  border: 1px solid rgba(166, 156, 255, 0.17);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.orbitOne {
+  width: 6rem;
+  height: 6rem;
+  top: -0.5rem;
+  right: -0.5rem;
+}
+
+.orbitTwo {
+  width: 2.8rem;
+  height: 2.8rem;
+  bottom: 0;
+  left: -0.9rem;
+  border-color: rgba(102, 217, 226, 0.22);
+}
+
+.heroBottomLine {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(166, 156, 255, 0.45), rgba(102, 217, 226, 0.3), transparent);
+}
+
+.featuresIntro {
+  position: relative;
+  padding: clamp(4rem, 7vw, 6.5rem) 0 4.5rem;
+  background: var(--ifm-background-color);
+}
+
+.sectionHeading {
+  max-width: 700px;
+  margin: 0 auto 2.25rem;
+  text-align: center;
+}
+
+.sectionEyebrow {
+  justify-content: center;
+  margin-bottom: 0.85rem;
+  color: var(--ifm-color-primary);
+  font-size: 0.68rem;
+}
+
+.sectionHeading h2 {
+  margin: 0;
+  color: var(--ifm-heading-color);
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  font-weight: 850;
+  letter-spacing: -0.06em;
+  line-height: 1.1;
+}
+
+.sectionHeading h2 span {
+  color: var(--ifm-color-primary);
+}
+
+.sectionHeading > p:last-child {
+  max-width: 590px;
+  margin: 1rem auto 0;
+  color: var(--ifm-font-color-base);
+  font-size: 1rem;
+  line-height: 1.8;
+  opacity: 0.78;
+}
+
+.bottomCta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+  margin-top: 3.25rem;
+  padding: clamp(1.5rem, 3.5vw, 2.5rem);
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 1.1rem;
+  background:
+    radial-gradient(ellipse at 0% 0%, rgba(101, 88, 232, 0.09), transparent 60%),
+    var(--ifm-background-surface-color);
+}
+
+.bottomCtaEyebrow {
+  margin-bottom: 0.55rem;
+  color: var(--ifm-color-primary);
+  font-size: 0.65rem;
+}
+
+.bottomCta h3 {
+  margin: 0;
+  color: var(--ifm-heading-color);
+  font-size: clamp(1.35rem, 2.6vw, 1.8rem);
+  font-weight: 800;
+  letter-spacing: -0.045em;
+}
+
+.bottomCta p:not(.bottomCtaEyebrow) {
+  margin: 0.5rem 0 0;
+  color: var(--ifm-font-color-base);
+  font-size: 0.9rem;
+  opacity: 0.78;
+}
+
+.bottomCtaButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex: 0 0 auto;
+  border-radius: 0.7rem;
+  font-weight: 750;
+}
+
+@media (max-width: 996px) {
+  .hero {
+    padding: 4.5rem 0 4rem;
+  }
+
+  .heroLayout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2.5rem;
+  }
+
+  .heroCopy {
+    max-width: 720px;
+  }
+
+  .heroTitle {
+    font-size: clamp(3rem, 8vw, 4.8rem);
+  }
+
+  .visualWrap {
+    width: min(100%, 620px);
+    margin: 0 auto;
+    padding: 0.5rem 0.25rem;
+  }
+
+  .flowCard {
+    transform: none;
+  }
+
+  .featuresIntro {
+    padding-top: 4rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .hero {
+    padding: 3.5rem 0 3rem;
+  }
+
+  .eyebrow {
+    margin-bottom: 1.15rem;
+    font-size: 0.62rem;
+    letter-spacing: 0.12em;
+  }
+
+  .heroTitle {
+    font-size: clamp(2.65rem, 12vw, 3.5rem);
+  }
+
+  .heroDescription {
+    margin-top: 1.3rem;
+    font-size: 0.98rem;
+  }
+
+  .buttons {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .buttons a {
+    width: 100%;
+  }
+
+  .heroMeta {
+    margin-top: 1.6rem;
+    font-size: 0.72rem;
+  }
+
+  .windowBar {
+    gap: 0.55rem;
+    padding: 0.75rem;
+  }
+
+  .windowLabel {
+    font-size: 0.5rem;
+    letter-spacing: 0.08em;
+  }
+
+  .windowBadge {
+    font-size: 0.44rem;
+  }
+
+  .flowContent {
+    padding: 1rem;
+  }
+
+  .flowNode {
+    gap: 0.6rem;
+    padding: 0.75rem;
+  }
+
+  .flowNode strong {
+    font-size: 0.76rem;
+  }
+
+  .flowNode div span {
+    font-size: 0.64rem;
+  }
+
+  .nodeIcon {
+    display: none;
+  }
+
+  .decisionPills {
+    gap: 0.35rem;
+  }
+
+  .decisionPills > span {
+    gap: 0.25rem;
+    padding: 0.65rem 0.2rem;
+    font-size: 0.54rem;
+  }
+
+  .sectionHeading {
+    margin-bottom: 1rem;
+    text-align: left;
+  }
+
+  .sectionEyebrow {
+    justify-content: flex-start;
+  }
+
+  .sectionHeading > p:last-child {
+    margin-left: 0;
+  }
+
+  .bottomCta {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 1.25rem;
+    margin-top: 2rem;
+  }
+
+  .bottomCtaButton {
+    justify-content: center;
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .primaryButton,
+  .secondaryButton {
+    transition: none;
+  }
 }
