@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from generators.config import CANALES
+from shared.config import CANALES
 from db.datasets.config import (
     CATEGORIA_FRAUDTEST,
     FRAUDTEST_DESPLAZAMIENTO,
@@ -34,18 +34,21 @@ def escribir_paysim(ruta, filas=600):
     for i in range(filas):
         monto = "0.0" if i == 7 else f"{100 + i}.25"
         fraude = 1 if i % 20 == 0 else 0
-        lineas.append(f"{1 + i // 10},{tipos[i % 5]},{monto},C{i},0,0,M{i},0,0,{fraude},0")
+        # 40 cuentas origen que se repiten, para probar que cada una va a un solo usuario.
+        lineas.append(f"{1 + i // 10},{tipos[i % 5]},{monto},C{i % 40},0,0,M{i},0,0,{fraude},0")
     ruta.write_text("\n".join(lineas) + "\n", encoding="utf-8")
 
 
 def escribir_fraudtest(ruta, filas=400):
     categorias = list(CATEGORIA_FRAUDTEST)
     inicio = datetime(2020, 6, 21, 12, 0, 0)
-    lineas = ["idx,trans_date_trans_time,category,amt,is_fraud"]
+    lineas = ["idx,trans_date_trans_time,cc_num,category,amt,is_fraud"]
     for i in range(filas):
         fecha = inicio + timedelta(minutes=37 * i)
         fraude = 1 if i % 25 == 0 else 0
-        lineas.append(f"{i},{fecha:%Y-%m-%d %H:%M:%S},{categorias[i % 14]},{10 + i}.50,{fraude}")
+        # 12 tarjetas que se repiten.
+        tarjeta = 4000_0000_0000_0000 + i % 12
+        lineas.append(f"{i},{fecha:%Y-%m-%d %H:%M:%S},{tarjeta},{categorias[i % 14]},{10 + i}.50,{fraude}")
     # fraudTest viene con saltos de línea de Windows.
     ruta.write_bytes(("\r\n".join(lineas) + "\r\n").encode("utf-8"))
 
@@ -275,6 +278,33 @@ def test_cada_dataset_tiene_su_propio_azar(tmp_path):
     transformar_paysim(muestrear_paysim(ruta_p, 300, 10).filas, dims)
     b = huella(transformar_fraudtest(m.filas, dims).filas)
     assert a == b
+
+
+def test_cada_titular_queda_ligado_a_un_solo_usuario(tmp_path):
+    """Una tarjeta de Sparkov o una cuenta de PaySim no se reparte entre usuarios."""
+    dims, _ = dimensiones()
+    casos = (
+        (escribir_paysim, "paysim.csv", muestrear_paysim, transformar_paysim),
+        (escribir_fraudtest, "fraudTest.csv", muestrear_fraudtest, transformar_fraudtest),
+    )
+    for escribir, nombre, muestrear, transformar in casos:
+        ruta = tmp_path / nombre
+        escribir(ruta)
+        muestra = muestrear(ruta, 200, 10)
+        lote = transformar(muestra.filas, dims)
+        usuarios_por_titular = {}
+        for origen, destino in zip(muestra.filas, lote.filas):
+            usuarios_por_titular.setdefault(origen.titular, set()).add(destino["user_id"])
+        assert all(len(u) == 1 for u in usuarios_por_titular.values())
+        assert {t: next(iter(u)) for t, u in usuarios_por_titular.items()} == lote.titulares
+        # Hay menos titulares que filas: las tarjetas y cuentas se repiten.
+        assert len(lote.titulares) < len(lote.filas)
+
+
+def test_un_usuario_puede_tener_varias_tarjetas(tmp_path):
+    lote, _ = lote_fraudtest(tmp_path)
+    # 12 tarjetas y 3 usuarios: alguno recibe más de una.
+    assert len(set(lote.titulares.values())) < len(lote.titulares)
 
 
 # --- Carpeta de los CSV ----------------------------------------------------

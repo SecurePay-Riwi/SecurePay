@@ -7,6 +7,13 @@ con la semilla del seed, entre los datos que el seed ya creó. Todo el azar
 sale de generadores con semilla y se consume siempre en el mismo orden, así
 que cada compañero obtiene exactamente las mismas filas.
 
+Cada titular del dataset (la cuenta origen de PaySim o la tarjeta de
+Sparkov) queda ligado a un solo usuario del seed: la primera vez que
+aparece se le asigna un usuario que ya existía en esa fecha, y todas sus
+transacciones siguientes van a ese mismo usuario. Así el historial de una
+tarjeta o una cuenta no se reparte entre varios usuarios. Un usuario puede
+tener varias tarjetas, porque los datasets traen más titulares que el seed.
+
 Dos reglas mantienen los datos coherentes:
 - Una transacción nunca es anterior a la existencia del dispositivo (que
   nace después del registro del usuario) ni a la creación del comercio.
@@ -28,9 +35,9 @@ from db.datasets.config import (
     TIPO_PAYSIM,
     nuevo_rng,
 )
-# Canales por tipo de operación: la misma tabla que usa el generador.
-from generators.config import CANALES
 from db.seed.tables.accounts import NAMESPACE
+# Canales por tipo de operación: la misma tabla que usa el generador.
+from shared.config import CANALES
 
 
 @dataclass(frozen=True)
@@ -59,6 +66,8 @@ class Lote:
     # Porcentaje de filas cuyo comercio es de la categoría equivalente
     # (solo fraudTest trae categoría; en PaySim queda en None).
     categoria_respetada_pct: float | None = None
+    # Titulares distintos (cuentas o tarjetas) y usuarios a los que quedaron ligados.
+    titulares: dict = field(default_factory=dict)
 
 
 class Asignador:
@@ -68,6 +77,9 @@ class Asignador:
         self.rng = rng
         self.dims = dims
         self._fechas_usuarios = [f for f, _ in dims.usuarios]
+        self._disponible = {u: f for f, u in dims.usuarios}
+        # Titular del dataset -> usuario del seed al que quedó ligado.
+        self.titulares = {}
         self._fechas_comercios = [c[0] for c in dims.comercios]
         self._por_categoria = {}
         for c in dims.comercios:
@@ -87,19 +99,22 @@ class Asignador:
         """
         return int(self.rng.random() * cantidad)
 
-    def usuario_y_dispositivo(self, fecha):
-        """Usuario con dispositivo ya existente en `fecha`, y ese dispositivo.
+    def usuario_y_dispositivo(self, fecha, titular):
+        """Usuario del titular, un dispositivo suyo ya existente en `fecha`.
 
-        Devuelve también la fecha, que se adelanta solo si ningún usuario
-        existía todavía.
+        Si el titular aparece por primera vez, se le asigna un usuario que
+        ya tenía dispositivo en esa fecha. Devuelve también la fecha, que se
+        adelanta solo si el usuario todavía no tenía dispositivo.
         """
-        k = bisect_right(self._fechas_usuarios, fecha)
-        if k == 0:
-            disponible, user_id = self.dims.usuarios[0]
-            fecha = max(fecha, disponible)
-            k = 1
-        else:
-            user_id = self.dims.usuarios[self.elegir(k)][1]
+        user_id = self.titulares.get(titular)
+        if user_id is None:
+            k = bisect_right(self._fechas_usuarios, fecha)
+            if k == 0:
+                user_id = self.dims.usuarios[0][1]
+            else:
+                user_id = self.dims.usuarios[self.elegir(k)][1]
+            self.titulares[titular] = user_id
+        fecha = max(fecha, self._disponible[user_id])
 
         dispositivos = self.dims.dispositivos[user_id]
         fechas = [d[0] for d in dispositivos]
@@ -149,7 +164,7 @@ def transformar_paysim(filas, dims):
             + timedelta(hours=fila.step - 1)
             + timedelta(seconds=asignador.elegir(3600))
         )
-        user_id, device_id, fecha = asignador.usuario_y_dispositivo(fecha)
+        user_id, device_id, fecha = asignador.usuario_y_dispositivo(fecha, fila.titular)
         merchant_id, fecha = asignador.comercio(fecha)
 
         tipo = TIPO_PAYSIM[fila.tipo]
@@ -178,6 +193,7 @@ def transformar_paysim(filas, dims):
             {"step": fila.step, "type": fila.tipo, "amount": fila.monto,
              "isFraud": int(fila.es_fraude)},
         )
+    lote.titulares = asignador.titulares
     return lote
 
 
@@ -188,7 +204,7 @@ def transformar_fraudtest(filas, dims):
 
     for fila in filas:
         fecha = fila.fecha + FRAUDTEST_DESPLAZAMIENTO
-        user_id, device_id, fecha = asignador.usuario_y_dispositivo(fecha)
+        user_id, device_id, fecha = asignador.usuario_y_dispositivo(fecha, fila.titular)
         merchant_id, fecha = asignador.comercio(
             fecha, CATEGORIA_FRAUDTEST[fila.categoria]
         )
@@ -224,6 +240,7 @@ def transformar_fraudtest(filas, dims):
              "category": fila.categoria, "amt": fila.monto,
              "is_fraud": int(fila.es_fraude)},
         )
+    lote.titulares = asignador.titulares
     if asignador.categoria_pedida:
         lote.categoria_respetada_pct = (
             100 * asignador.categoria_respetada / asignador.categoria_pedida

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from shared.config import CANALES as _CANALES
 from shared.config import FECHA_REFERENCIA  # noqa: F401 (la usan los patrones)
 
 load_dotenv()
@@ -78,12 +79,8 @@ DECIMAL_DEFECT_PERCENTAGE = float(os.getenv("GEN_DECIMAL_DEFECT_PERCENTAGE", 1))
 # no tiene cuenta destino y solo el pago QR lleva comercio.
 TIPOS = {"P2P": 40, "QR": 30, "RECARGA": 15, "RETIRO": 15}
 
-CANALES = {
-    "P2P": ["APP", "WEB"],
-    "QR": ["APP"],
-    "RECARGA": ["APP", "WEB", "CORRESPONSAL"],
-    "RETIRO": ["CORRESPONSAL", "CAJERO"],
-}
+# Canales de cada tipo: viven en shared/ porque también los usa el ETL de Kaggle.
+CANALES = _CANALES
 
 # Monto normal de cada transacción, en USD. Se convierte a la moneda de la
 # cuenta con las tasas guardadas de Frankfurter.

@@ -24,8 +24,11 @@ CENTAVOS = Decimal("0.01")
 # La columna transacciones.amount es Numeric(12, 2).
 MONTO_MAX = 9_999_999_999.99
 
-FilaPaySim = namedtuple("FilaPaySim", "indice step tipo monto es_fraude")
-FilaFraudTest = namedtuple("FilaFraudTest", "indice fecha categoria monto es_fraude")
+# `titular` es quien hace la operación en el dataset: la cuenta origen en
+# PaySim (nameOrig) y la tarjeta en Sparkov (cc_num). Cada titular queda
+# ligado a un solo usuario del seed.
+FilaPaySim = namedtuple("FilaPaySim", "indice step tipo monto es_fraude titular")
+FilaFraudTest = namedtuple("FilaFraudTest", "indice fecha categoria monto es_fraude titular")
 
 
 @dataclass
@@ -92,6 +95,7 @@ def _pedidas(total, fraude_pct):
 def muestrear_paysim(ruta, total, fraude_pct):
     columnas = {
         "step": "step", "tipo": "type", "monto": "amount", "fraude": "isFraud",
+        "titular": "nameOrig",
     }
 
     def valida(fila, pos):
@@ -107,6 +111,7 @@ def muestrear_paysim(ruta, total, fraude_pct):
             tipo=fila[pos["tipo"]],
             monto=_a_decimal(fila[pos["monto"]]),
             es_fraude=es_fraude,
+            titular=fila[pos["titular"]],
         )
         for indice, fila, es_fraude in elegidas
     ]
@@ -119,6 +124,7 @@ def muestrear_fraudtest(ruta, total, fraude_pct):
         "categoria": "category",
         "monto": "amt",
         "fraude": "is_fraud",
+        "titular": "cc_num",
     }
 
     def valida(fila, pos):
@@ -139,6 +145,7 @@ def muestrear_fraudtest(ruta, total, fraude_pct):
             categoria=fila[pos["categoria"]],
             monto=_a_decimal(fila[pos["monto"]]),
             es_fraude=es_fraude,
+            titular=fila[pos["titular"]],
         )
         for indice, fila, es_fraude in elegidas
     ]
