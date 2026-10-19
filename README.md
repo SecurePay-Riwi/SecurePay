@@ -317,7 +317,7 @@ conteos y la huella salen de una corrida real):
   PS_20174392719_1491204439457_log.csv: SHA-256 OK
   fraudTest.csv: SHA-256 OK
 ...
-Huella SHA-256 del lote (70,000 filas): 91cd7780583096db95f351cb09825a96515f87a065fe328ef94c42c85347cbf8
+Huella SHA-256 del lote (70,000 filas): 3c1004fc13346d567832acf8b916114ff4c829cad3114a31a19e117e2e667b9c
 4/4 Cargando en la tabla transacciones...
   insertadas: 70,000  |  ya existían: 0
 ```
@@ -393,7 +393,7 @@ CSV, el mismo seed, la misma semilla y los valores por defecto de abajo, debe
 salir exactamente esta (modo `dev`: 100 usuarios, 50 comercios):
 
 ```
-91cd7780583096db95f351cb09825a96515f87a065fe328ef94c42c85347cbf8
+3c1004fc13346d567832acf8b916114ff4c829cad3114a31a19e117e2e667b9c
 ```
 
 Ese valor se obtuvo en Linux con PostgreSQL 16. Si a alguien le sale otro:
