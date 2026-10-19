@@ -27,7 +27,9 @@ You need the [local setup](./local-setup.mdx) done: services `healthy`, seed loa
 docker compose exec valkey valkey-cli FLUSHDB
 ```
 
+<Callout title="Why clear Valkey first" type="tip">
 Otherwise the ids of a run from less than one hour ago are treated as resends, and the velocity history carries the previous run.
+</Callout>
 
 ## 2. Run the generator against the engine
 
