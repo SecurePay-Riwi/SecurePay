@@ -33,7 +33,9 @@ SecurePay/                  ← this repo: the product (engine, consumers, infra
 ├── services/
 │   ├── decision_engine/    ← FastAPI antifraud engine (HU-05, HU-06, HU-07)
 │   └── consumers/          ← SNS/SQS consumers and analytics
-├── infra/                  ← LocalStack setup, Docker Compose
+├── infra/                  ← LocalStack setup (init scripts create the SNS/SQS
+│                             messaging, S3 buckets and the exchange-rates DynamoDB
+│                             table; add the service to SERVICES in Compose), Docker Compose
 ├── doc-website/            ← Docusaurus documentation site
 ├── db/                     ← BACKUP only: now in securepay-seed
 ├── generators/             ← BACKUP only: now in securepay-generator
