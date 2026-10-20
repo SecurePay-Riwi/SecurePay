@@ -6,13 +6,17 @@ description: How to run the tests, what each suite covers and how to read the re
 
 # Testing
 
-The suite has **181 tests**. They live inside each component (`services/*/tests/`, `generators/tests/`, `sources/**/tests/`, `db/seed/tests/`, `shared/tests/`), and pytest finds them through `pyproject.toml`:
+Each repository runs its own tests with `uv run pytest` from its root:
 
-```toml
-[tool.pytest.ini_options]
-pythonpath = ["."]
-testpaths = ["services", "generators", "sources", "db", "shared"]
-```
+| Repository | Tests | Where | Needs |
+| :--- | ---: | :--- | :--- |
+| `SecurePay` | 84 (engine, consumers, shared) | `services/*/tests/`, `shared/tests/` | PostgreSQL with the seed, Valkey, LocalStack |
+| `securepay-seed` | 29 | `tests/seed/`, `tests/kaggle_etl/` | Nothing |
+| `securepay-generator` | 27 | `tests/` | Nothing |
+| `securepay-csv` | 46 | `tests/kaggle_datasets/`, `tests/partner_statements/` | Nothing (one test uses LocalStack and is skipped without it) |
+| `securepay-apis` | 24 | `tests/restricted_list/`, `tests/exchange_rates/` | Nothing (one test uses LocalStack and is skipped without it) |
+
+While the backup folders `db/`, `generators/` and `sources/` stay in `SecurePay`, its `uv run pytest` also runs their old copies of the source tests.
 
 ## How to run the tests
 
@@ -22,13 +26,14 @@ testpaths = ["services", "generators", "sources", "db", "shared"]
 docker compose up -d
 ```
 
-**2. Load the seed.** The engine API tests need the users, accounts and restricted list in PostgreSQL:
+**2. Load the seed** from the `securepay-seed` repository. The engine API tests need the users, accounts and restricted list in PostgreSQL:
 
 ```bash
-uv run python -m db.seed.seed
+cd ../securepay-seed
+uv run python -m securepay_seed.seed
 ```
 
-**3. Run everything from the repository root:**
+**3. Run the tests from the root of each repository:**
 
 ```bash
 uv run pytest
@@ -37,13 +42,10 @@ uv run pytest
 **Run only part of the suite:**
 
 ```bash
-uv run pytest generators                 # only the generator
-uv run pytest services/decision_engine   # only the engine
-uv run pytest services/consumers         # only the consumers and messaging
-uv run pytest sources/csv_files          # partner statements and Kaggle datasets
-uv run pytest sources/apis               # restricted list service and exchange rates
-uv run pytest db                         # only the seed export
-uv run pytest shared                     # only the shared database connection
+uv run pytest services/decision_engine   # SecurePay: only the engine
+uv run pytest services/consumers         # SecurePay: only the consumers and messaging
+uv run pytest shared                     # SecurePay: only the shared database connection
+uv run pytest tests/partner_statements   # securepay-csv: only the partner statements
 uv run pytest -k velocity                # tests whose name contains "velocity"
 uv run pytest -rs                        # also show why each test was skipped
 uv run pytest -x                         # stop at the first failure
@@ -53,7 +55,7 @@ uv run pytest -x                         # stop at the first failure
 
 | Suite | Folder | Tests | What it checks | Needs |
 | :--- | :--- | ---: | :--- | :--- |
-| Generator | `generators/tests/` | 26 | Same seed gives the same events; ids never repeat; balances chain and never go negative; amounts respect each currency's decimals; fraud labels never reach the engine; each fraud pattern fires only its own rule and every control case stays legitimate; the three defects (resends, out-of-order events, extra decimals) appear and are listed in the report | Nothing |
+| Generator | `securepay-generator`: `tests/` | 26 | Same seed gives the same events; ids never repeat; balances chain and never go negative; amounts respect each currency's decimals; fraud labels never reach the engine; each fraud pattern fires only its own rule and every control case stays legitimate; the three defects (resends, out-of-order events, extra decimals) appear and are listed in the report | Nothing |
 | Request schema | `services/decision_engine/tests/test_schemas.py` | 8 | Valid transactions of each type are accepted; invalid values, wrong accounts for the type and same source and destination are rejected; amounts written differently produce the same JSON | Nothing |
 | Engine API | `services/decision_engine/tests/test_api.py` | 16 | The HTTP endpoint end to end: `400`, `409`, `422` and `500` answers; a repeated transaction gets the same decision; simultaneous requests decide only once; a restricted-list owner is rejected; the sixth transfer in 10 minutes is held; the decision is published once; the engine still answers when SNS is down; response time | PostgreSQL **with the seed** and Valkey |
 | Idempotency | `test_idempotency_valkey.py` | 7 | The first request reserves the id; a retry while pending waits; a retry after the decision gets the saved result; the same id with a different body is rejected | Valkey |
@@ -61,11 +63,11 @@ uv run pytest -x                         # stop at the first failure
 | Publisher | `test_publisher.py` | 6 | Batches of 10; publishing never makes the answer wait; only failed entries are retried; a full buffer or a missing topic is recorded without blocking | Nothing: SNS is faked |
 | Consumers | `services/consumers/tests/test_consumers.py` | 8 | Analytics writes the batch as JSON lines; a broken message fails alone; an unknown event version is rejected; only successful messages are deleted from the queue | Nothing: SQS and S3 are faked |
 | End-to-end messaging | `services/consumers/tests/test_localstack_flow.py` | 2 | Each decision reaches the three queues and the analytics consumer writes it to the raw layer | LocalStack |
-| Partner statements | `sources/csv_files/partner_statements/tests/` | 16 | Each format reads back; each operation belongs to one partner; the file day is the partner's time zone; defect proportions; the answer key matches what reconciliation must find; upload to the raw layer | Nothing: they build their own operations and fake S3 |
-| Restricted list service | `sources/apis/restricted_list/tests/` | 12 | Listed and unlisted documents; invalid document is `400`; full list; simulated outages (`503`) and latency; refuses to start without its file | Nothing, except one test that reads from S3 in LocalStack |
-| Exchange rates | `sources/apis/exchange_rates/tests/` | 6 | The four currencies come back as `Decimal`; a missing currency, mixed dates or a zero rate raise an error; a `503` is retried and then fails | Nothing: Frankfurter is faked |
-| Kaggle datasets | `sources/csv_files/kaggle/tests/` | 24 | Header, column order and row count are validated before anything is uploaded; the SHA-256 and the manifest; the CSV is uploaded before the manifest and a failed upload leaves no manifest; an already loaded file is not uploaded again; download only when needed and a clear error without a token | Nothing, except one test that uploads to LocalStack |
-| Seed export | `db/seed/tests/` | 3 | One person per line sorted by document; same file whatever the database order; empty list | Nothing |
+| Partner statements | `securepay-csv`: `tests/partner_statements/` | 16 | Each format reads back; each operation belongs to one partner; the file day is the partner's time zone; defect proportions; the answer key matches what reconciliation must find; upload to the raw layer | Nothing: they build their own operations and fake S3 |
+| Restricted list service | `securepay-apis`: `tests/restricted_list/` | 12 | Listed and unlisted documents; invalid document is `400`; full list; simulated outages (`503`) and latency; refuses to start without its file | Nothing, except one test that reads from S3 in LocalStack |
+| Exchange rates | `securepay-apis`: `tests/exchange_rates/` | 6 | The four currencies come back as `Decimal`; a missing currency, mixed dates or a zero rate raise an error; a `503` is retried and then fails | Nothing: Frankfurter is faked |
+| Kaggle datasets | `securepay-csv`: `tests/kaggle_datasets/` | 24 | Header, column order and row count are validated before anything is uploaded; the SHA-256 and the manifest; the CSV is uploaded before the manifest and a failed upload leaves no manifest; an already loaded file is not uploaded again; download only when needed and a clear error without a token | Nothing, except one test that uploads to LocalStack |
+| Seed export | `securepay-seed`: `tests/seed/` | 3 | One person per line sorted by document; same file whatever the database order; empty list | Nothing |
 | Database connection | `shared/tests/` | 4 | PostgreSQL URLs always use the psycopg 3 driver | Nothing |
 
 ## How to read the results

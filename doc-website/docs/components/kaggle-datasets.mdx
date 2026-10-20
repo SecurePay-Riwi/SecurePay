@@ -31,18 +31,17 @@ The assignment asks the team to decide how to link the card dataset to the users
 ## What it does
 
 ```text
-sources/
-└── csv_files/
-    └── kaggle/              ← Data Lake loader entry point
+securepay-csv/
+├── src/securepay_csv/kaggle_datasets/   ← Data Lake loader entry point
+└── data/kaggle/                         ← fraudTest.csv + PaySim, downloaded here
 
-db/
-└── datasets/                ← PostgreSQL ETL
-
-data/
-└── kaggle/                  ← fraudTest.csv + PaySim, read by both the ETL and the Data Lake loader
+securepay-seed/
+└── src/securepay_seed/kaggle_etl/       ← PostgreSQL ETL; reads ../securepay-csv/data/kaggle
 ```
 
-The `data/` directories are local and must remain ignored by Git.
+With both repositories cloned side by side, the ETL reads the CSVs the loader
+downloaded, so they are downloaded once. The `data/` directories are local and
+must remain ignored by Git.
 Do not commit the CSVs, `.env`, or `.venv`.
 
 | Object | Key |
@@ -93,10 +92,10 @@ The S3 integration test is skipped when LocalStack is unavailable.
 
 ```bash
 # ETL tests
-uv run pytest db/datasets
+uv run pytest tests/kaggle_etl
 
 # Data Lake loader tests
-uv run pytest sources/csv_files/kaggle
+uv run pytest tests/kaggle_datasets
 ```
 
 ## Error handling
@@ -115,7 +114,7 @@ If a dataset fails validation or upload:
 | `HIST_PAYSIM_FRAUDE_PCT` | `3` | Fraud percentage in the PaySim sample |
 | `HIST_FRAUDTEST_FILAS` | `20000` | Number of `fraudTest` rows selected |
 | `HIST_FRAUDTEST_FRAUDE_PCT` | `3` | Fraud percentage in the `fraudTest` sample |
-| `HIST_RAW_DIR` | `db/datasets/raw`, then `data/kaggle` | Directory containing the ETL CSVs |
+| `HIST_RAW_DIR` | `src/securepay_seed/kaggle_etl/raw`, then `data/kaggle` | Directory containing the ETL CSVs |
 | `KAGGLE_API_TOKEN` | — | Required only for automatic download |
 | `KAGGLE_DOWNLOAD_DIR` | `data/kaggle` | Local directory for Data Lake CSVs |
 | `DATALAKE_BUCKET` | `pagoseguro-datalake` | S3 bucket name |
@@ -142,6 +141,6 @@ If a dataset fails validation or upload:
 
 ## Related references
 
-- **Seed module (`db/seed/`):** creates the users, devices, and merchants the ETL assigns transactions to.
+- **Seed (`securepay-seed`, `src/securepay_seed/`):** creates the users, devices, and merchants the ETL assigns transactions to.
 - **Exchange Rates (F6):** daily USD conversion rates used by the decision engine alongside transaction data.
 - **Business rule:** transactions in `transacciones` carry a `is_fraud` label sourced from these datasets.

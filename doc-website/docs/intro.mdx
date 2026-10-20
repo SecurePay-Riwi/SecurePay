@@ -82,11 +82,11 @@ All satellite repos install [`securepay-shared`](https://pypi.org/project/secure
 
 ```text
 SecurePay-Riwi (GitHub org)
-├── SecurePay              ← monorepo: services + shared + infra + docs
-├── securepay-seed         ← F4: DB seed and Kaggle ETL
-├── securepay-generator    ← F3: simulated transaction stream
-├── securepay-csv          ← F1 PaySim, F2 Sparkov fraudTest, F5 partner statements
-└── securepay-apis         ← F6 exchange rates, F7 restricted list
+├── SecurePay              ← product: services + shared + infra + docs
+├── securepay-seed         ← DB seed and Kaggle ETL
+├── securepay-generator    ← simulated transaction stream
+├── securepay-csv          ← PaySim, Sparkov fraudTest, partner statements
+└── securepay-apis         ← exchange rates, restricted list
 
 PyPI
 └── securepay-shared 0.1.0 ← models, db, config, aws (shared by all repos)
@@ -108,21 +108,22 @@ SecurePay/
 │   └── events.py               # transaction.decided event (services/ only)
 ├── infra/localstack/           # creates SNS, SQS and S3 in LocalStack
 ├── doc-website/                # this site
-└── docker-compose.yml          # PostgreSQL, Valkey and LocalStack
+├── docker-compose.yml          # PostgreSQL, Valkey and LocalStack
+└── db/, generators/, sources/  # backup from before the split; do not edit
 ```
 
-| Piece | Folder | Status |
+| Piece | Repository and folder | Status |
 | :--- | :--- | :--- |
-| [Seed](./components/seed.mdx) | `db/seed/` | Done: users, accounts, devices, device–account pairs, merchants and restricted lists in PostgreSQL. |
-| [Transaction generator](./components/generator.mdx) | `generators/` | Done: plays the wallet core, with labeled fraud patterns and data defects. |
-| [Decision engine](./components/decision-engine.mdx) | `services/decision_engine/` | Running with two rules (restricted list and velocity), idempotency and out-of-order handling in Valkey. |
-| [Messaging](./components/messaging.mdx) | `services/decision_engine/publisher.py`, `infra/localstack/` | Done locally: SNS topic, three SQS queues with dead-letter queues, on LocalStack. |
-| [Consumers](./components/consumers.mdx) | `services/consumers/` | Analytics writes to S3; cases and history are skeletons. |
-| [Partner statements](./components/partner-statements.mdx) | `sources/csv_files/partner_statements/` | Done: daily files of the four payment partners, with their defects, locally and in LocalStack. |
-| [Kaggle datasets](./components/kaggle-datasets.mdx) | `sources/csv_files/kaggle/`, `db/datasets/` | Done: PaySim and Sparkov (`fraudTest.csv`) downloaded, validated and loaded untouched into `raw/kaggle/` with a manifest; an ETL loads a sample of both into PostgreSQL. |
-| [Restricted list service](./components/restricted-list.mdx) | `sources/apis/restricted_list/` | Done: simulated external provider with full-list and per-document endpoints, random latency and outages; reads the list the seed exports. |
-| Exchange rates | `sources/apis/exchange_rates/` | Client done: daily rates from Frankfurter, saved locally for now; to DynamoDB when AWS is set up. |
-| AWS infrastructure (Terraform) | `infra/` | Designed, not built yet. |
+| [Seed](./components/seed.mdx) | `securepay-seed`: `src/securepay_seed/` | Done: users, accounts, devices, device–account pairs, merchants and restricted lists in PostgreSQL. |
+| [Transaction generator](./components/generator.mdx) | `securepay-generator`: `src/securepay_generator/` | Done: plays the wallet core, with labeled fraud patterns and data defects. |
+| [Decision engine](./components/decision-engine.mdx) | `SecurePay`: `services/decision_engine/` | Running with two rules (restricted list and velocity), idempotency and out-of-order handling in Valkey. |
+| [Messaging](./components/messaging.mdx) | `SecurePay`: `services/decision_engine/publisher.py`, `infra/localstack/` | Done locally: SNS topic, three SQS queues with dead-letter queues, on LocalStack. |
+| [Consumers](./components/consumers.mdx) | `SecurePay`: `services/consumers/` | Analytics writes to S3; cases and history are skeletons. |
+| [Partner statements](./components/partner-statements.mdx) | `securepay-csv`: `src/securepay_csv/partner_statements/` | Done: daily files of the four payment partners, with their defects, locally and in LocalStack. |
+| [Kaggle datasets](./components/kaggle-datasets.mdx) | `securepay-csv`: `src/securepay_csv/kaggle_datasets/`; `securepay-seed`: `src/securepay_seed/kaggle_etl/` | Done: PaySim and Sparkov (`fraudTest.csv`) downloaded, validated and loaded untouched into `raw/kaggle/` with a manifest; an ETL loads a sample of both into PostgreSQL. |
+| [Restricted list service](./components/restricted-list.mdx) | `securepay-apis`: `src/securepay_apis/restricted_list/` | Done: simulated external provider with full-list and per-document endpoints, random latency and outages; reads the list the seed exports. |
+| Exchange rates | `securepay-apis`: `src/securepay_apis/exchange_rates/` | Client done: daily rates from Frankfurter, saved locally for now; to DynamoDB when AWS is set up. |
+| AWS infrastructure (Terraform) | `SecurePay`: `infra/` | Designed, not built yet. |
 
 ## 7. Links
 

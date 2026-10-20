@@ -10,56 +10,70 @@ This page runs each data source on its own and tells you what you should see. Ev
 
 ## Multi-repo structure
 
-Each data source now lives in its own repository. All of them install
-[`securepay-shared`](https://pypi.org/project/securepay-shared/) from PyPI — no need to clone the monorepo to use them independently.
+Each data source lives in its own repository, and each one installs
+[`securepay-shared`](https://pypi.org/project/securepay-shared/) from PyPI.
 
-| Repo | Sources | Clone |
-| :--- | :--- | :--- |
-| [`securepay-seed`](https://github.com/SecurePay-Riwi/securepay-seed) | F4 seed DB | `git clone https://github.com/SecurePay-Riwi/securepay-seed.git` |
-| [`securepay-generator`](https://github.com/SecurePay-Riwi/securepay-generator) | F3 transaction stream | `git clone https://github.com/SecurePay-Riwi/securepay-generator.git` |
-| [`securepay-csv`](https://github.com/SecurePay-Riwi/securepay-csv) | F1 PaySim, F2 Sparkov, F5 partner statements | `git clone https://github.com/SecurePay-Riwi/securepay-csv.git` |
-| [`securepay-apis`](https://github.com/SecurePay-Riwi/securepay-apis) | F6 exchange rates, F7 restricted list | `git clone https://github.com/SecurePay-Riwi/securepay-apis.git` |
+| Repo | Sources |
+| :--- | :--- |
+| [`securepay-seed`](https://github.com/SecurePay-Riwi/securepay-seed) | Simulated database and Kaggle ETL |
+| [`securepay-generator`](https://github.com/SecurePay-Riwi/securepay-generator) | Transaction stream |
+| [`securepay-csv`](https://github.com/SecurePay-Riwi/securepay-csv) | PaySim, Sparkov and partner statements |
+| [`securepay-apis`](https://github.com/SecurePay-Riwi/securepay-apis) | Restricted list service and exchange rates |
 
-The commands below still work from the monorepo root too — both paths are valid.
+Clone them side by side, next to `SecurePay`, and run `cp .env.example .env` and `uv sync` once in each one:
+
+```bash
+git clone https://github.com/SecurePay-Riwi/securepay-seed.git
+git clone https://github.com/SecurePay-Riwi/securepay-generator.git
+git clone https://github.com/SecurePay-Riwi/securepay-csv.git
+git clone https://github.com/SecurePay-Riwi/securepay-apis.git
+```
+
+Side by side, each repository finds the files the others produce
+(`../securepay-generator/generated`, `../securepay-seed/generated/listas`,
+`../securepay-csv/data/kaggle`) without setting any path. The variables in
+each `.env.example` still override them.
 
 ## Before you start
 
 Do the [local setup](./local-setup.mdx) up to step 4: services `healthy` and seed loaded. The decision engine and the consumers are not needed on this page.
 
-All commands run from the repository root. The expected values are for seed 42 and the default `.env.example`.
+Each command runs from the root of the repository named in its section. The expected values are for seed 42 and the default `.env.example`.
 
 <div className="path-grid">
   <InfoCard title="1 · Simulated database (seed)">
     **Needs:** PostgreSQL
 
-    `uv run python -m db.seed.seed`
+    `uv run python -m securepay_seed.seed`
   </InfoCard>
   <InfoCard title="2 · Transactions (generator)">
     **Needs:** Seed
 
-    `uv run python -m generators`
+    `uv run python -m securepay_generator`
   </InfoCard>
   <InfoCard title="3 · Partner statements">
     **Needs:** Generator output
 
-    `uv run python -m sources.csv_files.partner_statements`
+    `uv run python -m securepay_csv.partner_statements`
   </InfoCard>
   <InfoCard title="4 · Restricted list service">
     **Needs:** Seed
 
-    `uv run uvicorn sources.apis.restricted_list.main:app --port 8001`
+    `uv run uvicorn securepay_apis.restricted_list.main:app --port 8001`
   </InfoCard>
   <InfoCard title="5 · Exchange rates">
     **Needs:** Internet
 
-    `uv run python -m sources.apis.exchange_rates`
+    `uv run python -m securepay_apis.exchange_rates`
   </InfoCard>
 </div>
 
 ## 1. Simulated database (seed)
 
+In `securepay-seed`:
+
 ```bash
-uv run python -m db.seed.seed
+uv run python -m securepay_seed.seed
 ```
 
 It must end with:
@@ -76,10 +90,10 @@ Besides loading PostgreSQL, it writes the restricted list provider file that the
 
 ## 2. Transactions (generator)
 
-In file mode (the default) the generator writes the events without sending them to the engine:
+In `securepay-generator`, in file mode (the default), the generator writes the events without sending them to the engine:
 
 ```bash
-uv run python -m generators
+uv run python -m securepay_generator
 ```
 
 It must end with:
@@ -92,10 +106,10 @@ Listo: 1035 eventos. Archivos en generated/instance-0
 
 ## 3. Partner statements
 
-It reads the generator output from step 2, so run that first:
+In `securepay-csv`. It reads the generator output from step 2 (in `../securepay-generator/generated`), so run that first:
 
 ```bash
-uv run python -m sources.csv_files.partner_statements
+uv run python -m securepay_csv.partner_statements
 ```
 
 It must end with:
@@ -111,13 +125,13 @@ PowerShell:
 
 ```powershell
 $env:EXT_OUTPUT="s3"
-uv run python -m sources.csv_files.partner_statements
+uv run python -m securepay_csv.partner_statements
 ```
 
 Bash:
 
 ```bash
-EXT_OUTPUT=s3 uv run python -m sources.csv_files.partner_statements
+EXT_OUTPUT=s3 uv run python -m securepay_csv.partner_statements
 ```
 
 Check the upload (47 files):
@@ -130,10 +144,10 @@ More in [Partner statements](../components/partner-statements.mdx).
 
 ## 4. Restricted list service
 
-It reads `generated/listas/lista_restrictiva.jsonl`, the file the seed wrote in step 1. Start it and leave the terminal open:
+In `securepay-apis`. It reads `generated/listas/lista_restrictiva.jsonl`, the file the seed wrote in step 1 (in `../securepay-seed`). Start it and leave the terminal open:
 
 ```bash
-uv run uvicorn sources.apis.restricted_list.main:app --port 8001
+uv run uvicorn securepay_apis.restricted_list.main:app --port 8001
 ```
 
 Open these addresses in the browser (or use `curl.exe` in PowerShell):
@@ -148,32 +162,32 @@ Open these addresses in the browser (or use `curl.exe` in PowerShell):
 
 The service simulates an external provider: each answer takes between 50 ms and 3 s, and about 5% of them fail with `503` on purpose. Reload the page if you get one.
 
-To read the list from S3 in LocalStack instead of the local file, export it with the seed and start the service with `LISTA_SOURCE=s3`:
+To read the list from S3 in LocalStack instead of the local file, export it with the seed (in `securepay-seed`) and start the service with `LISTA_SOURCE=s3` (in `securepay-apis`):
 
 PowerShell:
 
 ```powershell
 $env:SEED_LIST_OUTPUT="s3"
-uv run python -m db.seed.seed
+uv run python -m securepay_seed.seed
 $env:LISTA_SOURCE="s3"
-uv run uvicorn sources.apis.restricted_list.main:app --port 8001
+uv run uvicorn securepay_apis.restricted_list.main:app --port 8001
 ```
 
 Bash:
 
 ```bash
-SEED_LIST_OUTPUT=s3 uv run python -m db.seed.seed
-LISTA_SOURCE=s3 uv run uvicorn sources.apis.restricted_list.main:app --port 8001
+SEED_LIST_OUTPUT=s3 uv run python -m securepay_seed.seed
+LISTA_SOURCE=s3 uv run uvicorn securepay_apis.restricted_list.main:app --port 8001
 ```
 
 LocalStack keeps nothing when it stops, so after restarting it run the seed with `SEED_LIST_OUTPUT=s3` again. More in [Restricted list service](../components/restricted-list.mdx).
 
 ## 5. Exchange rates
 
-It calls the public Frankfurter API, so it needs internet. It needs no database and no token.
+In `securepay-apis`. It calls the public Frankfurter API, so it needs internet. It needs no database and no token.
 
 ```bash
-uv run python -m sources.apis.exchange_rates
+uv run python -m securepay_apis.exchange_rates
 ```
 
 It prints the day's rates and the file it saved:
@@ -186,14 +200,14 @@ Rates date: 2026-10-15
   1 USD = ... EUR
   1 USD = ... JPY
 
-Rates saved to: .../sources/apis/exchange_rates/data/rates_2026-10-15.json
+Rates saved to: .../src/securepay_apis/exchange_rates/data/rates_2026-10-15.json
 ```
 
 The date is the last business day published by Frankfurter, and the values change every day. The file is not tracked by Git. More in [Exchange rates](../components/exchange_rates.mdx).
 
 ## Check everything with the tests
 
-With the services up and the seed loaded, the whole suite must pass with no test skipped:
+Run `uv run pytest` in each repository; with the services up, no test is skipped:
 
 ```bash
 uv run pytest

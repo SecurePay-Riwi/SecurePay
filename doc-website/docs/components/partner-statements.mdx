@@ -6,7 +6,7 @@ description: Daily files from the four payment partners, built from the generato
 
 # Partner statements
 
-**Repo:** [`securepay-csv`](https://github.com/SecurePay-Riwi/securepay-csv) · **Folder:** `sources/csv_files/partner_statements/` · **Run:** `uv run python -m sources.csv_files.partner_statements`
+**Repo:** [`securepay-csv`](https://github.com/SecurePay-Riwi/securepay-csv) · **Folder:** `src/securepay_csv/partner_statements/` · **Run:** `uv run python -m securepay_csv.partner_statements`
 
 Every day, each of the four payment partners (one bank and three networks) sends a file with what went through it, in its own format. The daily reconciliation compares those files against what PagoSeguro recorded. This component **simulates the partners**: it builds their files from the [transaction generator](./generator.mdx)'s output, so they match what the engine saw, and injects the defects the assignment asks for.
 
@@ -55,7 +55,7 @@ generated/extractos/<partner>/fecha=YYYY-MM-DD/<partner>_YYYYMMDD_vN.<ext>
 s3://pagoseguro-datalake/raw/extractos/<partner>/fecha=YYYY-MM-DD/<same name>   (EXT_OUTPUT=s3)
 ```
 
-With seed 42 and the default `.env.example`, after `uv run python -m generators` it reads 598 operations and writes 47 files. After the full flow over HTTP it reads 595, because the 3 rejected or held ones that go through a partner are left out.
+With seed 42 and the default `.env.example`, after `uv run python -m securepay_generator` it reads 598 operations and writes 47 files. After the full flow over HTTP it reads 595, because the 3 rejected or held ones that go through a partner are left out.
 
 ## Defects
 
@@ -97,10 +97,10 @@ A defect corrected by a `_v2` is marked `corrected_in_v2` and produces no expect
 | `statements.py` | Groups by partner and day, injects the defects and builds the answer key. |
 | `output.py` | Writes locally and, with `EXT_OUTPUT=s3`, to the raw layer. |
 | `config.py` | `EXT_*` variables. |
-| `money.py` | Decimal places per currency. It does not import from `generators/`, so this folder can move to its own repository on its own. |
+| `money.py` | Decimal places per currency. It is a small copy of the generator's rounding, so `securepay-csv` does not depend on `securepay-generator`. |
 
 Bogotá is a fixed UTC−5 offset (no daylight saving since 1993) instead of `ZoneInfo("America/Bogota")`, which on Windows needs the extra `tzdata` package.
 
 ## Tests
 
-`uv run pytest sources` (no database needed): every format reads back to the same records, each operation goes to exactly one partner, same seed gives the same files, defects appear in the requested proportion, a `_v2` fixes everything it should, broken controls are detected, and a minimal reconciliation over the files finds exactly the differences of the answer key.
+`uv run pytest tests/partner_statements` in `securepay-csv` (no database needed): every format reads back to the same records, each operation goes to exactly one partner, same seed gives the same files, defects appear in the requested proportion, a `_v2` fixes everything it should, broken controls are detected, and a minimal reconciliation over the files finds exactly the differences of the answer key.

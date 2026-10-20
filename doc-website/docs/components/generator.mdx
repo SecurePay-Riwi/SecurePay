@@ -6,7 +6,7 @@ description: The simulated wallet core that sends transactions with labeled frau
 
 # Transaction generator
 
-**Repo:** [`securepay-generator`](https://github.com/SecurePay-Riwi/securepay-generator) · **Folder:** `generators/` · **Run:** `uv run python -m generators`
+**Repo:** [`securepay-generator`](https://github.com/SecurePay-Riwi/securepay-generator) · **Folder:** `src/securepay_generator/` · **Run:** `uv run python -m securepay_generator`
 
 The generator **plays the wallet core**. It reads the seed from PostgreSQL once, keeps the balances in memory and produces a stream of transactions with fraud patterns and data quality defects. Every event carries a label the engine never sees, so we can check afterwards whether the engine got it right.
 
@@ -48,7 +48,7 @@ Transactions go to `POST /transactions`. The format is described in [Decision en
 | `RECARGA` (top-up) | 15% | Destination only | `APP`, `WEB`, `CORRESPONSAL` |
 | `RETIRO` (withdrawal) | 15% | Source only | `CORRESPONSAL`, `CAJERO` |
 
-Normal amounts are USD 1 to 150 (top-ups USD 10 to 300), converted to each account's currency with Frankfurter rates saved in `generators/data/tasas_2026-10-01.json`. Transfers only happen between accounts in the same currency.
+Normal amounts are USD 1 to 150 (top-ups USD 10 to 300), converted to each account's currency with Frankfurter rates saved in `src/securepay_generator/data/tasas_2026-10-01.json`. Transfers only happen between accounts in the same currency.
 
 Security events (`DEVICE_CHANGE`, `PASSWORD_CHANGE`) go to `POST /security-events`, which the engine does not have yet: they answer `404` until the account takeover rule arrives.
 
@@ -64,7 +64,7 @@ One pattern per rule, each with a **control case** that stays just on the side t
 | `ACCOUNT_TAKEOVER` | Device change + password change + transaction over USD 200, all within 1 hour | Transaction 20 minutes after the device change | Transaction 70 minutes after |
 | `RESTRICTED_LIST` | The owner's document is in a restricted list | 1 transaction from a listed customer | None: being on the list is exact. The hard case (same document in another format) comes from the seed. |
 
-`GEN_FRAUD_PERCENTAGE` (default 5) sets how much of the stream belongs to a pattern. The thresholds live in one place, `REGLAS` in `generators/config.py`.
+`GEN_FRAUD_PERCENTAGE` (default 5) sets how much of the stream belongs to a pattern. The thresholds live in one place, `REGLAS` in `src/securepay_generator/config.py`.
 
 ## Data defects
 

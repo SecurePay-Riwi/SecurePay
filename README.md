@@ -3,34 +3,43 @@
 Plataforma de monitoreo transaccional, reglas antifraude y conciliación
 para una billetera digital.
 
-## Shared library — `securepay-shared`
+## Repositorios del proyecto
 
-`shared/` is published to PyPI as [`securepay-shared`](https://pypi.org/project/securepay-shared/).
-Satellite repositories install it as a normal dependency — no need to clone this monorepo:
+Este repositorio tiene el producto: el motor de decisión, los consumidores,
+la infraestructura local (Docker Compose y LocalStack) y la documentación
+(Docusaurus). Las fuentes de datos simuladas viven cada una en su repo:
 
-```toml
-dependencies = ["securepay-shared>=0.1.0"]
+| Repo | Qué tiene | Comando principal |
+|------|-----------|-------------------|
+| [`securepay-seed`](https://github.com/SecurePay-Riwi/securepay-seed) | Seed de PostgreSQL y ETL de Kaggle | `uv run python -m securepay_seed.seed` |
+| [`securepay-generator`](https://github.com/SecurePay-Riwi/securepay-generator) | Generador de transacciones (hace de core) | `uv run python -m securepay_generator` |
+| [`securepay-csv`](https://github.com/SecurePay-Riwi/securepay-csv) | Datasets de Kaggle y extractos de los socios | `uv run python -m securepay_csv.partner_statements` |
+| [`securepay-apis`](https://github.com/SecurePay-Riwi/securepay-apis) | Servicio de listas restrictivas y tasas de cambio | `uv run uvicorn securepay_apis.restricted_list.main:app --port 8001` |
+
+Se clonan uno al lado del otro, en la misma carpeta, y así cada repo
+encuentra solo los archivos que producen los demás:
+
+```
+SecurePay-Riwi/
+├── SecurePay/
+├── securepay-seed/
+├── securepay-generator/
+├── securepay-csv/
+└── securepay-apis/
 ```
 
-```bash
-uv sync   # pulls securepay-shared from PyPI automatically
-```
+> Las carpetas `db/`, `generators/` y `sources/` de este repo son solo un
+> **respaldo** de antes de la separación. No se editan: los cambios van en
+> el repo de cada fuente.
 
-The package exposes: `securepay_shared.models` (SQLAlchemy ORM), `securepay_shared.db`
-(PostgreSQL engine + session), `securepay_shared.config` (env vars and constants) and
-`securepay_shared.aws` (boto3 client factory).
+### Librería común: `securepay-shared`
 
-> `shared/cache.py` and `shared/events.py` are **not** part of the published package —
-> they are only used by `services/` and stay in this repo.
-
-### Satellite repositories
-
-| Repo | Content | Data sources |
-|------|---------|--------------|
-| [`securepay-csv`](https://github.com/SecurePay-Riwi/securepay-csv) | CSV sources | F1 PaySim, F2 Sparkov fraudTest, F5 partner statements |
-| [`securepay-apis`](https://github.com/SecurePay-Riwi/securepay-apis) | API integrations | F6 Frankfurter exchange rates, F7 restricted list |
-| [`securepay-seed`](https://github.com/SecurePay-Riwi/securepay-seed) | DB seed + Kaggle ETL | F4 seed DB |
-| [`securepay-generator`](https://github.com/SecurePay-Riwi/securepay-generator) | Transaction stream | F3 simulated transactions |
+`shared/` se publica en PyPI como
+[`securepay-shared`](https://pypi.org/project/securepay-shared/) y los repos
+de las fuentes lo instalan como dependencia (`import securepay_shared`).
+Trae `models` (SQLAlchemy), `db` (conexión a PostgreSQL), `config` (variables
+y constantes) y `aws` (clientes de boto3). `shared/cache.py` y
+`shared/events.py` no van en el paquete: solo los usa `services/`.
 
 ## Descripción
 
@@ -62,83 +71,30 @@ El repositorio reúne los componentes trabajados hasta el momento:
 -   Una cuenta gratuita de [LocalStack](https://app.localstack.cloud) (plan Hobby) para su token
 -   Git
 
-## Datasets históricos (Kaggle)
-
-El ETL de PostgreSQL utiliza dos datasets históricos para cargar una muestra de transacciones en la tabla `transacciones`. Los CSV pesan cientos de MB, por lo que **no se guardan en Git**. Descárgalos y guárdalos en `data/kaggle/` en la raíz del proyecto.
-
-| Dataset | Página en Kaggle | Archivo requerido |
-|---|---|---|
-| PaySim (transacciones financieras sintéticas) | [kaggle.com/datasets/ealaxi/paysim1](https://www.kaggle.com/datasets/ealaxi/paysim1) | `PS_20174392719_1491204439457_log.csv` |
-| Fraud Detection | [kaggle.com/datasets/kartik2112/fraud-detection](https://www.kaggle.com/datasets/kartik2112/fraud-detection) | `fraudTest.csv` |
-
-### Cómo descargar y ubicar los CSV
-
-1. Inicia sesión en [Kaggle](https://www.kaggle.com).
-2. Abre los enlaces anteriores, descarga los datasets y descomprime los ZIP.
-3. En la raíz del proyecto, crea la carpeta `data/kaggle/` si todavía no existe.
-4. Copia allí los dos archivos con sus nombres originales:
-
-```text
-data/kaggle/PS_20174392719_1491204439457_log.csv
-data/kaggle/fraudTest.csv
-```
-
-No cambies los nombres de los archivos. No es necesario subirlos a GitHub ni incluirlos en un commit.
-
-### Descarga alternativa por terminal
-
-Si tienes instalada la [Kaggle CLI](https://github.com/Kaggle/kaggle-api) y configurado el token de tu cuenta en `~/.kaggle/kaggle.json`, puedes ejecutar:
-
-```bash
-mkdir -p data/kaggle
-kaggle datasets download -d ealaxi/paysim1 -p data/kaggle --unzip
-kaggle datasets download -d kartik2112/fraud-detection -f fraudTest.csv -p data/kaggle --unzip
-```
-
-### Verificar que Git ignora los CSV
-
-Desde la raíz del repositorio:
-
-```bash
-git check-ignore -v data/kaggle/fraudTest.csv data/kaggle/PS_20174392719_1491204439457_log.csv
-git status --short
-```
-
-El primer comando debe mostrar la regla de `.gitignore` que excluye los archivos. `git status` no debe listar los CSV. La carpeta `data/kaggle/` es local y no se publica en GitHub.
-
-### Dos flujos distintos de uso de Kaggle
-
-- **ETL de PostgreSQL (paso 8b):** usa `PS_20174392719_1491204439457_log.csv` y `fraudTest.csv`, ubicados en `data/kaggle/` (la misma carpeta de la carga al Data Lake: se descargan una sola vez). Carga una muestra en la tabla `transacciones`.
-- **Carga al Data Lake (paso 8c):** usa PaySim y `fraudTest.csv` (Sparkov), ubicados en `data/kaggle/`. No usa PostgreSQL ni modifica sus tablas.
-
-`fraudTest.csv` y `creditcard.csv` son datasets diferentes y no se sustituyen entre sí. Si ejecutas ambos flujos, revisa la ubicación que requiere cada uno; no es necesario guardar los CSV en Git.
-
-Para cargar una muestra de los datasets históricos en PostgreSQL, sigue el [Paso 8b](#paso-8b-----cargar-los-datasets-históricos-de-kaggle-etl).
-
 ## Instalación y ejecución
 
-Todos los comandos se ejecutan desde la raíz del proyecto.
+Cada paso dice en qué repo se ejecuta; si no lo dice, es en la raíz de `SecurePay`.
 
 ### Visión general: orden y dependencias
 
 Orden recomendado: **1 → 2 → 3 y 4 (o el PostgreSQL de Compose) → 6 → 5 → 7 →
-8 → 8b → 8c**. El `.env` (paso 6) se crea antes de levantar Docker (paso 5),
+8 → 8c → 8b**. El `.env` (paso 6) se crea antes de levantar Docker (paso 5),
 porque Compose lee de ahí el token de LocalStack. Después, cada pieza se
 levanta por separado:
 
 | Quiero... | Comando | Necesita | Paso |
 |---|---|---|---|
 | Instalar las dependencias | `uv sync` | Nada encendido | 2 |
-| Crear los datos maestros | `uv run python -m db.seed.seed` | PostgreSQL | 7 |
-| Cargar el histórico de Kaggle en PostgreSQL | `uv run python -m db.datasets.etl` | PostgreSQL con el seed hecho y los 2 CSV | 8b |
-| Subir los CSV de Kaggle al Data Lake | `uv run python -m sources.csv_files.kaggle` | LocalStack (y el token de Kaggle si faltan los CSV); no usa PostgreSQL | 8c |
-| Generar transacciones de prueba | `uv run python -m generators` | Seed hecho | 9 |
+| Crear los datos maestros | `uv run python -m securepay_seed.seed` (en `securepay-seed`) | PostgreSQL | 7 |
+| Cargar el histórico de Kaggle en PostgreSQL | `uv run python -m securepay_seed.kaggle_etl.etl` (en `securepay-seed`) | PostgreSQL con el seed hecho y los 2 CSV | 8b |
+| Subir los CSV de Kaggle al Data Lake | `uv run python -m securepay_csv.kaggle_datasets` (en `securepay-csv`) | LocalStack (y el token de Kaggle si faltan los CSV); no usa PostgreSQL | 8c |
+| Generar transacciones de prueba | `uv run python -m securepay_generator` (en `securepay-generator`) | Seed hecho | 9 |
 | Correr las pruebas | `uv run pytest` | Seed hecho; Valkey y LocalStack para algunas | 10 |
 | Levantar el motor de decisión | `uv run uvicorn services.decision_engine.main:app --reload` | PostgreSQL y Valkey (y LocalStack para publicar) | 11 |
 | Levantar los consumidores | `uv run python -m services.consumers` | LocalStack | 11b |
-| Generar los extractos de los socios | `uv run python -m sources.csv_files.partner_statements` | Salida del generador (paso 9 o 12) | 13 |
-| Levantar el servicio de listas restrictivas | `uv run uvicorn sources.apis.restricted_list.main:app --port 8001` | El archivo que exporta el seed | 14 |
-| Consultar las tasas de cambio | `uv run python -m sources.apis.exchange_rates` | Internet | 15 |
+| Generar los extractos de los socios | `uv run python -m securepay_csv.partner_statements` (en `securepay-csv`) | Salida del generador (paso 9 o 12) | 13 |
+| Levantar el servicio de listas restrictivas | `uv run uvicorn securepay_apis.restricted_list.main:app --port 8001` (en `securepay-apis`) | El archivo que exporta el seed | 14 |
+| Consultar las tasas de cambio | `uv run python -m securepay_apis.exchange_rates` (en `securepay-apis`) | Internet | 15 |
 
 ### Paso 1 --- Clonar el repo
 
@@ -146,8 +102,15 @@ En terminal:
 
 ``` bash
 git clone https://github.com/SecurePay-Riwi/SecurePay.git
+git clone https://github.com/SecurePay-Riwi/securepay-seed.git
+git clone https://github.com/SecurePay-Riwi/securepay-generator.git
+git clone https://github.com/SecurePay-Riwi/securepay-csv.git
+git clone https://github.com/SecurePay-Riwi/securepay-apis.git
 cd SecurePay
 ```
+
+Los cinco quedan en la misma carpeta, uno al lado del otro. Cada repo de
+fuentes tiene su propio `.env.example`, su `uv sync` y su README.
 
 ### Paso 2 --- Instalar dependencias
 
@@ -280,10 +243,13 @@ Las variables `AWS_*` apuntan a LocalStack con credenciales de mentira
 (`test`), a propósito. En AWS no se ponen: el motor y las Lambdas usan su
 rol.
 
-### Paso 7 --- Ejecutar el seed
+### Paso 7 --- Ejecutar el seed (repo `securepay-seed`)
 
 ``` bash
-uv run python -m db.seed.seed
+cd ../securepay-seed
+cp .env.example .env
+uv sync
+uv run python -m securepay_seed.seed
 ```
 
 Debería generar:
@@ -296,6 +262,8 @@ Debería generar:
 
 Al final exporta esa lista a `generated/listas/lista_restrictiva.jsonl`,
 que es la "base del proveedor" que lee el servicio de listas (paso 14).
+Los defectos de formato del documento se activan con `SEED_DEFECT_PERCENTAGE`
+(ver el README de `securepay-seed`).
 Con `SEED_LIST_OUTPUT=s3` también la sube a LocalStack.
 
 El seed solo carga datos maestros. Las transacciones de prueba no van en el
@@ -317,271 +285,33 @@ SELECT COUNT(*) FROM usuarios;
 
 Debería devolver `100`.
 
-### Paso 8b --- Cargar los datasets históricos de Kaggle (ETL)
+### Paso 8b --- Cargar los datasets históricos de Kaggle (repo `securepay-seed`)
 
-Es opcional y va **después del seed** (paso 7): el ETL reparte las
-transacciones de Kaggle entre los usuarios, dispositivos y comercios que el
-seed ya creó, así que sin seed no tiene a quién asignarlas. Además necesitas
-los dos CSV en `data/kaggle/` (ver "Datasets históricos (Kaggle)").
-
-``` bash
-# 1. Ver qué haría, sin escribir nada en la base de datos
-uv run python -m db.datasets.etl --dry-run
-
-# 2. Cargar las transacciones
-uv run python -m db.datasets.etl
-```
-
-Puede tardar desde unos segundos hasta un par de minutos según el computador,
-porque lee las 6,3 millones de filas de PaySim.
-Solo **lee** usuarios, dispositivos y comercios, y solo **escribe** en la tabla
-`transacciones`. Se puede correr varias veces: no duplica nada. La
-semilla (`SEED`, 42) es la misma del seed y del generador.
-
-Con el modo `dev` y los valores por defecto, esto es lo que debe ver (los
-conteos y la huella salen de una corrida real):
-
-``` text
-1/4 Verificando los CSV en data/kaggle ...
-  PS_20174392719_1491204439457_log.csv: SHA-256 OK
-  fraudTest.csv: SHA-256 OK
-...
-Huella SHA-256 del lote (70,000 filas): 3c1004fc13346d567832acf8b916114ff4c829cad3114a31a19e117e2e667b9c
-4/4 Cargando en la tabla transacciones...
-  insertadas: 70,000  |  ya existían: 0
-```
-
-Para comprobarlo en la base (con la opción B agrega `-p 5433`):
+Opcional y **después del seed**. Necesita los dos CSV de Kaggle, que descarga
+`securepay-csv` (paso 8c); si los dos repos están uno al lado del otro, el
+ETL los encuentra solo.
 
 ``` bash
-psql -U pagoseguro -d pagoseguro -h localhost
+cd ../securepay-seed
+uv run python -m securepay_seed.kaggle_etl.etl --dry-run   # ver qué haría
+uv run python -m securepay_seed.kaggle_etl.etl             # cargar
 ```
 
-``` sql
-SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE is_fraud) AS fraudes FROM transacciones;
-\q
-```
+Detalles, variables y la huella para comprobar que todos cargan lo mismo:
+README de `securepay-seed` y la página
+[Kaggle datasets](https://securepay-riwi.github.io/SecurePay/docs/components/kaggle-datasets) de Docusaurus.
 
-Debe devolver `70000` y `2100` (50.000 + 20.000 filas, con 3 % de fraude).
-Si vuelves a correr el ETL, dice `insertadas: 0 | ya existían: 70,000`.
+### Paso 8c --- Cargar PaySim y fraudTest al Data Lake (repo `securepay-csv`)
 
-#### Qué hace, y por qué
-
-1.  **Verifica el SHA-256 de los CSV.** Con otra versión del archivo la
-    muestra saldría distinta, así que si el hash no coincide con el del
-    equipo se detiene y lo dice.
-2.  **Toma una muestra fija de cada dataset:** 50.000 filas de PaySim y 20.000
-    de fraudTest, con **3 % de fraude** en cada una. El fraude se fija a
-    propósito: al azar sería de 0,13 % (PaySim) y 0,39 % (fraudTest) y el
-    motor antifraude casi no tendría casos con qué validarse.
-3.  **Se queda solo con lo que `transacciones` puede guardar** (tabla de
-    abajo) y descarta las filas con monto 0 (16 en PaySim), que no son pagos
-    válidos.
-4.  **Liga cada titular del dataset a un usuario del seed.** El titular es la
-    tarjeta en fraudTest (`cc_num`) y la cuenta origen en PaySim
-    (`nameOrig`). La primera vez que aparece se le asigna al azar un usuario
-    que ya existía en esa fecha, y todas sus transacciones siguientes van a
-    ese mismo usuario: es la forma en que el equipo relaciona los datasets
-    con los usuarios, como pide el enunciado (una tarjeta vinculada a la
-    billetera). Un usuario puede tener varias tarjetas, porque fraudTest trae
-    más tarjetas que usuarios el seed en modo `dev`. En PaySim casi cada
-    cuenta origen aparece una sola vez (6,35 millones de cuentas en 6,36
-    millones de filas), así que ahí el efecto es casi nulo.
-5.  **Genera lo que falta con la semilla:** dispositivo (uno propio del
-    usuario), comercio y canal. Es reproducible porque el azar sale siempre de
-    la misma semilla y se consume en el mismo orden.
-6.  **Mantiene los datos coherentes:** ninguna transacción es anterior a la
-    existencia de su dispositivo ni del comercio, y se usan solo
-    dispositivos de uso propio, para no alterar los casos de dispositivo
-    compartido del seed.
-7.  **Inserta con IDs deterministas** (`uuid5` de la fila de origen), por eso
-    repetir el ETL no duplica y cada transacción se puede rastrear hasta su
-    fila del CSV.
-
-| Columna de `transacciones` | PaySim | fraudTest |
-|---|---|---|
-| `amount` | `amount` | `amt` |
-| `is_fraud` | `isFraud` | `is_fraud` |
-| `transaction_date` | `step` (la hora 1 queda 31 días antes de la fecha de referencia; minutos y segundos se sortean) | `trans_date_trans_time`, corrida para terminar justo antes de la fecha de referencia (los datos son de 2020 y ningún usuario del seed existía) |
-| `channel` | según `type`: TRANSFER → P2P, PAYMENT → QR, CASH_IN → RECARGA, CASH_OUT y DEBIT → RETIRO, con los canales que usa el generador para cada uno | categorías `*_net` → WEB; el resto → APP |
-| `merchant_id` | comercio activo al azar | comercio activo de la categoría equivalente (las 14 de fraudTest se agrupan en las 5 del seed; ver `CATEGORIA_FRAUDTEST`) |
-| `user_id` | el usuario ligado a la cuenta origen (`nameOrig`) | el usuario ligado a la tarjeta (`cc_num`) |
-| `device_id` | un dispositivo propio de ese usuario que ya existía | un dispositivo propio de ese usuario que ya existía |
-| `fraud_pattern` | `kaggle_paysim_<type>` (solo en fraudes) | `kaggle_fraudtest_<category>` (solo en fraudes) |
-
-No se guardan los saldos de PaySim ni los demás campos de fraudTest (el número
-de tarjeta, que solo se usa para ligarla al usuario, nombre, dirección, etc.)
-porque `transacciones` no tiene dónde ponerlos.
-Los montos se cargan tal cual vienen de Kaggle, sin convertirlos a la moneda
-de la cuenta: la tabla no guarda moneda.
-
-#### Comprobar que todos obtienen los mismos datos
-
-Al terminar, el ETL imprime una **huella SHA-256 del lote**. Con los mismos
-CSV, el mismo seed, la misma semilla y los valores por defecto de abajo, debe
-salir exactamente esta (modo `dev`: 100 usuarios, 50 comercios):
-
-```
-3c1004fc13346d567832acf8b916114ff4c829cad3114a31a19e117e2e667b9c
-```
-
-Ese valor se obtuvo en Linux con PostgreSQL 16. Si a alguien le sale otro:
-
-1.  Revisen el SHA-256 de los CSV (el ETL ya lo hace y avisa).
-2.  Revisen que el `.env` sea el mismo (`SEED`, `SEED_MODE`, `SEED_USERS`...) y
-    que la base se haya sembrado desde cero con `SEED_RESET=true`.
-3.  Revisen que nadie haya cambiado las variables `HIST_*` de abajo.
-4.  Ejecuten `uv sync` para tener las mismas versiones de `uv.lock`.
-
-#### Variables opcionales
-
-Si las cambian, **todos deben usar los mismos valores** y la huella cambiará.
-
-| Variable | Por defecto | Qué controla |
-|---|---|---|
-| `HIST_PAYSIM_FILAS` | 50000 | Transacciones que se toman de PaySim |
-| `HIST_PAYSIM_FRAUDE_PCT` | 3 | Porcentaje de ellas que son fraude |
-| `HIST_FRAUDTEST_FILAS` | 20000 | Transacciones que se toman de fraudTest |
-| `HIST_FRAUDTEST_FRAUDE_PCT` | 3 | Porcentaje de ellas que son fraude |
-| `HIST_RAW_DIR` | se busca en `db/datasets/raw/` y luego en `data/kaggle/` | Carpeta de los CSV |
-
-`SEED_RESET=true` en el seed vacía también `transacciones`: después de
-resembrar hay que volver a correr el ETL. Las pruebas del ETL (no usan la
-base de datos ni los CSV reales) se corren con:
+Descarga los dos datasets de Kaggle (necesita `KAGGLE_API_TOKEN` en el `.env`)
+y los sube a `raw/kaggle/` en LocalStack. No usa PostgreSQL.
 
 ``` bash
-uv run pytest db/datasets
+cd ../securepay-csv
+cp .env.example .env
+uv sync
+uv run python -m securepay_csv.kaggle_datasets
 ```
-
-#### Errores frecuentes del ETL
-
-| Mensaje | Causa y solución |
-|---|---|
-| `Faltan estos archivos en ...` | Los dos CSV no están juntos en una de las carpetas que lista el mensaje. Ver "Dónde guardar los CSV". |
-| `El SHA-256 de ... no coincide con el del equipo` | Tienes otra versión del archivo, u otro dataset con ese nombre. Descárgalo de nuevo. `--omitir-hash` lo salta, pero los datos ya no serán iguales a los del equipo. |
-| `El seed no ha creado usuarios con dispositivo...` | Falta el paso 7 (o la base apunta a otro lugar: revisa `DATABASE_URL`). |
-| `Connection refused` / `could not connect` | PostgreSQL apagado o puerto equivocado en `DATABASE_URL`: 5432 si está instalado, 5433 si es el de Compose. |
-| La huella es distinta a la de tus compañeros | Ver "Comprobar que todos obtienen los mismos datos" (arriba). |
-
-### Paso 8c --- Cargar PaySim y fraudTest al Data Lake (S3)
-
-Descarga los dos datasets de Kaggle, los valida y los deja **tal cual
-llegaron** (sin transformar) en la capa cruda del Data Lake, para que
-después los procese Spark. El motor no los consume. No usa PostgreSQL ni
-toca ninguna tabla.
-
-**Antes de empezar:** LocalStack levantado (paso 5, el bucket
-`pagoseguro-datalake` ya existe) y el `.env` creado (paso 6).
-
-#### Requisitos y configuración
-
--   Python 3.12, `uv` y Docker Desktop (para LocalStack).
--   Un token de Kaggle: [kaggle.com/settings/api](https://www.kaggle.com/settings/api)
-    → *Generate New Token*. Va **solo en tu `.env`**, nunca en el repo ni en
-    la consola compartida. En `.env.example` la variable está vacía.
-
-``` env
-KAGGLE_API_TOKEN=tu_token
-KAGGLE_DOWNLOAD_DIR=data/kaggle
-# KAGGLE_FORCE_DOWNLOAD=true   # vuelve a descargar aunque el CSV ya exista
-DATALAKE_BUCKET=pagoseguro-datalake
-```
-
-`data/kaggle/` está en el `.gitignore`: los CSV nunca van a Git.
-
-#### Dónde van los CSV
-
-Si ya tienes los archivos, no hace falta token: coloca los archivos que requiere este flujo en
-`data/kaggle/` y el comando no vuelve a descargarlos. Este flujo es independiente del ETL de PostgreSQL del paso 8b.
-
-``` text
-data/kaggle/PS_20174392719_1491204439457_log.csv   # ealaxi/paysim1
-data/kaggle/fraudTest.csv                          # kartik2112/fraud-detection
-```
-
-#### Ejecutar
-
-``` bash
-uv run python -m sources.csv_files.kaggle
-```
-
-Para cada dataset: descarga (si falta), valida existencia, encabezado exacto
-(columnas y orden) y número de filas, calcula el SHA-256, sube el CSV y,
-**solo cuando terminó bien**, escribe el manifiesto. Si algo no coincide con
-el contrato no sube nada de ese dataset y el comando termina con código 1
-(el otro dataset se procesa igual).
-
-| Dataset | Archivo | Filas (sin encabezado) | Columnas |
-|---|---|---|---|
-| `ealaxi/paysim1` | `PS_20174392719_1491204439457_log.csv` | 6.362.620 | 11: `step, type, amount, nameOrig, oldbalanceOrg, newbalanceOrig, nameDest, oldbalanceDest, newbalanceDest, isFraud, isFlaggedFraud` |
-| `kartik2112/fraud-detection` | `fraudTest.csv` | 555.719 | 23: `(sin nombre), trans_date_trans_time, cc_num, merchant, category, amt, … , merch_long, is_fraud` |
-
-Los valores del contrato están en `sources/csv_files/kaggle/config.py`. Si un
-archivo real no los cumple, **no los cambies en el código**: avisa a Jorge.
-
-#### Rutas en S3
-
-| Objeto | Ruta |
-|---|---|
-| PaySim | `s3://pagoseguro-datalake/raw/kaggle/paysim/paysim.csv` |
-| Manifiesto de PaySim | `s3://pagoseguro-datalake/raw/kaggle/paysim/_manifest.json` |
-| fraudTest | `s3://pagoseguro-datalake/raw/kaggle/sparkov/fraudtest/fraudTest.csv` |
-| Manifiesto de fraudTest | `s3://pagoseguro-datalake/raw/kaggle/sparkov/fraudtest/_manifest.json` |
-
-Las rutas no llevan fecha: es un histórico, y volver a correr el comando
-sobrescribe el mismo archivo en vez de crear copias. El manifiesto es la
-señal de "carga completa" y trae `dataset`, `archivo_original`, `filas`,
-`columnas`, `sha256`, `bytes` y `cargado_en` (UTC).
-
-#### Verificar los objetos
-
-Deben verse 4 objetos:
-
-``` bash
-uv run python -c "from shared.aws import cliente; [print(o['Key'], o['Size']) for o in cliente('s3').list_objects_v2(Bucket='pagoseguro-datalake', Prefix='raw/kaggle/')['Contents']]"
-```
-
-#### Comprobar la idempotencia
-
-Corre el comando dos veces. La segunda debe mostrar `ya cargado` en los dos
-datasets y no subir nada (compara el SHA-256 del archivo local con el del
-manifiesto y comprueba que el CSV siga en S3 con el mismo tamaño):
-
-``` bash
-uv run python -m sources.csv_files.kaggle   # subido
-uv run python -m sources.csv_files.kaggle   # ya cargado
-```
-
-#### Pruebas
-
-No descargan de Kaggle ni usan internet: crean CSV pequeños en directorios
-temporales. La prueba contra S3 se salta sola si LocalStack no está levantado.
-
-``` bash
-uv run pytest sources/csv_files/kaggle
-```
-
-#### Advertencias de tamaño
-
--   PaySim pesa ~470 MB y tiene 6,3 millones de filas; fraudTest, ~150 MB. Si
-    el CSV no está en `data/kaggle/`, la descarga de `kartik2112/fraud-detection`
-    trae también `fraudTrain.csv`, que no se valida ni se sube.
-    La descarga depende de tu conexión.
--   El archivo se lee **por bloques y por líneas**, nunca entero en memoria
-    (no se usa pandas), pero se recorre dos veces (hash y conteo): espera
-    del orden de decenas de segundos por dataset en un computador normal,
-    más el tiempo de subida.
--   Necesitas ~650 MB libres en `data/kaggle/`.
-
-#### Errores frecuentes
-
-| Mensaje | Causa y solución |
-|---|---|
-| `Falta KAGGLE_API_TOKEN en el .env` | Falta el token y el CSV no está en `data/kaggle/`. Ponlo en tu `.env` o copia el CSV a mano. |
-| `tiene N filas y se esperaban M` / `el encabezado ... no coincide` | El archivo no es el del contrato (versión distinta u otro dataset, p. ej. `creditcard.csv` con columnas `V1` … `V28` en vez de `fraudTest.csv`). No se sube nada; avisa a Jorge. |
-| `no existe el archivo` | El CSV no está en `KAGGLE_DOWNLOAD_DIR` con el nombre exacto. |
-| `NoSuchBucket` / `Could not connect to the endpoint URL` | LocalStack apagado o sin el bucket: `docker compose up -d` y `docker compose ps` (debe estar `healthy`). |
-| `Read timeout` en la subida | Conexión lenta con un archivo grande; repite el comando (la carga no deja manifiesto de éxito si falló). |
 
 ### Paso 9 --- Ejecutar el generador de transacciones
 
@@ -591,7 +321,10 @@ Con `GEN_OUTPUT=file` escribe los eventos en `generated/instance-0/` sin
 mandarlos al motor.
 
 ``` bash
-uv run python -m generators
+cd ../securepay-generator
+cp .env.example .env
+uv sync
+uv run python -m securepay_generator
 ```
 
 Con la semilla 42 y los valores de `.env.example`, debería terminar en
@@ -617,12 +350,11 @@ de mentira y no lo necesitan.
 uv run pytest
 ```
 
-Las pruebas de `sources/csv_files/kaggle` no necesitan servicios; solo la de
-integración con S3 usa LocalStack y se omite si no está levantado
-(`uv run pytest sources/csv_files/kaggle`). Las del ETL
-(`uv run pytest db/datasets`) y las de las tasas de cambio
-(`uv run pytest sources/apis/exchange_rates`) tampoco necesitan servicios,
-internet ni los CSV reales.
+Cada repo de fuentes corre sus propias pruebas con `uv run pytest` y
+ninguna necesita servicios, internet ni los CSV reales (las de integración
+con LocalStack se omiten si no está levantado). Aquí también corren las
+pruebas de las carpetas de respaldo (`db/`, `generators/`, `sources/`)
+mientras existan.
 
 PostgreSQL: el proyecto instala **Psycopg 3** (`psycopg[binary]`) y
 `shared/db.py` fuerza ese controlador (`postgresql+psycopg://`) aunque tu
@@ -695,11 +427,12 @@ consumidores (paso 11b).
 Luego, en PowerShell:
 
 ``` powershell
+cd ../securepay-generator
 $env:GEN_OUTPUT="http"
-uv run python -m generators
+uv run python -m securepay_generator
 ```
 
-En bash: `GEN_OUTPUT=http uv run python -m generators`. También se puede
+En bash: `GEN_OUTPUT=http uv run python -m securepay_generator`. También se puede
 dejar `GEN_OUTPUT=http` en el `.env`.
 
 A 50 eventos por segundo (`GEN_RATE`) tarda unos 20 segundos. Con la
@@ -707,7 +440,7 @@ semilla 42 debería terminar con `Respuestas del motor: {'200': 1023,
 '404': 12}`. Los 404 son los eventos de seguridad (cambio de dispositivo y
 de contraseña), que todavía no tienen endpoint.
 
-Cada línea de `generated/instance-0/labels.jsonl` trae el patrón, la regla
+Cada línea de `securepay-generator/generated/instance-0/labels.jsonl` trae el patrón, la regla
 que debería dispararse y lo que respondió el motor:
 
 ``` json
@@ -736,156 +469,44 @@ Con la semilla 42 y los consumidores corriendo, `GET /health` termina en
 de `raw/decisiones/` suman 1.000 líneas, una por transacción, y las colas
 y sus `-dlq` quedan en 0.
 
-### Paso 13 --- Generar los extractos de los socios
+### Paso 13 --- Generar los extractos de los socios (repo `securepay-csv`)
 
-Cada día, los 4 socios de pago (un banco y tres redes) mandan un archivo
-con lo que pasó por ellos, cada uno en su formato, para la conciliación.
-El generador de extractos los arma a partir de la salida del generador de
-transacciones, así cuadran con lo que vio el motor. Corre primero el
-paso 9 (o el 12) y luego:
+Arma los archivos diarios de los 4 socios de pago a partir de la salida del
+generador (paso 9 o 12), que encuentra sola en `../securepay-generator/generated`.
 
 ``` bash
-uv run python -m sources.csv_files.partner_statements
+cd ../securepay-csv
+uv run python -m securepay_csv.partner_statements
 ```
 
-Con la semilla 42, después del paso 9 debería decir `598 operaciones pasan
-por algún socio` y `Listo: 47 archivos`. Después del paso 12 son 595,
-porque las rechazadas y retenidas no movieron dinero y el socio no las ve.
+Detalles: README de `securepay-csv` y la página
+[Partner statements](https://securepay-riwi.github.io/SecurePay/docs/components/partner-statements).
 
-Solo entran recargas, retiros y pagos QR (las P2P son internas de la
-billetera). Cada socio ve lo suyo según el tipo y el canal:
+### Paso 14 --- Levantar el servicio de listas restrictivas (repo `securepay-apis`)
 
-| Socio | Qué ve | Formato | Fechas |
-|---|---|---|---|
-| `banco_andino` | Recargas por APP y WEB | CSV con comas, fila final `TOTAL` | UTC |
-| `red_corresponsales` | Recargas y retiros en CORRESPONSAL | TXT de ancho fijo (registros H, D y T), montos en unidades mínimas | Bogotá (UTC−5) |
-| `cajeros_express` | Retiros en CAJERO | CSV con punto y coma y coma decimal, línea final `CONTROL` | Bogotá (UTC−5) |
-| `qr_pagos` | Pagos QR | TXT separado por `\|`, control en la primera línea, unidades mínimas | UTC |
-
-Los archivos quedan en
-`generated/extractos/<socio>/fecha=AAAA-MM-DD/<socio>_AAAAMMDD_vN.<ext>`,
-así que cada día llegan los 4 archivos, uno de cada socio (aunque venga
-vacío), más un `_v2` cuando el socio reenvía con correcciones. El día es
-el de la zona horaria del socio.
-
-Defectos que pide el enunciado, con porcentaje configurable en el `.env`:
-
-| Variable | Defecto | Por defecto |
-|---|---|---|
-| `EXT_MISSING_PCT` | El socio no reporta una transacción nuestra | 2 |
-| `EXT_EXTRA_PCT` | El socio reporta una operación que PagoSeguro no tiene | 1 |
-| `EXT_ROUNDING_PCT` | El socio redondea el monto a la unidad | 3 |
-| `EXT_RESEND_PCT` | El socio reenvía el archivo del día (`_v2`) corrigiendo faltantes y redondeos | 10 (de los archivos con algo que corregir) |
-| `EXT_BAD_CONTROL_PCT` | El registro de control no cuadra con el detalle | 10 (de los archivos) |
-
-La otra zona horaria no es un porcentaje: dos socios escriben sus fechas
-en hora de Bogotá.
-
-`generated/extractos/extracts_report.json` es la hoja de respuestas: cada
-defecto inyectado y, en `expected_differences`, lo que la conciliación
-debería encontrar contra la última versión de cada día
-(`MISSING_IN_PARTNER`, `MISSING_IN_PAGOSEGURO` o `AMOUNT_MISMATCH`).
-
-Para subirlos también a la capa raw del Data Lake, con LocalStack
-encendido (paso 5):
-
-``` powershell
-$env:EXT_OUTPUT="s3"
-uv run python -m sources.csv_files.partner_statements
-```
-
-En bash: `EXT_OUTPUT=s3 uv run python -m sources.csv_files.partner_statements`.
-Quedan en `s3://pagoseguro-datalake/raw/extractos/<socio>/fecha=AAAA-MM-DD/`:
+Simula al proveedor externo de listas: responde lento y a veces se cae, a
+propósito. Carga al arrancar el archivo que exporta el seed (paso 7), que
+encuentra solo en `../securepay-seed/generated/listas/`.
 
 ``` bash
-docker compose exec localstack awslocal s3 ls s3://pagoseguro-datalake/raw/extractos/ --recursive
+cd ../securepay-apis
+cp .env.example .env
+uv sync
+uv run uvicorn securepay_apis.restricted_list.main:app --port 8001
 ```
 
-### Paso 14 --- Levantar el servicio de listas restrictivas
+Detalles: README de `securepay-apis` y la página
+[Restricted list](https://securepay-riwi.github.io/SecurePay/docs/components/restricted-list).
 
-Simula al proveedor externo de listas restrictivas (sanciones y PEP):
-responde lento y a veces se cae, a propósito, para que el motor tenga
-que defenderse. No lee PostgreSQL: carga una sola vez al arrancar el
-archivo que exporta el seed (paso 7). Si vuelves a correr el seed con
-otros parámetros, reinicia el servicio.
+### Paso 15 --- Consultar las tasas de cambio (repo `securepay-apis`)
 
 ``` bash
-uv run uvicorn sources.apis.restricted_list.main:app --port 8001
+cd ../securepay-apis
+uv run python -m securepay_apis.exchange_rates
 ```
 
-Al arrancar debe decir `Lista restrictiva cargada: 20 personas`. Si no
-encuentra el archivo, no arranca y te pide correr el seed.
-
-| Endpoint | Para qué | Respuesta |
-|---|---|---|
-| `GET /lista` | La lista completa. La usará la tarea diaria que carga la lista en la caché del motor | `{"total": 20, "registros": [...]}` |
-| `GET /lista/{documento}` | Si un documento está listado. El motor la usará solo si la caché no está disponible | `{"listado": true, "documento": "...", "tipo": "PEP", "fecha_inclusion": "..."}` o `{"documento": "...", "listado": false}` |
-| `GET /health` | Que el servicio esté vivo, sin latencia ni caídas | `{"status": "ok", "total": 20}` |
-
-El documento se normaliza a solo dígitos, así que `CC 1.000.000.016` y
-`1000000016` dan lo mismo. Que un documento no esté listado es un 200
-con `"listado": false`, no un 404.
-
-Prueba rápida (en PowerShell usa `curl.exe`):
-
-``` bash
-curl http://localhost:8001/lista/1000000016
-```
-
-Lo que lo hace "malo", configurable en el `.env`:
-
-| Variable | Qué hace | Por defecto |
-|---|---|---|
-| `LISTA_LATENCIA_MIN_MS` / `LISTA_LATENCIA_MAX_MS` | Cada respuesta tarda un tiempo al azar entre estos dos valores | 50 / 3000 |
-| `LISTA_FALLA_PCT` | Porcentaje de peticiones que responden 503 (proveedor caído), después de la espera | 5 |
-| `LISTA_SEMILLA` | Fija el azar para repetir el mismo comportamiento | sin semilla |
-
-Para leer la lista desde S3 como en AWS, con LocalStack encendido
-(paso 5), primero súbela con el seed y luego arranca el servicio:
-
-``` powershell
-$env:SEED_LIST_OUTPUT="s3"
-uv run python -m db.seed.seed
-$env:LISTA_SOURCE="s3"
-uv run uvicorn sources.apis.restricted_list.main:app --port 8001
-```
-
-En bash: `SEED_LIST_OUTPUT=s3 uv run python -m db.seed.seed` y
-`LISTA_SOURCE=s3 uv run uvicorn sources.apis.restricted_list.main:app --port 8001`.
-Si LocalStack ya estaba encendido antes de esta versión, reinícialo
-(`docker compose restart localstack`) para que cree el bucket
-`pagoseguro-proveedor-listas`.
-
-Hoy el motor todavía busca la lista en PostgreSQL. Pasarlo a la caché,
-con este servicio como respaldo y circuit breaker, es la historia de
-rechazo por lista restrictiva del sprint 2.
-
-### Paso 15 --- Consultar las tasas de cambio (API Frankfurter)
-
-Pide a [Frankfurter](https://frankfurter.dev) (API pública de tasas de
-cambio, sin cuenta ni token) cuántos COP, EUR y JPY vale 1 USD, valida la
-respuesta y guarda el resultado como evidencia del consumo de la API. En AWS
-esta tarea corre como Lambda; en local escribe un archivo.
-
-``` bash
-uv run python -m sources.apis.exchange_rates
-```
-
-Muestra la fecha de las tasas y `1 USD = ... COP/EUR/JPY` (los mensajes del
-programa están en inglés) y guarda
-`sources/apis/exchange_rates/data/rates_AAAA-MM-DD.json`; Git ignora esa
-carpeta.
-
--   **Necesita internet:** llama a la API real. Reintenta hasta 3 veces ante
-    errores del servidor o de red.
--   **No guarda datos a medias:** si la respuesta viene incompleta o con tasas
-    inválidas, falla y no escribe nada.
--   **Las tasas se guardan como texto**, no como número decimal, para no
-    perder precisión.
--   **No lo usa el generador de transacciones:** ese lee las tasas fijas de
-    `generators/data/tasas_2026-10-01.json`, para que todas las corridas den
-    lo mismo sin internet. Ese archivo se regenera con
-    `uv run python -m generators.fetch_rates`.
+Necesita internet. Detalles en la página
+[Exchange rates](https://securepay-riwi.github.io/SecurePay/docs/components/exchange_rates).
 
 ### Problemas frecuentes
 
@@ -895,62 +516,5 @@ carpeta.
 | `Falta LOCALSTACK_AUTH_TOKEN en el .env` al hacer `docker compose up` | Pega tu token de LocalStack en el `.env` (paso 5). |
 | `POST /transactions` responde 503 | Valkey apagado: `docker compose up -d valkey` (paso 5). |
 | `Could not connect to the endpoint URL` | LocalStack apagado: `docker compose up -d localstack` y `docker compose ps` (debe quedar `healthy`). |
-| El ETL o los extractos no encuentran datos | Falta correr el seed (paso 7) o el generador (paso 9). |
-| Aparecen columnas `V1`, `V2`... en un dataset | Es `creditcard.csv`, que el proyecto no usa. Usa `fraudTest.csv` (ver "Datasets históricos"). |
-
-## HU-04 --- Inyección de defectos
-
-Permite generar datos de prueba con un porcentaje configurable de
-defectos.
-
-### Ejecutar con defectos
-
-Ejemplo con 10%:
-
-``` powershell
-$env:SEED_DEFECT_PERCENTAGE="10"
-$env:SEED_RESET="true"
-uv run python -m db.seed.seed
-```
-
-### Ejecutar sin defectos
-
-Por defecto el porcentaje es `0%`:
-
-``` powershell
-$env:SEED_DEFECT_PERCENTAGE="0"
-$env:SEED_RESET="true"
-uv run python -m db.seed.seed
-```
-
-### Tipos de defectos
-
-El seed solo daña el formato del documento del usuario. El formato
-correcto es solo dígitos (`1000000016`) y los defectos lo escriben así:
-
--   `PUNTOS` → `1.000.000.016`
--   `PREFIJO` → `CC 1000000016`
--   `ESPACIOS` → `" 1000000016 "`
-
-La lista restrictiva siempre guarda el documento correcto, así que el
-motor debe dejar solo los dígitos antes de buscarlo.
-
-### Reporte de defectos
-
-El archivo `defect_report.json` se genera automáticamente después de
-ejecutar el seed.
-
-Para consultarlo:
-
-``` powershell
-Get-Content .\defect_report.json
-```
-
-El reporte identifica:
-
--   `id` del registro
--   tipo de defecto
--   campo afectado
--   documento correcto (`canonico`) y cómo quedó escrito (`valor`)
-
-El archivo se genera localmente y está incluido en `.gitignore`.
+| El ETL o los extractos no encuentran datos | Falta correr el seed (paso 7) o el generador (paso 9), o los repos no están uno al lado del otro (paso 1). |
+| Aparecen columnas `V1`, `V2`... en un dataset | Es `creditcard.csv`, que el proyecto no usa. Usa `fraudTest.csv` (README de `securepay-csv`). |

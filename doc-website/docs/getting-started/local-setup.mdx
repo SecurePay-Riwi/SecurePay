@@ -81,8 +81,13 @@ If you used the standalone `pagoseguro-valkey` container before the Compose exis
 
 ## 4. Load the seed
 
+The seed lives in the [`securepay-seed`](https://github.com/SecurePay-Riwi/securepay-seed) repository, cloned next to `SecurePay`:
+
 ```bash
-uv run python -m db.seed.seed
+cd ../securepay-seed
+cp .env.example .env
+uv sync
+uv run python -m securepay_seed.seed
 ```
 
 In `dev` mode it creates 100 users, 100 accounts, 150 devices (4 of them shared), 50 merchants and 20 people in the restricted list (5 of them are customers). Check it:

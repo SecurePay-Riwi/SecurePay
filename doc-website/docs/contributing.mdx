@@ -18,7 +18,17 @@ Kerlys was part of the team until October 13, 2026.
 
 ## Repository layout
 
-Monorepo: one folder per piece that is deployed separately, each with its own tests (and, from Sprint 2, its own Docker image).
+The project is split into five repositories under the SecurePay-Riwi organization, cloned side by side in the same folder:
+
+| Repository | What it has |
+|---|---|
+| [`SecurePay`](https://github.com/SecurePay-Riwi/SecurePay) | The product: decision engine, consumers, local infrastructure, this site |
+| [`securepay-seed`](https://github.com/SecurePay-Riwi/securepay-seed) | PostgreSQL seed and Kaggle ETL |
+| [`securepay-generator`](https://github.com/SecurePay-Riwi/securepay-generator) | Transaction generator (simulated core) |
+| [`securepay-csv`](https://github.com/SecurePay-Riwi/securepay-csv) | Kaggle datasets and partner statements |
+| [`securepay-apis`](https://github.com/SecurePay-Riwi/securepay-apis) | Restricted list service and exchange rates |
+
+The source repositories never import each other: they exchange files (and S3 in AWS). Each one has a single package under `src/`, tests under `tests/`, and an `AGENTS.md` with its structure rules. Shared models and config come from the [`securepay-shared`](https://pypi.org/project/securepay-shared/) package.
 
 ```text
 SecurePay/
@@ -26,14 +36,12 @@ SecurePay/
 │   ├── decision_engine/   # decision engine (FastAPI) and its tests
 │   └── consumers/         # SQS consumers with the Lambda signature, and their tests
 ├── shared/                # SQLAlchemy models, DB/Valkey/AWS clients, decision event format
-├── generators/            # transaction generator (simulated core) and its tests
-├── sources/csv_files/     # file sources: partner statements and their tests
-├── db/seed/               # PostgreSQL master data seed
 ├── infra/localstack/init/ # creates SNS, SQS and S3 in LocalStack
 ├── doc-website/           # this documentation site (Docusaurus)
 ├── docker-compose.yml     # PostgreSQL, Valkey and LocalStack for local development
 ├── pyproject.toml         # dependencies and pytest config (uv)
-└── uv.lock
+├── uv.lock
+└── db/, generators/, sources/   # backup from before the split; do not edit
 ```
 
 Coming later: `services/admin-api/`, `services/restricted-list-mock/`, `services/scheduled/`, `jobs/` (PySpark) and Terraform under `infra/`. Shared code that the engine and Spark must run identically, like the **rule interpreter**, goes in `shared/`.

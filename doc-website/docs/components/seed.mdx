@@ -6,7 +6,7 @@ description: The PostgreSQL seed that loads users, accounts, devices, merchants 
 
 # Seed
 
-**Repo:** [`securepay-seed`](https://github.com/SecurePay-Riwi/securepay-seed) · **Folder:** `db/seed/` · **Run:** `uv run python -m db.seed.seed`
+**Repo:** [`securepay-seed`](https://github.com/SecurePay-Riwi/securepay-seed) · **Folder:** `src/securepay_seed/` · **Run:** `uv run python -m securepay_seed.seed`
 
 The seed loads the **master data** the engine and the generator need into PostgreSQL. It is versioned, parameterizable, idempotent and reproducible: the same configuration always produces the same data, on Windows and on Linux. It does **not** create transactions; those come from the [generator](./generator.mdx), like the real wallet core.
 
@@ -30,7 +30,7 @@ Initial balances are random up to a cap per currency: COP 20,000,000, USD 5,000,
 The shared device rule fires when one device is used on **more than 3 accounts in 30 days**. The seed creates four patterns: two that must fire the rule and two control cases that must not.
 
 ```python
-# db/seed/config.py
+# src/securepay_seed/config.py
 PATRONES_COMPARTIDOS = [
     {"cuentas": 5, "dias": 30},  # Fires the rule.
     {"cuentas": 4, "dias": 30},  # Fires the rule.
@@ -59,7 +59,7 @@ Example: full mode with 10% defects, starting from empty tables.
 $env:SEED_MODE="prod"
 $env:SEED_DEFECT_PERCENTAGE="10"
 $env:SEED_RESET="true"
-uv run python -m db.seed.seed
+uv run python -m securepay_seed.seed
 ```
 
 :::caution
@@ -71,7 +71,7 @@ Full mode inserts row by row today, so 2.3 million users take a long time. Batch
 - **Deterministic ids.** Ids come from `uuid5` over a fixed namespace (`user:0`, `user:1`, …), not from `uuid4`.
 - **Insert or skip.** Every insert uses `ON CONFLICT DO NOTHING` on a natural key (document for users, `user_id` for accounts, fingerprint for devices), so a second run creates no duplicates.
 - **Fixed reference date.** All dates are calculated back from `2026-10-01 00:00 UTC` (`FECHA_REFERENCIA` in `shared/config.py`), not from "now".
-- **No dates from Faker.** Faker gives different dates on Windows and Linux with the same seed, so `db/seed/fechas.py` draws them in whole seconds or days. User agents only come from Chrome, Safari or Opera (Faker's Firefox one embeds a date).
+- **No dates from Faker.** Faker gives different dates on Windows and Linux with the same seed, so `src/securepay_seed/fechas.py` draws them in whole seconds or days. User agents only come from Chrome, Safari or Opera (Faker's Firefox one embeds a date).
 - **Tables are created first.** `Base.metadata.create_all` runs before the reset, so the `TRUNCATE` does not fail on a table added later.
 
 ## Defect injection
