@@ -6,7 +6,7 @@ description: Simulated external provider of restricted lists (sanctions and PEP)
 
 # Restricted list service
 
-**Folder:** `sources/apis/restricted_list/` · **Run:** `uv run uvicorn sources.apis.restricted_list.main:app --port 8001`
+**Repo:** [`securepay-apis`](https://github.com/SecurePay-Riwi/securepay-apis) · **Folder:** `sources/apis/restricted_list/` · **Run:** `uv run uvicorn sources.apis.restricted_list.main:app --port 8001`
 
 The assignment asks for an external restricted-list provider that **responds slowly and goes down from time to time**, so the engine has to protect itself. This component **simulates that provider**. It is not our product: in production a real provider would expose its own endpoint with an up-to-date list.
 

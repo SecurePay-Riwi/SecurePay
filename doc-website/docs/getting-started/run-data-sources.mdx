@@ -8,6 +8,20 @@ description: Run every simulated data source on your machine and check that each
 
 This page runs each data source on its own and tells you what you should see. Every source has its own command: none of them starts by itself with `docker compose up -d`, which only starts PostgreSQL, Valkey and LocalStack.
 
+## Multi-repo structure
+
+Each data source now lives in its own repository. All of them install
+[`securepay-shared`](https://pypi.org/project/securepay-shared/) from PyPI — no need to clone the monorepo to use them independently.
+
+| Repo | Sources | Clone |
+| :--- | :--- | :--- |
+| [`securepay-seed`](https://github.com/SecurePay-Riwi/securepay-seed) | F4 seed DB | `git clone https://github.com/SecurePay-Riwi/securepay-seed.git` |
+| [`securepay-generator`](https://github.com/SecurePay-Riwi/securepay-generator) | F3 transaction stream | `git clone https://github.com/SecurePay-Riwi/securepay-generator.git` |
+| [`securepay-csv`](https://github.com/SecurePay-Riwi/securepay-csv) | F1 PaySim, F2 Sparkov, F5 partner statements | `git clone https://github.com/SecurePay-Riwi/securepay-csv.git` |
+| [`securepay-apis`](https://github.com/SecurePay-Riwi/securepay-apis) | F6 exchange rates, F7 restricted list | `git clone https://github.com/SecurePay-Riwi/securepay-apis.git` |
+
+The commands below still work from the monorepo root too — both paths are valid.
+
 ## Before you start
 
 Do the [local setup](./local-setup.mdx) up to step 4: services `healthy` and seed loaded. The decision engine and the consumers are not needed on this page.
