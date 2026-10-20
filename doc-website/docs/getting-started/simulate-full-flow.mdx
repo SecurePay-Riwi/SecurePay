@@ -33,17 +33,19 @@ Otherwise the ids of a run from less than one hour ago are treated as resends, a
 
 ## 2. Run the generator against the engine
 
+In the [`securepay-generator`](https://github.com/SecurePay-Riwi/securepay-generator) repository, cloned next to `SecurePay`.
+
 PowerShell:
 
 ```powershell
 $env:GEN_OUTPUT="http"
-uv run python -m generators
+uv run python -m securepay_generator
 ```
 
 Bash:
 
 ```bash
-GEN_OUTPUT=http uv run python -m generators
+GEN_OUTPUT=http uv run python -m securepay_generator
 ```
 
 You can also leave `GEN_OUTPUT=http` in your `.env`. At 50 events per second (`GEN_RATE`) it takes about 20 seconds.
@@ -81,10 +83,10 @@ docker compose exec localstack awslocal sqs get-queue-attributes \
 
 ## 5. Generate the partner statements
 
-With the generator's output in place, build the four partners' daily files (only approved transactions go through a partner):
+In [`securepay-csv`](https://github.com/SecurePay-Riwi/securepay-csv), with the generator's output in `../securepay-generator/generated`, build the four partners' daily files (only approved transactions go through a partner):
 
 ```bash
-uv run python -m sources.csv_files.partner_statements
+uv run python -m securepay_csv.partner_statements
 ```
 
 With seed 42 it reads 595 operations and writes 47 files to `generated/extractos/`. Set `EXT_OUTPUT=s3` to also upload them to `s3://pagoseguro-datalake/raw/extractos/`:
@@ -93,13 +95,13 @@ PowerShell:
 
 ```powershell
 $env:EXT_OUTPUT="s3"
-uv run python -m sources.csv_files.partner_statements
+uv run python -m securepay_csv.partner_statements
 ```
 
 Bash:
 
 ```bash
-EXT_OUTPUT=s3 uv run python -m sources.csv_files.partner_statements
+EXT_OUTPUT=s3 uv run python -m securepay_csv.partner_statements
 ```
 
 See [Partner statements](../components/partner-statements.mdx).

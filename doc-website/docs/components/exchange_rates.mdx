@@ -7,7 +7,7 @@ description: Daily exchange rates consumed from the Frankfurter API, used by the
 
 # Exchange Rates (F6)
 
-**Repo:** [`securepay-apis`](https://github.com/SecurePay-Riwi/securepay-apis) · **Folder:** `sources/apis/exchange_rates/` · **Run:** `uv run python -m sources.apis.exchange_rates`
+**Repo:** [`securepay-apis`](https://github.com/SecurePay-Riwi/securepay-apis) · **Folder:** `src/securepay_apis/exchange_rates/` · **Run:** `uv run python -m securepay_apis.exchange_rates`
 
 ## Overview
 
@@ -28,22 +28,19 @@ from BANREP (Banco de la República de Colombia).
 
 ## Where it lives
 
-The source is part of the monorepo, under `sources/apis/`:
+The source lives in the [`securepay-apis`](https://github.com/SecurePay-Riwi/securepay-apis) repository:
 
 ```text
-sources/
-└── apis/
-    └── exchange_rates/
-        ├── __init__.py
-        ├── __main__.py          ← local entry point
-        ├── frankfurter.py       ← API client and validation
-        ├── .gitignore           ← excludes local data/
-        └── tests/
-            ├── __init__.py
-            └── test_exchange_rates.py
+securepay-apis/
+├── src/securepay_apis/exchange_rates/
+│   ├── __init__.py
+│   ├── __main__.py          ← local entry point
+│   └── frankfurter.py       ← API client and validation
+└── tests/exchange_rates/
+    └── test_exchange_rates.py
 ```
 
-The generated JSON lives in `sources/apis/exchange_rates/data/` and is
+The generated JSON lives in `src/securepay_apis/exchange_rates/data/` and is
 excluded from Git.
 
 ## How it works
@@ -53,7 +50,7 @@ excluded from Git.
 A standalone entry point fetches the rates and saves them to a JSON file:
 
 ```bash
-uv run python -m sources.apis.exchange_rates
+uv run python -m securepay_apis.exchange_rates
 ```
 
 This command:
@@ -102,7 +99,7 @@ through the Frankfurter API itself, so no local historical copy is needed.
 ### 1. Fetch the rates
 
 ```bash
-uv run python -m sources.apis.exchange_rates
+uv run python -m securepay_apis.exchange_rates
 ```
 
 Expected output:
@@ -115,13 +112,13 @@ Rates date: 2026-10-15
   1 USD = 0.87 EUR
   1 USD = 157.78 JPY
 
-Rates saved to: sources/apis/exchange_rates/data/rates_2026-10-15.json
+Rates saved to: src/securepay_apis/exchange_rates/data/rates_2026-10-15.json
 ```
 
 ### 2. Inspect the generated JSON
 
 ```bash
-cat sources/apis/exchange_rates/data/rates_2026-10-15.json
+cat src/securepay_apis/exchange_rates/data/rates_2026-10-15.json
 ```
 
 Expected content:
@@ -153,7 +150,7 @@ The tests do not call the internet. They mock the HTTP response and exercise
 the validation logic with fixed data.
 
 ```bash
-uv run pytest sources/apis/exchange_rates/
+uv run pytest tests/exchange_rates
 ```
 
 Expected output:

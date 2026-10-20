@@ -6,7 +6,7 @@ description: Simulated external provider of restricted lists (sanctions and PEP)
 
 # Restricted list service
 
-**Repo:** [`securepay-apis`](https://github.com/SecurePay-Riwi/securepay-apis) · **Folder:** `sources/apis/restricted_list/` · **Run:** `uv run uvicorn sources.apis.restricted_list.main:app --port 8001`
+**Repo:** [`securepay-apis`](https://github.com/SecurePay-Riwi/securepay-apis) · **Folder:** `src/securepay_apis/restricted_list/` · **Run:** `uv run uvicorn securepay_apis.restricted_list.main:app --port 8001`
 
 The assignment asks for an external restricted-list provider that **responds slowly and goes down from time to time**, so the engine has to protect itself. This component **simulates that provider**. It is not our product: in production a real provider would expose its own endpoint with an up-to-date list.
 
@@ -87,9 +87,9 @@ Reading from S3 like in AWS, with LocalStack running:
 
 ```powershell
 $env:SEED_LIST_OUTPUT="s3"
-uv run python -m db.seed.seed
+uv run python -m securepay_seed.seed
 $env:LISTA_SOURCE="s3"
-uv run uvicorn sources.apis.restricted_list.main:app --port 8001
+uv run uvicorn securepay_apis.restricted_list.main:app --port 8001
 ```
 
 LocalStack creates the bucket at startup (`infra/localstack/init/02_sources.py`).
@@ -105,4 +105,4 @@ LocalStack creates the bucket at startup (`infra/localstack/init/02_sources.py`)
 
 ## Tests
 
-`uv run pytest sources/apis db` (no database needed): document formats from the seed defects, listed and not listed, 400 without digits, full list, 503 with `LISTA_FALLA_PCT=100` while `/health` stays up, latency in range and reproducible with a seed (about 5% of failures over 2,000 draws), no start without the file, a broken line fails with its number, invalid configuration, and the seed export (one line per person, sorted, same bytes whatever the database order). One test reads from S3 in LocalStack and is skipped when LocalStack is off.
+`uv run pytest` in `securepay-apis` and `uv run pytest tests/seed` in `securepay-seed` (no database needed): document formats from the seed defects, listed and not listed, 400 without digits, full list, 503 with `LISTA_FALLA_PCT=100` while `/health` stays up, latency in range and reproducible with a seed (about 5% of failures over 2,000 draws), no start without the file, a broken line fails with its number, invalid configuration, and the seed export (one line per person, sorted, same bytes whatever the database order). One test reads from S3 in LocalStack and is skipped when LocalStack is off.
