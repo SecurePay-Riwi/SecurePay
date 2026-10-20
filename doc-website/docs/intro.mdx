@@ -106,7 +106,7 @@ SecurePay/
 │   ├── aws.py                  # boto3 client factory (LocalStack-aware)
 │   ├── cache.py                # Valkey client (services/ only)
 │   └── events.py               # transaction.decided event (services/ only)
-├── infra/localstack/           # creates SNS, SQS and S3 in LocalStack
+├── infra/localstack/           # creates SNS, SQS, S3 and DynamoDB in LocalStack
 ├── doc-website/                # this site
 ├── docker-compose.yml          # PostgreSQL, Valkey and LocalStack
 └── db/, generators/, sources/  # backup from before the split; do not edit
@@ -122,7 +122,7 @@ SecurePay/
 | [Partner statements](./components/partner-statements.mdx) | `securepay-csv`: `src/securepay_csv/partner_statements/` | Done: daily files of the four payment partners, with their defects, locally and in LocalStack. |
 | [Kaggle datasets](./components/kaggle-datasets.mdx) | `securepay-csv`: `src/securepay_csv/kaggle_datasets/`; `securepay-seed`: `src/securepay_seed/kaggle_etl/` | Done: PaySim and Sparkov (`fraudTest.csv`) downloaded, validated and loaded untouched into `raw/kaggle/` with a manifest; an ETL loads a sample of both into PostgreSQL. |
 | [Restricted list service](./components/restricted-list.mdx) | `securepay-apis`: `src/securepay_apis/restricted_list/` | Done: simulated external provider with full-list and per-document endpoints, random latency and outages; reads the list the seed exports. |
-| Exchange rates | `securepay-apis`: `src/securepay_apis/exchange_rates/` | Client done: daily rates from Frankfurter, saved locally for now; to DynamoDB when AWS is set up. |
+| Exchange rates | `securepay-apis`: `src/securepay_apis/exchange_rates/` | Done locally: daily rates from Frankfurter to a file or to the DynamoDB table in LocalStack, with a Lambda handler for AWS. |
 | AWS infrastructure (Terraform) | `SecurePay`: `infra/` | Designed, not built yet. |
 
 ## 7. Links

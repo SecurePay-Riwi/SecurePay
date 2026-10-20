@@ -199,8 +199,10 @@ usan los servicios reales.
     de crear el tema `decisiones`, las colas `casos`, `historial` y
     `analitica` (cada una con su `-dlq`) y el bucket
     `pagoseguro-datalake` (script `infra/localstack/init/01_messaging.py`),
-    y el bucket del proveedor de listas `pagoseguro-proveedor-listas`
-    (script `02_sources.py`, en la misma carpeta).
+    el bucket del proveedor de listas `pagoseguro-proveedor-listas`
+    (script `02_sources.py`, en la misma carpeta) y la tabla de DynamoDB
+    `pagoseguro-exchange-rates` para las tasas de cambio (script
+    `03_exchange_rates.py`).
     LocalStack no guarda nada al apagarse: cada vez que arranca, el script
     vuelve a crear todo vacío.
 
@@ -328,7 +330,7 @@ uv run python -m securepay_generator
 ```
 
 Con la semilla 42 y los valores de `.env.example`, debería terminar en
-`Listo: 1035 eventos`. Deja tres archivos:
+`Listo: 1036 eventos`. Deja tres archivos:
 
 -   `events.jsonl`: lo que recibiría el motor, en orden de envío. Se
     escribe también con `GEN_OUTPUT=http`, porque de ahí leen los

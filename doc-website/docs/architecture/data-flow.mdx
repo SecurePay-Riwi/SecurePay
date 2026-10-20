@@ -25,7 +25,7 @@ The engine checks, in order:
 5. **Restricted list check** against the cache. The external list service is only called when the cached copy is not available, behind a circuit breaker.
 6. **Decide** `APPROVE`, `HOLD` or `REJECT`, and keep with the decision the rule version and which rules fired.
 
-**Fallback.** If something takes too long, the engine falls back to a default decision: under USD 50 it approves, from USD 50 up it holds. It exists in two layers, one inside the engine with an internal time budget and one in the core in case the whole engine does not answer. The amount is converted to USD with the day's rate first. Every fallback decision is flagged. See [Team decisions](./team-decisions.mdx).
+**Fallback.** If something takes too long, the engine falls back to a default decision: under USD 50 it approves, from USD 50 up it holds. It exists in two layers, one inside the engine with an internal time budget and one in the core in case the whole engine does not answer. The amount is converted to USD first, with the rate of the transaction's date (the last earlier day on weekends and holidays). Every fallback decision is flagged. See [Team decisions](./team-decisions.mdx).
 
 :::info[Built so far]
 Steps 1 and 3 (velocity only) and 6 run today, plus the restricted list read straight from PostgreSQL. The rest arrives in Sprint 2. See [Decision engine](../components/decision-engine.mdx).
@@ -49,7 +49,7 @@ Keeping them separate means that if analytics falls behind, cases are still crea
 | :--- | :--- | :--- | :--- |
 | **Valkey** (ElastiCache Serverless) | Idempotency keys (1 hour), time windows and 24-hour sums, devices per account, active rules, the restricted list | The engine, the history consumer, the cache refresh and the daily list load | The engine, on every transaction |
 | **PostgreSQL** (RDS) | Users, accounts, devices, merchants, versioned rules, cases and their events, reconciliation differences | The seed, the rules and cases APIs, the cases consumer, the alerts task, the reconciliation | The APIs, the alerts task, the cache refresh |
-| **DynamoDB** | Device–account pairs for 30 days, the daily exchange rates | The history consumer, the exchange rates task | The engine (rate of the day at startup), cache rebuilds |
+| **DynamoDB** | Device–account pairs for 30 days, the daily exchange rates | The history consumer, the exchange rates task | The engine (loads every day's rate at startup, refreshes daily), cache rebuilds |
 | **S3 Data Lake, `raw`** | Every decision (`raw/decisiones/`) and the partner statements (`raw/extractos/`), as they arrived | Firehose, the partners | The Spark ETL and the reconciliation |
 | **S3 Data Lake, `curated` and `analytics`** | Clean Parquet, reconciliation results and the dimensional model | The Spark jobs | Athena and Power BI |
 | **S3 evidence bucket** | One locked file per closed case, for 10 years | The cases API, when a case closes | The cases API, when someone looks up a closed case |

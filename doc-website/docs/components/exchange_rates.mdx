@@ -28,117 +28,137 @@ from BANREP (Banco de la República de Colombia).
 
 ## Where it lives
 
-The source lives in the [`securepay-apis`](https://github.com/SecurePay-Riwi/securepay-apis) repository:
+The source lives in the [`securepay-apis`](https://github.com/SecurePay-Riwi/securepay-apis) repository. The
+DynamoDB table is created in this repository, by LocalStack's init scripts (Terraform in AWS):
 
 ```text
 securepay-apis/
 ├── src/securepay_apis/exchange_rates/
-│   ├── __init__.py
 │   ├── __main__.py          ← local entry point
-│   └── frankfurter.py       ← API client and validation
+│   ├── frankfurter.py       ← API client and validation (one day or a range)
+│   ├── store.py             ← writes and reads the DynamoDB table
+│   └── handler.py           ← AWS Lambda entry point
 └── tests/exchange_rates/
-    └── test_exchange_rates.py
+
+SecurePay/
+└── infra/localstack/init/03_exchange_rates.py   ← creates the table locally
 ```
 
-The generated JSON lives in `src/securepay_apis/exchange_rates/data/` and is
-excluded from Git.
+## The table
+
+`pagoseguro-exchange-rates`, on demand, with one item per day Frankfurter publishes:
+
+| Attribute | Type | What it holds |
+|---|---|---|
+| `base` | String, partition key | Always `USD` |
+| `rate_date` | String, sort key | `YYYY-MM-DD`, the date Frankfurter gives |
+| `rates` | Map | `{"USD": 1, "COP": 3317.65, "EUR": 0.88286, "JPY": 157.78}` |
+| `source` | String | The URL called, as evidence |
+| `expires_at` | Number (epoch) | TTL: DynamoDB deletes the item 30 days after it was written |
+
+With `base` + `rate_date` as the key, one query returns the latest day or every day already
+ordered. The decision engine loads the whole table into memory (about 30 items) and converts
+each transaction with **the rate of its own date**; a day without an item uses the last earlier
+day. Frankfurter blends several providers and usually publishes every day, weekends included. In production that is today's rate; in a simulation it is the rate
+of the simulated day.
 
 ## How it works
 
-### Local (development and demonstration)
-
-A standalone entry point fetches the rates and saves them to a JSON file:
+### Local
 
 ```bash
 uv run python -m securepay_apis.exchange_rates
 ```
 
-This command:
-
 1. Calls the Frankfurter v2 API.
-2. Validates the response (currencies, dates, positive rates).
-3. Writes `data/rates_<date>.json` as evidence.
-4. Prints the fetched rates to the console.
+2. Validates the response (all currencies, one date, positive rates).
+3. Stores it where `RATES_OUTPUT` says.
+4. Prints the fetched rates.
+
+| Variable | Values | What it does |
+|---|---|---|
+| `RATES_OUTPUT` | `file` (default), `dynamodb` | `file` writes `src/securepay_apis/exchange_rates/data/rates_<date>.json` (Git-ignored) and needs only internet; `dynamodb` writes the table (LocalStack locally) |
+| `RATES_TABLE` | `pagoseguro-exchange-rates` | Table name |
+| `RATES_FROM` | unset, or a date | Unset: only today, like the Lambda. With a date: every published day from that date up to today |
+
+The transactions the generator simulates start on the reference date (2026-10-01), so to let
+the engine convert them locally, load October into LocalStack once:
+
+```bash
+RATES_OUTPUT=dynamodb RATES_FROM=2026-10-01 uv run python -m securepay_apis.exchange_rates
+```
 
 ### Production (AWS)
-
-In production, the same code runs as a **Lambda function triggered by
-EventBridge Scheduler** and writes to **DynamoDB**:
 
 ```text
 EventBridge Scheduler (daily)
     ↓
-Lambda (exchange_rates.handler)
+Lambda (securepay_apis.exchange_rates.handler.handler)
     ↓
 Frankfurter API
     ↓
-DynamoDB (pagoseguro-tasas)
+DynamoDB (pagoseguro-exchange-rates)
     ↓
-Decision engine (reads current rate)
+Decision engine (loads the table at startup, refreshes daily)
 ```
 
-Only the current day's rates are stored. Historical rates remain available
-through the Frankfurter API itself, so no local historical copy is needed.
+The Lambda always writes today's rates to DynamoDB. If Frankfurter fails or answers with
+invalid data, nothing is written and the Lambda ends with an error, so EventBridge retries it.
 
 ## Key decisions
 
 :::info Design decisions
 - **v2 over v1:** v1 does not include COP.
 - **Decimal over float:** boto3 rejects floats when writing to DynamoDB.
-  Rates are parsed with `parse_float=Decimal` at the source.
+  Rates are parsed with `parse_float=Decimal` at the source, so they are stored as they come.
 - **Custom User-Agent:** Frankfurter returns 403 with the default Python UA.
   The client sends `securepay-exchange-rates`.
 - **Retry only on 5xx:** a 4xx means the request is wrong and retrying would
   just repeat the error. Up to 3 attempts with increasing waits (1s, 2s, 4s).
-- **Weekends and holidays:** the API returns the last business day's date.
-  The client keeps whatever date the API provides, never invents one.
+- **Dates come from the API:** the client keeps whatever date Frankfurter provides, never
+  invents one. In a range, a day where one currency is missing (the providers do not always
+  publish on the same days) is skipped.
+- **Rate of the transaction's date, not the latest:** the simulated October transactions are
+  converted with the rate of their own day, so the generator and the engine use the same rate.
+- **Expiry counts from the load:** a past day loaded today lives 30 days from today.
+- **`file` is the default output**, like `LISTA_SOURCE=file` in the restricted-list service:
+  the command still works with only internet.
 :::
 
 ## How to run it locally
 
-### 1. Fetch the rates
+### Fetch today's rates into a file
 
 ```bash
 uv run python -m securepay_apis.exchange_rates
 ```
 
-Expected output:
+Expected output (the values change every day):
 
 ```text
 Fetching rates from Frankfurter...
-Rates date: 2026-10-15
-  1 USD = 1 USD
-  1 USD = 4012.34 COP
-  1 USD = 0.87 EUR
-  1 USD = 157.78 JPY
+  2026-10-20: 1 USD = 1 USD, ... COP, ... EUR, ... JPY
 
-Rates saved to: src/securepay_apis/exchange_rates/data/rates_2026-10-15.json
+1 day(s) saved to src/securepay_apis/exchange_rates/data
 ```
 
-### 2. Inspect the generated JSON
+### Load October into the LocalStack table
+
+Start LocalStack from this repository (`docker compose up -d`; it creates the table), then in
+`securepay-apis`:
 
 ```bash
-cat src/securepay_apis/exchange_rates/data/rates_2026-10-15.json
+RATES_OUTPUT=dynamodb RATES_FROM=2026-10-01 uv run python -m securepay_apis.exchange_rates
 ```
 
-Expected content:
+It prints one line per published day and `N day(s) saved to DynamoDB table pagoseguro-exchange-rates`.
+To check the latest day stored:
 
-```json
-{
-  "date": "2026-10-15",
-  "source": "https://api.frankfurter.dev/v2/rates?base=USD&quotes=COP,EUR,JPY",
-  "rates": {
-    "USD": "1",
-    "COP": "4012.34",
-    "EUR": "0.87",
-    "JPY": "157.78"
-  }
-}
+```bash
+uv run python -c "from securepay_apis.exchange_rates import store; print(store.latest())"
 ```
 
-### 3. Call the API directly (optional)
-
-To verify the API is responding:
+### Call the API directly (optional)
 
 ```bash
 curl "https://api.frankfurter.dev/v2/rates?base=USD&quotes=COP,EUR,JPY"
@@ -146,53 +166,45 @@ curl "https://api.frankfurter.dev/v2/rates?base=USD&quotes=COP,EUR,JPY"
 
 ## Tests
 
-The tests do not call the internet. They mock the HTTP response and exercise
-the validation logic with fixed data.
+The tests do not call the internet. They mock the HTTP response and replace DynamoDB with a
+fake table. One test writes to a throwaway table in LocalStack and skips itself when LocalStack
+is not running.
 
 ```bash
 uv run pytest tests/exchange_rates
 ```
 
-Expected output:
-
-```text
-6 passed in 0.32s
-```
-
 Covered cases:
 
-- Correct response returns all four currencies (USD, COP, EUR, JPY).
-- Rates are returned as `Decimal`, never `float`.
-- Missing currency raises an error.
-- Mixed dates between records raise an error.
-- A rate of zero or negative raises an error.
+- A correct response returns all four currencies, as `Decimal`, never `float`.
+- A missing currency, mixed dates or a zero or negative rate raise an error.
 - A persistent 5xx is retried 3 times and then raises `RuntimeError`.
+- A range returns one result per day, skips a day with a missing currency and fails entirely on an invalid rate.
+- The item has the right key, keeps `Decimal` rates and expires 30 days after the load.
+- `file` is the default output; `dynamodb` with `RATES_FROM` stores the whole range.
+- The Lambda saves today's rates and writes nothing when Frankfurter fails.
+- Against LocalStack: the latest saved day comes back first.
 
 ## Error handling
 
 If the API is unavailable or returns invalid data:
 
 - The client raises an exception. **No partial data is ever written.**
-- In production, the Lambda marks the error, EventBridge retries, and a
-  CloudWatch alarm notifies the team.
-- The decision engine is not affected: it uses the last known rates stored
-  in DynamoDB until the next successful fetch.
+- In production, the Lambda ends with an error and EventBridge retries it.
+- The decision engine is not affected: it keeps the rates it already loaded until the next successful fetch.
 
-## Future improvements
+## Pending
 
-:::tip Out of scope for the current sprint
-- **DynamoDB storage:** the `store.py` module will write the rates to the
-  `pagoseguro-tasas` table. Already designed, pending implementation.
-- **Lambda handler:** the `handler.py` module will wrap `frankfurter.fetch()`
-  and `store.save()` for the EventBridge trigger.
-- **LocalStack init script:** `infra/localstack/init/02_exchange_rates.py`
-  will create the DynamoDB table when LocalStack starts.
-- **Historical retention:** use DynamoDB TTL to keep the last 30 days of
-  rates for auditing.
+:::tip Not built yet
+- **Terraform:** the table, the Lambda and the EventBridge schedule in AWS. The schedule runs at
+  17:00 Central European Time (10:00 in Bogotá), after Frankfurter publishes.
+- **Stale-rate alarm:** a CloudWatch alarm if the latest item is more than 4 days old (covers
+  long holiday weekends).
+- **Engine:** loading the table and converting each transaction with the rate of its date belongs
+  to the engine's sprint-2 story (default decision on timeout).
 :::
 
 ## Related references
 
-- **Assignment source:** F6 — Exchange rates (API), 4 currencies.
-- **Business rule:** RN-11 — amounts are reported in USD with the day's rate.
+- **Assignment:** exchange rates from an API, 4 currencies; amounts are reported in USD with the day's rate.
 - **OpenAPI specification:** `https://api.frankfurter.dev/v2/openapi.json`

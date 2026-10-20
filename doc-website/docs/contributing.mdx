@@ -36,7 +36,7 @@ SecurePay/
 │   ├── decision_engine/   # decision engine (FastAPI) and its tests
 │   └── consumers/         # SQS consumers with the Lambda signature, and their tests
 ├── shared/                # SQLAlchemy models, DB/Valkey/AWS clients, decision event format
-├── infra/localstack/init/ # creates SNS, SQS and S3 in LocalStack
+├── infra/localstack/init/ # creates SNS, SQS, S3 and DynamoDB in LocalStack
 ├── doc-website/           # this documentation site (Docusaurus)
 ├── docker-compose.yml     # PostgreSQL, Valkey and LocalStack for local development
 ├── pyproject.toml         # dependencies and pytest config (uv)

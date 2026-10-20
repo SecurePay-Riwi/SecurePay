@@ -65,9 +65,9 @@ The three services must end up `healthy`:
 | :--- | :--- | :--- | :--- |
 | `postgres` | `postgres:16` | 5433 | Master data (users, accounts, devices, merchants, lists). |
 | `valkey` | `valkey/valkey:8` | 6379 | Idempotency keys and the velocity history. ElastiCache in AWS. |
-| `localstack` | `localstack/localstack:2026.09.1` | 4566 | SNS, SQS and S3. |
+| `localstack` | `localstack/localstack:2026.09.1` | 4566 | SNS, SQS, S3 and DynamoDB. |
 
-LocalStack is only `healthy` after `infra/localstack/init/01_messaging.py` created the `decisiones` topic, the `casos`, `historial` and `analitica` queues (each with its `-dlq`) and the `pagoseguro-datalake` bucket, and `02_sources.py` created the `pagoseguro-proveedor-listas` bucket for the [restricted list service](../components/restricted-list.mdx). LocalStack keeps nothing when it stops: every start recreates everything empty.
+LocalStack is only `healthy` after `infra/localstack/init/01_messaging.py` created the `decisiones` topic, the `casos`, `historial` and `analitica` queues (each with its `-dlq`) and the `pagoseguro-datalake` bucket, `02_sources.py` created the `pagoseguro-proveedor-listas` bucket for the [restricted list service](../components/restricted-list.mdx), and `03_exchange_rates.py` created the `pagoseguro-exchange-rates` table for the [exchange rates](../components/exchange_rates.mdx). LocalStack keeps nothing when it stops: every start recreates everything empty.
 
 | Command | Effect |
 | :--- | :--- |

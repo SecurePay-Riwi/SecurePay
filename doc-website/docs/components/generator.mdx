@@ -35,7 +35,7 @@ Each run leaves three files in `generated/instance-<n>/`:
 | `labels.jsonl` | Per event: pattern, whether it is fraud, the rule it should trigger and, in `http` mode, the engine's answer. |
 | `generation_report.json` | Counts by type, pattern, defect and response status, plus every injected defect. |
 
-With seed 42 and the default `.env.example` the run ends with `Listo: 1035 eventos`, identical on Windows and Linux.
+With seed 42 and the default `.env.example` the run ends with `Listo: 1036 eventos`, identical on Windows and Linux.
 
 ## What it sends
 
@@ -48,7 +48,7 @@ Transactions go to `POST /transactions`. The format is described in [Decision en
 | `RECARGA` (top-up) | 15% | Destination only | `APP`, `WEB`, `CORRESPONSAL` |
 | `RETIRO` (withdrawal) | 15% | Source only | `CORRESPONSAL`, `CAJERO` |
 
-Normal amounts are USD 1 to 150 (top-ups USD 10 to 300), converted to each account's currency with Frankfurter rates saved in `src/securepay_generator/data/tasas_2026-10-01.json`. Transfers only happen between accounts in the same currency.
+Normal amounts are USD 1 to 150 (top-ups USD 10 to 300), converted to each account's currency with the Frankfurter rate of **the transaction's own date**, saved per day in `src/securepay_generator/data/tasas_2026-10.json` (a day without a rate, or not published yet, uses the last earlier one, as the engine does with the DynamoDB table). Transfers only happen between accounts in the same currency.
 
 Security events (`DEVICE_CHANGE`, `PASSWORD_CHANGE`) go to `POST /security-events`, which the engine does not have yet: they answer `404` until the account takeover rule arrives.
 
@@ -83,7 +83,7 @@ Applied on the generated stream, in sending order, without touching balances or 
 - **`patterns.py`** has one class per pattern; `CICLO` alternates fraud and control for each one.
 - **`defects.py`** applies the three defects.
 - **`sender.py`** has the outputs (`SalidaHttp`, `SalidaArchivo`) and the report. In `http` mode a network error is retried with the **same id**, which is safe because the engine is idempotent.
-- **`money.py`** converts between USD and each currency with the saved rates; `fetch_rates.py` downloaded them once from Frankfurter v2 (v1 has no COP).
+- **`money.py`** converts between USD and each currency with the saved rate of each day (`Tasas.del_dia`); `fetch_rates.py` downloads every published day since 2026-10-01 from Frankfurter v2 (v1 has no COP) and is run again, on purpose, when more days are published.
 
 ## Load test settings
 
