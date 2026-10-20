@@ -6,7 +6,7 @@ description: The simulated wallet core that sends transactions with labeled frau
 
 # Transaction generator
 
-**Folder:** `generators/` · **Run:** `uv run python -m generators`
+**Repo:** [`securepay-generator`](https://github.com/SecurePay-Riwi/securepay-generator) · **Folder:** `generators/` · **Run:** `uv run python -m generators`
 
 The generator **plays the wallet core**. It reads the seed from PostgreSQL once, keeps the balances in memory and produces a stream of transactions with fraud patterns and data quality defects. Every event carries a label the engine never sees, so we can check afterwards whether the engine got it right.
 

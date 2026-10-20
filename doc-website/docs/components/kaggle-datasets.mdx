@@ -69,7 +69,7 @@ Keys carry no date: it is a one-time history, so a re-run overwrites the same fi
 ### 3. Verify the upload
 
 ```bash
-uv run python -c "from shared.aws import cliente; [print(o['Key'], o['Size']) for o in cliente('s3').list_objects_v2(Bucket='pagoseguro-datalake', Prefix='raw/kaggle/')['Contents']]"
+uv run python -c "from securepay_shared.aws import get_client; [print(o['Key'], o['Size']) for o in get_client('s3').list_objects_v2(Bucket='pagoseguro-datalake', Prefix='raw/kaggle/')['Contents']]"
 ```
 
 You should see the two CSV objects and their two manifests.
@@ -80,8 +80,8 @@ You should see the two CSV objects and their two manifests.
 | :--- | :--- |
 | PaySim CSV | `s3://pagoseguro-datalake/raw/kaggle/paysim/paysim.csv` |
 | PaySim manifest | `s3://pagoseguro-datalake/raw/kaggle/paysim/_manifest.json` |
-| Credit Card CSV | `s3://pagoseguro-datalake/raw/kaggle/creditcard/creditcard.csv` |
-| Credit Card manifest | `s3://pagoseguro-datalake/raw/kaggle/creditcard/_manifest.json` |
+| Sparkov (`fraudTest.csv`) | `s3://pagoseguro-datalake/raw/kaggle/sparkov/fraudtest/fraudTest.csv` |
+| Sparkov manifest | `s3://pagoseguro-datalake/raw/kaggle/sparkov/fraudtest/_manifest.json` |
 
 Object paths are stable — a successful subsequent run updates the same locations
 instead of creating dated copies.

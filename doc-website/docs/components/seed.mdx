@@ -6,7 +6,7 @@ description: The PostgreSQL seed that loads users, accounts, devices, merchants 
 
 # Seed
 
-**Folder:** `db/seed/` · **Run:** `uv run python -m db.seed.seed`
+**Repo:** [`securepay-seed`](https://github.com/SecurePay-Riwi/securepay-seed) · **Folder:** `db/seed/` · **Run:** `uv run python -m db.seed.seed`
 
 The seed loads the **master data** the engine and the generator need into PostgreSQL. It is versioned, parameterizable, idempotent and reproducible: the same configuration always produces the same data, on Windows and on Linux. It does **not** create transactions; those come from the [generator](./generator.mdx), like the real wallet core.
 

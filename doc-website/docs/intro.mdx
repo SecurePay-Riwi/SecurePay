@@ -77,25 +77,35 @@ It runs on AWS (Ohio, `us-east-2`, two Availability Zones), managed services fir
 
 ## 6. Project structure
 
-Monorepo: one folder per piece that is deployed separately, each with its own tests. It will be split into several repositories after the first delivery.
+The project is split across five repositories in the [SecurePay-Riwi](https://github.com/SecurePay-Riwi) organization.
+All satellite repos install [`securepay-shared`](https://pypi.org/project/securepay-shared/) from PyPI — no need to clone the monorepo to work on a data source.
+
+```text
+SecurePay-Riwi (GitHub org)
+├── SecurePay              ← monorepo: services + shared + infra + docs
+├── securepay-seed         ← F4: DB seed and Kaggle ETL
+├── securepay-generator    ← F3: simulated transaction stream
+├── securepay-csv          ← F1 PaySim, F2 Sparkov fraudTest, F5 partner statements
+└── securepay-apis         ← F6 exchange rates, F7 restricted list
+
+PyPI
+└── securepay-shared 0.1.0 ← models, db, config, aws (shared by all repos)
+```
+
+**Monorepo layout (`SecurePay/`):**
 
 ```text
 SecurePay/
 ├── services/
 │   ├── decision_engine/        # decision engine (FastAPI)
 │   └── consumers/              # SQS consumers written as Lambda handlers
-├── shared/                     # models, clients and the decision event format
-├── db/
-│   ├── seed/                   # PostgreSQL master data seed
-│   └── datasets/               # loads a Kaggle sample into PostgreSQL
-├── generators/                 # transaction generator (simulated wallet core)
-├── sources/
-│   ├── csv_files/
-│   │   ├── partner_statements/ # daily files of the four payment partners
-│   │   └── kaggle/             # loads the Kaggle datasets into the Data Lake
-│   └── apis/
-│       ├── restricted_list/    # simulated restricted-list provider
-│       └── exchange_rates/     # daily exchange rates from Frankfurter
+├── shared/                     # published to PyPI as securepay-shared
+│   ├── models.py               # SQLAlchemy ORM
+│   ├── db.py                   # PostgreSQL engine + session (psycopg3)
+│   ├── config.py               # env vars and constants
+│   ├── aws.py                  # boto3 client factory (LocalStack-aware)
+│   ├── cache.py                # Valkey client (services/ only)
+│   └── events.py               # transaction.decided event (services/ only)
 ├── infra/localstack/           # creates SNS, SQS and S3 in LocalStack
 ├── doc-website/                # this site
 └── docker-compose.yml          # PostgreSQL, Valkey and LocalStack
