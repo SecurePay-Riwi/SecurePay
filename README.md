@@ -3,6 +3,35 @@
 Plataforma de monitoreo transaccional, reglas antifraude y conciliación
 para una billetera digital.
 
+## Shared library — `securepay-shared`
+
+`shared/` is published to PyPI as [`securepay-shared`](https://pypi.org/project/securepay-shared/).
+Satellite repositories install it as a normal dependency — no need to clone this monorepo:
+
+```toml
+dependencies = ["securepay-shared>=0.1.0"]
+```
+
+```bash
+uv sync   # pulls securepay-shared from PyPI automatically
+```
+
+The package exposes: `securepay_shared.models` (SQLAlchemy ORM), `securepay_shared.db`
+(PostgreSQL engine + session), `securepay_shared.config` (env vars and constants) and
+`securepay_shared.aws` (boto3 client factory).
+
+> `shared/cache.py` and `shared/events.py` are **not** part of the published package —
+> they are only used by `services/` and stay in this repo.
+
+### Satellite repositories
+
+| Repo | Content | Data sources |
+|------|---------|--------------|
+| [`securepay-csv`](https://github.com/SecurePay-Riwi/securepay-csv) | CSV sources | F1 PaySim, F2 Sparkov fraudTest, F5 partner statements |
+| [`securepay-apis`](https://github.com/SecurePay-Riwi/securepay-apis) | API integrations | F6 Frankfurter exchange rates, F7 restricted list |
+| [`securepay-seed`](https://github.com/SecurePay-Riwi/securepay-seed) | DB seed + Kaggle ETL | F4 seed DB |
+| [`securepay-generator`](https://github.com/SecurePay-Riwi/securepay-generator) | Transaction stream | F3 simulated transactions |
+
 ## Descripción
 
 PagoSeguro es una billetera digital con 2,3 millones de usuarios que
