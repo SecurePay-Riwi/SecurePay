@@ -113,12 +113,19 @@ used by `services/` and stay in this repo.
 - LocalStack + Docker Compose
 - Docusaurus doc site
 
+### Docs milestone — Done ✅ (between sprints)
+- `CLAUDE.md` — AI context file committed to monorepo (PR #29)
+- `README.md` — updated with `securepay-shared` PyPI section + satellite repo table (PR #30)
+- READMEs for all 4 satellite repos committed (PR #2 in each repo)
+- Docusaurus updated: satellite repo badges on all component pages, multi-repo table in
+  run-data-sources, intro.mdx section 6 rewritten, kaggle-datasets stale refs fixed (PR #32)
+
 ### Sprint 2 — In progress
 | HU | Description | Owner | Status |
 |----|-------------|-------|--------|
 | HU-06 | Reject by restricted list (RN-06) | Jorge | ✅ Done |
 | HU-07 | Rules with history (RN-02, RN-03) | Yulianis | 🔄 In progress |
-| HU-08 | Velocity / mule / list pre-check in cache | Habith | 🔄 In progress |
+| HU-08 | Velocity / mule / list pre-check in cache | Habith | 🔄 Starting |
 | HU-09 | Docker images per component | Yulianis | 🔄 In progress |
 | HU-10 | Docker Compose full stack | Unassigned | ⏳ Pending |
 
