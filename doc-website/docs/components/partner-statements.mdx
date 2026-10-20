@@ -6,7 +6,7 @@ description: Daily files from the four payment partners, built from the generato
 
 # Partner statements
 
-**Folder:** `sources/csv_files/partner_statements/` · **Run:** `uv run python -m sources.csv_files.partner_statements`
+**Repo:** [`securepay-csv`](https://github.com/SecurePay-Riwi/securepay-csv) · **Folder:** `sources/csv_files/partner_statements/` · **Run:** `uv run python -m sources.csv_files.partner_statements`
 
 Every day, each of the four payment partners (one bank and three networks) sends a file with what went through it, in its own format. The daily reconciliation compares those files against what PagoSeguro recorded. This component **simulates the partners**: it builds their files from the [transaction generator](./generator.mdx)'s output, so they match what the engine saw, and injects the defects the assignment asks for.
 
