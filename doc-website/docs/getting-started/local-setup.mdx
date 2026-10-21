@@ -127,3 +127,22 @@ They read the three queues in LocalStack and call the same handlers that will ru
 - [Run the data sources](./run-data-sources.mdx) one by one.
 - [Simulate the full flow](./simulate-full-flow.mdx) with the generator.
 - [Run the tests](./testing.mdx).
+
+## Full ecosystem with Docker Compose (MAG-31 / MAG-32)
+
+To run the full stack, clone the satellite repositories beside SecurePay: `securepay-seed`, `securepay-generator`, `securepay-csv` and `securepay-apis`. Open Docker Desktop, create `.env` from `.env.example`, and set your personal `LOCALSTACK_AUTH_TOKEN`. Never commit the `.env` file or tokens.
+
+From the SecurePay root:
+
+```bash
+docker compose config --quiet
+docker compose up --build -d
+docker compose ps
+```
+
+Compose builds and coordinates PostgreSQL, Valkey, LocalStack, the seed, decision engine, restricted-list API, consumers, transaction generator and partner statements. The seed and generator are one-shot jobs. The seed uses `SEED_RESET=true`, so this setup regenerates development data and must not be run against data you need to preserve.
+
+- Decision engine: http://localhost:8000/health
+- Restricted-list API: http://localhost:8001/health
+
+To stop containers while retaining named volumes, run `docker compose down`. To delete the persisted data too, run `docker compose down -v`. Kaggle download is optional and requires `KAGGLE_API_TOKEN` in `.env`.
