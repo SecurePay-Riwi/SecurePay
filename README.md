@@ -447,7 +447,7 @@ Cada línea de `securepay-generator/generated/instance-0/labels.jsonl` trae el p
 que debería dispararse y lo que respondió el motor:
 
 ``` json
-{"id": "...", "pattern": "VELOCITY", "is_fraud": true, "expected_rule": "velocidad",
+{"id": "...", "pattern": "VELOCITY", "is_fraud": true, "expected_rule": "velocity",
  "response": {"status": 200, "decision": "HOLD", "reason": "Velocity: 6 outgoing transfers in 10 minutes from the same account."}}
 ```
 
