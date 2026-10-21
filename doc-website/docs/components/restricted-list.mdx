@@ -43,6 +43,8 @@ The provider bucket is separate from the Data Lake because it holds a third part
 
 The document is normalized to digits before the lookup, so `CC 1.000.000.016`, `1.000.000.016` and `1000000016` are the same person. A document that is not listed is a **200 with `"listado": false`**, not a 404, so it cannot be confused with a mistyped route. A document with no digits is a 400.
 
+Swagger (http://localhost:8001/docs) shows the same examples, plus the `503` every endpoint except `/health` can answer.
+
 ```python
 @app.get("/lista/{documento}")
 async def consultar(documento: str, request: Request):

@@ -35,20 +35,44 @@ CAMPOS_DE_DINERO = (
 class TransactionRequest(BaseModel):
     """La transacción tal como la manda el core (generators/core.py)."""
 
-    id: UUID
-    type: TransactionType
-    channel: str = Field(min_length=1, max_length=30)
-    source_account_id: UUID | None = None
-    destination_account_id: UUID | None = None
-    merchant_id: UUID | None = None
-    amount: Decimal = Field(gt=0)
-    currency: Literal["COP", "USD", "EUR", "JPY"]
-    source_balance_before: Decimal | None = None
-    source_balance_after: Decimal | None = None
-    destination_balance_before: Decimal | None = None
-    destination_balance_after: Decimal | None = None
-    device_id: UUID
-    transaction_date: AwareDatetime
+    id: UUID = Field(
+        description="Chosen by the core. It is the idempotency key."
+    )
+    type: TransactionType = Field(
+        description="P2P, QR (payment to a merchant), RECARGA (top-up) or RETIRO (withdrawal)."
+    )
+    channel: str = Field(
+        min_length=1, max_length=30, description="Where it was made, e.g. APP or WEB."
+    )
+    source_account_id: UUID | None = Field(
+        default=None, description="Required in P2P, QR and RETIRO."
+    )
+    destination_account_id: UUID | None = Field(
+        default=None, description="Required in P2P and RECARGA."
+    )
+    merchant_id: UUID | None = Field(default=None, description="Required in QR.")
+    amount: Decimal = Field(
+        gt=0, description="In the account's currency. At most 2 decimals (JPY: none)."
+    )
+    currency: Literal["COP", "USD", "EUR", "JPY"] = Field(
+        description="Must be the currency of the account."
+    )
+    source_balance_before: Decimal | None = Field(
+        default=None, description="Required when there is a source account."
+    )
+    source_balance_after: Decimal | None = Field(
+        default=None, description="Required when there is a source account."
+    )
+    destination_balance_before: Decimal | None = Field(
+        default=None, description="Required when there is a destination account."
+    )
+    destination_balance_after: Decimal | None = Field(
+        default=None, description="Required when there is a destination account."
+    )
+    device_id: UUID = Field(description="It does not need to exist in the database.")
+    transaction_date: AwareDatetime = Field(
+        description="When it happened in the core, with time zone."
+    )
 
     @model_validator(mode="after")
     def validar_transaccion(self):
@@ -118,17 +142,41 @@ class TransactionRequest(BaseModel):
 class TransactionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    transaction_id: UUID
-    decision: Decision
-    decision_reason: str
+    transaction_id: UUID = Field(description="The `id` that was sent.")
+    decision: Decision = Field(description="APPROVE, HOLD or REJECT.")
+    decision_reason: str = Field(description="Why, from the rule that decided.")
     # Con valor por defecto: una decisión guardada en Valkey antes de que
     # existieran estos campos se puede seguir repitiendo.
-    rules_version: str | None = None
-    rules_triggered: list[str] = []
+    rules_version: str | None = Field(
+        default=None,
+        description="Version of the rules used. null in decisions stored before it existed.",
+    )
+    rules_triggered: list[str] = Field(
+        default=[],
+        description="Every rule that fired, not only the one that decided.",
+    )
     # True when a rule that opens a case fired (decision_service.CASE_RULES).
-    opens_case: bool = False
+    opens_case: bool = Field(
+        default=False,
+        description="True when a rule that opens a case for an analyst fired (mule account, restricted list).",
+    )
     # True when the rules did not answer in time and RN-01's default
     # decision was applied.
-    by_default: bool = False
-    processed_at: datetime
-    idempotent_replay: bool = False
+    by_default: bool = Field(
+        default=False,
+        description="True when the rules did not answer in time and the default decision was applied.",
+    )
+    processed_at: datetime = Field(description="When the engine decided (UTC).")
+    idempotent_replay: bool = Field(
+        default=False,
+        description="True when this is the stored decision returned to a resend of the same id.",
+    )
+
+
+class HealthResponse(BaseModel):
+    status: Literal["ok"] = Field(
+        description="Always ok while the process runs; messaging problems do not change it."
+    )
+    messaging: dict[str, int] = Field(
+        description="SNS publisher counters: pending, published and failed decisions."
+    )
