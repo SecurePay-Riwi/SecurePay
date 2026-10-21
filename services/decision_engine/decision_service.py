@@ -65,15 +65,21 @@ def _decidir(session: Session, payload: TransactionRequest) -> dict:
             "La moneda de la transacción no es la de la cuenta."
         )
 
-    titular = session.get(Usuario, principal.user_id)
+    # Pre-check obligatorio: consultar los titulares de todas las cuentas
+    # involucradas antes de evaluar cualquier regla de negocio.
+    titulares = [
+        session.get(Usuario, cuenta.user_id)
+        for cuenta in cuentas.values()
+    ]
+    documentos = {
+        normalizar_documento(titular.documento)
+        for titular in titulares
+    }
 
     # Regla: lista restrictiva.
     en_lista = (
         session.query(ListaRestrictiva.id)
-        .filter(
-            ListaRestrictiva.documento
-            == normalizar_documento(titular.documento)
-        )
+        .filter(ListaRestrictiva.documento.in_(documentos))
         .first()
     )
 
