@@ -11,7 +11,7 @@ from sqlalchemy import func
 
 from services.decision_engine import idempotency as idem
 from services.decision_engine import publisher
-from services.decision_engine.decision_service import REGLAS_VERSION
+from services.decision_engine.decision_service import RULES_VERSION
 from services.decision_engine.main import app
 from services.decision_engine.schemas import TransactionRequest
 from services.decision_engine.publisher import MARCA_FALLA, Publicador
@@ -199,7 +199,7 @@ def test_owner_on_restricted_list_is_rejected():
 
     assert response.status_code == 200, response.text
     assert response.json()["decision"] == "REJECT"
-    assert response.json()["rules_triggered"] == ["lista_restrictiva"]
+    assert response.json()["rules_triggered"] == ["restricted_list"]
     assert response.json()["decision_reason"] == (
         "Titular incluido en una lista restrictiva."
     )
@@ -461,9 +461,9 @@ def test_response_carries_rules_version_and_triggered_rules():
     ]
 
     assert [r["rules_triggered"] for r in respuestas] == (
-        [[]] * 5 + [["velocidad"]]
+        [[]] * 5 + [["velocity"]]
     )
-    assert {r["rules_version"] for r in respuestas} == {REGLAS_VERSION}
+    assert {r["rules_version"] for r in respuestas} == {RULES_VERSION}
 
 
 def test_every_triggered_rule_is_kept_and_the_most_severe_wins():
@@ -477,8 +477,8 @@ def test_every_triggered_rule_is_kept_and_the_most_severe_wins():
 
     assert [r["decision"] for r in respuestas] == ["REJECT"] * 6
     assert respuestas[-1]["rules_triggered"] == [
-        "lista_restrictiva",
-        "velocidad",
+        "restricted_list",
+        "velocity",
     ]
     assert respuestas[-1]["decision_reason"] == (
         "Titular incluido en una lista restrictiva."
@@ -491,8 +491,8 @@ def test_published_event_carries_the_triggered_rules(eventos_publicados):
     client.post("/transactions", json=payload)
 
     decision = eventos_publicados[0]["decision"]
-    assert decision["rules_triggered"] == ["lista_restrictiva"]
-    assert decision["rules_version"] == REGLAS_VERSION
+    assert decision["rules_triggered"] == ["restricted_list"]
+    assert decision["rules_version"] == RULES_VERSION
 
 
 def test_decision_stored_before_rules_fields_is_still_replayed():
@@ -572,7 +572,7 @@ def test_p2p_is_recorded_as_outgoing_and_incoming():
 
     assert get_cache().zcard(f"out:{origen}") == 1
     assert get_cache().zrange(f"in:{destino}", 0, -1) == [
-        f"{payload['id']}|{origen}"
+        f"{payload['id']}|{origen}|{payload['amount']}"
     ]
     # La que recibe no gana una salida, y la que envía no gana una entrada.
     assert get_cache().zcard(f"out:{destino}") == 0

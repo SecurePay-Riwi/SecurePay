@@ -1,25 +1,27 @@
-"""Historial de movimientos por cuenta en Valkey, ordenado por la hora
-del evento. Lo leen las reglas que miran el pasado de la cuenta.
+"""Per-account movement history in Valkey, ordered by event time. Read
+by the rules that look at the account's past.
 
-Dos sorted sets por cuenta, con la transaction_date en milisegundos como
-puntaje (un evento que llega tarde queda en su lugar real, no al final):
+Two sorted sets per account, scored by transaction_date in milliseconds
+(an event that arrives late lands in its real place, not at the end):
 
-- `out:{cuenta}`: lo que sale de la cuenta (P2P, QR y retiro).
-  Miembro `id|tipo|monto`. Lo usan la velocidad (10 min) y, más
-  adelante, el fraccionamiento (24 h).
-- `in:{cuenta}`: las transferencias P2P que entran. Miembro
-  `id|remitente`. Lo usa la regla de cuenta mula (30 min).
+- `out:{account}`: what leaves the account (P2P, QR and withdrawal).
+  Member `id|type|amount`. Used by velocity (10 min) and, later,
+  splitting (24 h).
+- `in:{account}`: incoming P2P transfers. Member `id|sender|amount`.
+  Used by the mule account rule (30 min): it needs the senders and the
+  amount received to compare it with what is withdrawn.
 
-Una recarga no se guarda: no viene de otra cuenta ni sale dinero.
+A top-up is not stored: it does not come from another account and no
+money leaves.
 
-Se guardan los intentos, sin importar la decisión: el historial se
-escribe antes de decidir, en una sola llamada (decidido por Jorge el
-2026-10-21). Que varias personas intenten mandar dinero a una cuenta, o
-que una cuenta intente muchas transferencias, ya es la señal.
+Attempts are stored whatever the decision: the history is written
+before deciding, in a single call (decided by Jorge on 2026-10-21).
+Several people trying to send money to one account, or one account
+trying many transfers, is already the signal.
 
-El monto va en la moneda de la cuenta: todas las transacciones de una
-cuenta usan su moneda, así que las sumas cuadran. Pasarlo a USD llega
-cuando el motor lea la tabla de tasas.
+Amounts are in the account's currency: every transaction of an account
+uses its currency, so sums add up. Converting to USD comes when the
+engine reads the exchange-rates table.
 """
 
 import os
@@ -27,27 +29,27 @@ from dataclasses import dataclass
 
 from shared.cache import get_cache
 
-SALIDAS_HORAS = int(os.getenv("HISTORY_OUT_HOURS", "24"))
-ENTRADAS_MIN = int(os.getenv("HISTORY_IN_MINUTES", "60"))
+OUT_HOURS = int(os.getenv("HISTORY_OUT_HOURS", "24"))
+IN_MINUTES = int(os.getenv("HISTORY_IN_MINUTES", "60"))
 
-if SALIDAS_HORAS <= 0 or ENTRADAS_MIN <= 0:
-    raise ValueError("La retención del historial debe ser positiva.")
+if OUT_HOURS <= 0 or IN_MINUTES <= 0:
+    raise ValueError("History retention must be positive.")
 
-SALIDAS_MS = SALIDAS_HORAS * 3600 * 1000
-ENTRADAS_MS = ENTRADAS_MIN * 60 * 1000
+OUT_MS = OUT_HOURS * 3600 * 1000
+IN_MS = IN_MINUTES * 60 * 1000
 
-# Todo en un script para que dos peticiones de la misma cuenta no se
-# pisen: Valkey ejecuta un script completo antes de atender otro comando.
-# Una sola clave por script: en ElastiCache Serverless dos claves pueden
-# vivir en nodos distintos.
-# KEYS[1] = out:{cuenta} o in:{cuenta}
-# ARGV = miembro, hora del evento (ms), retención (ms), retención (s),
-#        devolver el historial (1) o no (0)
-_REGISTRAR = """
+# Everything in one script so two requests for the same account do not
+# overlap: Valkey runs a whole script before serving another command.
+# One key per script: in ElastiCache Serverless two keys may live on
+# different nodes.
+# KEYS[1] = out:{account} or in:{account}
+# ARGV = member, event time (ms), retention (ms), retention (s),
+#        return the history (1) or not (0)
+_RECORD = """
 redis.call('ZADD', KEYS[1], ARGV[2], ARGV[1])
-local ultimo = redis.call('ZRANGE', KEYS[1], -1, -1, 'WITHSCORES')
-local corte = tonumber(ultimo[2]) - tonumber(ARGV[3])
-redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', string.format('(%.0f', corte))
+local last = redis.call('ZRANGE', KEYS[1], -1, -1, 'WITHSCORES')
+local cutoff = tonumber(last[2]) - tonumber(ARGV[3])
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', string.format('(%.0f', cutoff))
 redis.call('EXPIRE', KEYS[1], ARGV[4])
 if ARGV[5] == '1' then
   return redis.call('ZRANGE', KEYS[1], 0, -1, 'WITHSCORES')
@@ -59,81 +61,81 @@ _script = None
 
 
 @dataclass(frozen=True)
-class Salida:
+class Outgoing:
     id: str
-    tipo: str
-    monto: str
-    t: int  # hora del evento en ms
+    type: str
+    amount: str
+    t: int  # event time in ms
 
 
 @dataclass(frozen=True)
-class Entrada:
+class Incoming:
     id: str
-    remitente: str
+    sender: str
+    amount: str
     t: int
 
 
-def clave_salidas(cuenta_id) -> str:
-    return f"out:{cuenta_id}"
+def outgoing_key(account_id) -> str:
+    return f"out:{account_id}"
 
 
-def clave_entradas(cuenta_id) -> str:
-    return f"in:{cuenta_id}"
+def incoming_key(account_id) -> str:
+    return f"in:{account_id}"
 
 
-def a_ms(fecha) -> int:
-    return int(fecha.timestamp() * 1000)
+def to_ms(date) -> int:
+    return int(date.timestamp() * 1000)
 
 
-def _registrar(clave, miembro, fecha, retencion_ms, devolver):
+def _record(key, member, date, retention_ms, return_history):
     global _script
     if _script is None:
-        _script = get_cache().register_script(_REGISTRAR)
+        _script = get_cache().register_script(_RECORD)
 
     return _script(
-        keys=[clave],
-        args=[miembro, a_ms(fecha), retencion_ms, retencion_ms // 1000,
-              1 if devolver else 0],
+        keys=[key],
+        args=[member, to_ms(date), retention_ms, retention_ms // 1000,
+              1 if return_history else 0],
     )
 
 
-def _pares(crudo):
-    """La respuesta de Valkey alterna miembro y puntaje."""
-    return zip(crudo[0::2], crudo[1::2])
+def _pairs(raw):
+    """Valkey's reply alternates member and score."""
+    return zip(raw[0::2], raw[1::2])
 
 
-def registrar_salida(cuenta_id, tx_id, tipo, monto, fecha) -> list[Salida]:
-    """Guarda lo que sale de la cuenta y devuelve todas sus salidas
-    retenidas, en orden cronológico real."""
-    miembro = f"{tx_id}|{tipo}|{monto}"
-    crudo = _registrar(
-        clave_salidas(cuenta_id), miembro, fecha, SALIDAS_MS, devolver=True
+def record_outgoing(account_id, tx_id, tx_type, amount, date) -> list[Outgoing]:
+    """Store what leaves the account and return all its retained outgoing
+    movements, in real chronological order."""
+    member = f"{tx_id}|{tx_type}|{amount}"
+    raw = _record(outgoing_key(account_id), member, date, OUT_MS,
+                  return_history=True)
+
+    result = []
+    for m, t in _pairs(raw):
+        id_, type_, amount_ = m.split("|")
+        result.append(Outgoing(id_, type_, amount_, int(float(t))))
+    return result
+
+
+def record_incoming(account_id, tx_id, sender_id, amount, date) -> None:
+    """Store a transfer coming into the account. Returns nothing: rules
+    are evaluated on the account that moves the money."""
+    _record(
+        incoming_key(account_id),
+        f"{tx_id}|{sender_id}|{amount}",
+        date,
+        IN_MS,
+        return_history=False,
     )
 
-    salidas = []
-    for m, t in _pares(crudo):
-        id_, tipo_, monto_ = m.split("|")
-        salidas.append(Salida(id_, tipo_, monto_, int(float(t))))
-    return salidas
 
-
-def registrar_entrada(cuenta_id, tx_id, remitente_id, fecha) -> None:
-    """Guarda una transferencia que entra a la cuenta. No devuelve nada:
-    las reglas se evalúan sobre la cuenta que mueve el dinero."""
-    _registrar(
-        clave_entradas(cuenta_id),
-        f"{tx_id}|{remitente_id}",
-        fecha,
-        ENTRADAS_MS,
-        devolver=False,
-    )
-
-
-def entradas(cuenta_id) -> list[Entrada]:
-    """Transferencias que entraron a la cuenta, en orden cronológico."""
-    crudo = get_cache().zrange(clave_entradas(cuenta_id), 0, -1, withscores=True)
-    resultado = []
-    for m, t in crudo:
-        id_, remitente = m.split("|")
-        resultado.append(Entrada(id_, remitente, int(t)))
-    return resultado
+def incoming(account_id) -> list[Incoming]:
+    """Transfers that came into the account, in chronological order."""
+    raw = get_cache().zrange(incoming_key(account_id), 0, -1, withscores=True)
+    result = []
+    for m, t in raw:
+        id_, sender, amount = m.split("|")
+        result.append(Incoming(id_, sender, amount, int(t)))
+    return result

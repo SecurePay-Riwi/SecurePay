@@ -1,51 +1,51 @@
-"""Regla de velocidad: más de LIMITE transferencias salientes en
-VENTANA_MIN minutos desde la misma cuenta.
+"""Velocity rule: more than LIMIT outgoing transfers within WINDOW_MIN
+minutes from the same account.
 
-Cuenta sobre el historial de salidas de la cuenta (history.py), que
-está ordenado por la hora del evento: un evento que llega tarde se cuenta
-en su lugar real.
+Counts over the account's outgoing history (history.py), which is
+ordered by event time: an event that arrives late is counted in its
+real place.
 """
 
 import os
 from bisect import bisect_left, bisect_right
 
-VENTANA_MIN = int(os.getenv("VELOCITY_WINDOW_MINUTES", "10"))
-LIMITE = int(os.getenv("VELOCITY_LIMIT", "5"))
+WINDOW_MIN = int(os.getenv("VELOCITY_WINDOW_MINUTES", "10"))
+LIMIT = int(os.getenv("VELOCITY_LIMIT", "5"))
 
-if VENTANA_MIN <= 0 or LIMITE <= 0:
-    raise ValueError("Los parámetros de velocidad deben ser positivos.")
+if WINDOW_MIN <= 0 or LIMIT <= 0:
+    raise ValueError("Velocity parameters must be positive.")
 
-VENTANA_MS = VENTANA_MIN * 60 * 1000
+WINDOW_MS = WINDOW_MIN * 60 * 1000
 
-# Solo las transferencias entre cuentas cuentan: un pago QR va a un
-# comercio y un retiro sale a efectivo (bitácora 3.7).
-TIPOS = {"P2P"}
+# Only transfers between accounts count: a QR payment goes to a merchant
+# and a withdrawal goes out as cash (logbook 3.7).
+TYPES = {"P2P"}
 
 
-def max_en_ventana(horas: list[int], t: int, ventana: int = VENTANA_MS) -> int:
-    """Mayor número de transferencias dentro de una ventana de `ventana` ms
-    que contenga a t. `horas` viene ordenada e incluye a t.
+def max_in_window(times: list[int], t: int, window: int = WINDOW_MS) -> int:
+    """Largest number of transfers inside a `window` ms window that
+    contains t. `times` is sorted and includes t.
 
-    Basta probar las ventanas que empiezan en cada evento entre t - ventana
-    y t: cualquier otra se puede correr hasta un evento sin perder ninguno.
+    Trying the windows that start at each event between t - window and t
+    is enough: any other window can slide to an event without losing one.
     """
-    mejor = 0
-    desde = bisect_left(horas, t - ventana)
-    hasta = bisect_right(horas, t)
+    best = 0
+    start = bisect_left(times, t - window)
+    end = bisect_right(times, t)
 
-    for inicio in horas[desde:hasta]:
-        dentro = bisect_right(horas, inicio + ventana) - bisect_left(horas, inicio)
-        mejor = max(mejor, dentro)
+    for begin in times[start:end]:
+        inside = bisect_right(times, begin + window) - bisect_left(times, begin)
+        best = max(best, inside)
 
-    return mejor
+    return best
 
 
-def contar(salidas, t: int) -> int:
-    """Transferencias en la ventana más cargada de las que contienen a t.
+def count(outgoing, t: int) -> int:
+    """Transfers in the busiest window among those that contain t.
 
-    `salidas` es el historial de la cuenta ya ordenado (incluye la
-    transferencia que se está evaluando). Si llegó tarde, cuenta también
-    las posteriores ya procesadas, porque en el tiempo real van después.
+    `outgoing` is the account's history, already sorted (it includes the
+    transfer being evaluated). If it arrived late, the later ones already
+    processed count too, because in real time they come after it.
     """
-    horas = [s.t for s in salidas if s.tipo in TIPOS]
-    return max_en_ventana(horas, t)
+    times = [o.t for o in outgoing if o.type in TYPES]
+    return max_in_window(times, t)

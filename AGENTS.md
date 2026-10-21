@@ -158,20 +158,20 @@ stop and ask instead of working around it.
 
 Read this before adding or changing a rule in `services/decision_engine/`.
 
-- **Each rule adds a `ReglaActivada`** (rule name, decision, reason) to the
-  `activadas` list in `_decidir()` (`decision_service.py`). Do not decide
-  inside the rule: `elegir_decision()` picks the most severe one (`REJECT`,
+- **Each rule adds a `TriggeredRule`** (rule name, decision, reason) to the
+  `triggered` list in `_decidir()` (`decision_service.py`). Do not decide
+  inside the rule: `choose_decision()` picks the most severe one (`REJECT`,
   then `HOLD`, else `APPROVE`). Every rule is evaluated, and the decision
-  records all of them in `rules_triggered` plus `rules_version` (RN-08).
-  Raise `REGLAS_VERSION` when a rule changes. Add a case to
+  records all of them in `rules_triggered` plus `rules_version`.
+  Raise `RULES_VERSION` when a rule changes. Add a case to
   `tests/test_decision_outcomes.py` for a new decision combination.
 - **Account history lives in Valkey and is shared by every rule**
   (`history.py`). Do not create another per-rule key:
   - `out:{account}`: what leaves the account (`P2P`, `QR`, `RETIRO`),
     member `id|type|amount`, kept 24 h (`HISTORY_OUT_HOURS`).
-    `registrar_salida()` writes it and returns the whole outgoing history.
-  - `in:{account}`: `P2P` received, member `id|sender_account`, kept 60 min
-    (`HISTORY_IN_MINUTES`). `registrar_entrada()` writes it; `entradas()`
+    `record_outgoing()` writes it and returns the whole outgoing history.
+  - `in:{account}`: `P2P` received, member `id|sender_account|amount`, kept 60 min
+    (`HISTORY_IN_MINUTES`). `record_incoming()` writes it; `incoming()`
     reads it. **The mule rule (HU-13) reads incoming transfers from here.**
   - Recharges are not recorded. Attempts count whatever the decision: the
     history is written before deciding (team decision, 2026-10-21).
@@ -183,6 +183,9 @@ Read this before adding or changing a rule in `services/decision_engine/`.
   computing `amount_usd` once per transaction belongs to the **default
   decision on timeout story (HU-18, Habith)**, the first rule that needs USD
   (USD 50 threshold). Takeover (USD 200) and splitting (daily limit) reuse it.
+- Rule names in `rules_triggered` are English snake_case (`restricted_list`,
+  `velocity`); they are part of the `transaction.decided` event, so keep
+  them stable. New code in this folder is in English.
 - Velocity counts only `P2P` (QR payments to merchants and withdrawals do
   not count: the rule says "outgoing transfers").
 

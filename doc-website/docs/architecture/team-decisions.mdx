@@ -58,7 +58,7 @@ A resent transaction gets the same decision for 1 hour (`IDEMPOTENCY_TTL_SECONDS
 
 **Decided on 2026-10-21 (story HU-11, Jorge).**
 
-- One history per account that every rule reads, instead of one key per rule: `out:{account}` (what leaves: P2P, QR, withdrawal; 24 h, for velocity and later splitting) and `in:{account}` (P2P received with the sender; 60 min, for the mule rule).
+- One history per account that every rule reads, instead of one key per rule: `out:{account}` (what leaves: P2P, QR, withdrawal; 24 h, for velocity and later splitting) and `in:{account}` (P2P received with the sender and the amount; 60 min, for the mule rule).
 - **Attempts count, whatever the decision.** The history is written before deciding, in a single call; the statement does not say, and an attempt is already the signal. Every decision still records its triggered rules.
 - Amounts are kept in the account's currency; USD arrives when the engine reads the exchange rates (default-decision story).
 - Memory, measured in Valkey with realistic members (~70 bytes per entry): ~3.7 M outgoing entries alive at 50 tx/s, ~260 MB plus ~100 MB of keys. It replaces the 100–200 MB of "24 h sums" already in the 300 MB estimate and the ~100 MB velocity history noted above, so the cache would be ~400–450 MB (~$8/month more). To confirm in the load test.

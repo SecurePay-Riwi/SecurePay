@@ -90,7 +90,7 @@ Still defined in `shared/models.py` but **no longer written**: the seed stopped 
 | :--- | :--- | :--- | :--- |
 | `idem:{transaction_id}` | string (JSON) | 30 s while `PENDING`, 1 h when `DONE` | State, body fingerprint and the decision. |
 | `out:{account_id}` | sorted set | 24 h after the last outgoing movement (`HISTORY_OUT_HOURS`) | What leaves the account (`P2P`, `QR`, `RETIRO`). Member: `id\|type\|amount`. Score: `transaction_date` in ms. |
-| `in:{account_id}` | sorted set | 60 min after the last incoming transfer (`HISTORY_IN_MINUTES`) | `P2P` transfers received. Member: `id\|sender_account`. Score: `transaction_date` in ms. |
+| `in:{account_id}` | sorted set | 60 min after the last incoming transfer (`HISTORY_IN_MINUTES`) | `P2P` transfers received. Member: `id\|sender_account\|amount` (the mule rule compares what came in with what is withdrawn). Score: `transaction_date` in ms. |
 
 ## S3
 

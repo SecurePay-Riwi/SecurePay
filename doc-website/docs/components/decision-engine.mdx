@@ -69,14 +69,14 @@ There is no `user_id`: the owner comes from the account.
   "decision": "HOLD",
   "decision_reason": "Velocidad: 6 transferencias salientes en 10 minutos desde la misma cuenta.",
   "rules_version": "2026.10.1",
-  "rules_triggered": ["velocidad"],
+  "rules_triggered": ["velocity"],
   "processed_at": "2026-10-14T00:10:03.512+00:00",
   "idempotent_replay": false
 }
 ```
 
 - `rules_triggered` lists **every** rule that fired, not only the one that decided (the statement asks every decision to record the rule version and the rules that fired). It feeds the rule effectiveness analysis and lets the cases consumer open a case only for the rules that require one.
-- `rules_version` is the version of the rules the decision used. While the rules live in the code it is the constant `REGLAS_VERSION` in `decision_service.py`, raised whenever a rule changes; with the rules administration it will come from PostgreSQL.
+- `rules_version` is the version of the rules the decision used. While the rules live in the code it is the constant `RULES_VERSION` in `decision_service.py`, raised whenever a rule changes; with the rules administration it will come from PostgreSQL.
 - `idempotent_replay` is `true` when the answer is a stored decision returned to a resend. A decision stored before `rules_version` and `rules_triggered` existed is replayed with `null` and `[]`.
 
 ## Status codes
@@ -98,20 +98,20 @@ There is no `user_id`: the owner comes from the account.
 | Velocity | `HOLD` | More than 5 outgoing **P2P** transfers in 10 minutes from the same account, measured by event time. |
 | Anything else | `APPROVE` | "La transacción no activó las reglas configuradas." |
 
-Every rule is evaluated, even when one already rejects, and each one that fires adds a `ReglaActivada` (rule name, decision, reason) to a list. `elegir_decision()` turns the list into one decision: **the most severe wins** (`REJECT`, then `HOLD`); with none, `APPROVE`. So an owner on the restricted list who also makes six transfers in a row gets `REJECT` with `rules_triggered: ["lista_restrictiva", "velocidad"]`.
+Every rule is evaluated, even when one already rejects, and each one that fires adds a `TriggeredRule` (rule name, decision, reason) to a list. `choose_decision()` turns the list into one decision: **the most severe wins** (`REJECT`, then `HOLD`); with none, `APPROVE`. So an owner on the restricted list who also makes six transfers in a row gets `REJECT` with `rules_triggered: ["restricted_list", "velocity"]`.
 
 ```python
 # services/decision_engine/decision_service.py
-SEVERIDAD = {Decision.APPROVE: 0, Decision.HOLD: 1, Decision.REJECT: 2}
+SEVERITY = {Decision.APPROVE: 0, Decision.HOLD: 1, Decision.REJECT: 2}
 
-def elegir_decision(activadas: list[ReglaActivada]) -> tuple[Decision, str]:
-    if not activadas:
-        return Decision.APPROVE, MOTIVO_SIN_REGLAS
-    peor = max(activadas, key=lambda r: SEVERIDAD[r.decision])
-    return peor.decision, peor.motivo
+def choose_decision(triggered: list[TriggeredRule]) -> tuple[Decision, str]:
+    if not triggered:
+        return Decision.APPROVE, NO_RULES_REASON
+    worst = max(triggered, key=lambda r: SEVERITY[r.decision])
+    return worst.decision, worst.reason
 ```
 
-`elegir_decision()` is a pure function, so `tests/test_decision_outcomes.py` checks every outcome without PostgreSQL or Valkey. The velocity transfer is recorded even when another rule decides, because the attempt to transfer still counts. The other rules (mule account, splitting, shared device, account takeover, default decision on timeout, rules from the database) arrive in Sprint 2.
+`choose_decision()` is a pure function, so `tests/test_decision_outcomes.py` checks every outcome without PostgreSQL or Valkey. The velocity transfer is recorded even when another rule decides, because the attempt to transfer still counts. The other rules (mule account, splitting, shared device, account takeover, default decision on timeout, rules from the database) arrive in Sprint 2.
 
 ## Request flow
 
@@ -155,16 +155,16 @@ The engine **does not write to PostgreSQL**. It only reads accounts, merchants, 
 | Key | What goes in | Member | Kept | Read by |
 | :--- | :--- | :--- | :--- | :--- |
 | `out:{account}` | What leaves the account: `P2P`, `QR`, `RETIRO` | `id\|type\|amount` | 24 h (`HISTORY_OUT_HOURS`) | Velocity (10 min); splitting later (24 h) |
-| `in:{account}` | `P2P` transfers that arrive, with the sender | `id\|sender_account` | 60 min (`HISTORY_IN_MINUTES`) | Mule account (30 min) |
+| `in:{account}` | `P2P` transfers that arrive, with the sender and the amount | `id\|sender_account\|amount` | 60 min (`HISTORY_IN_MINUTES`) | Mule account (30 min) |
 
 A `P2P` writes twice: `out:` of the source and `in:` of the destination. A `RECARGA` writes nothing (no sender, no money leaves). Each write is a Lua script on **one key** (ZADD, prune what is older than the retention measured from the most recent event, EXPIRE), so two requests for the same account cannot interleave. One key per script on purpose: in ElastiCache Serverless two keys can live on different nodes.
 
 ```python
 # services/decision_engine/decision_service.py (simplified)
-if payload.type in TIPOS_SALIDA:              # P2P, QR, RETIRO
-    salidas = history.registrar_salida(origen, tx_id, tipo, monto, fecha)
+if payload.type in OUTGOING_TYPES:            # P2P, QR, RETIRO
+    outgoing = history.record_outgoing(source, tx_id, tx_type, amount, date)
 if payload.type == TransactionType.P2P:
-    history.registrar_entrada(destino, tx_id, origen, fecha)
+    history.record_incoming(destination, tx_id, source, amount, date)
 ```
 
 Decisions about what goes in (Jorge, 2026-10-21):
@@ -179,9 +179,9 @@ Decisions about what goes in (Jorge, 2026-10-21):
 
 ```python
 # services/decision_engine/velocity.py
-def contar(salidas, t: int) -> int:
-    horas = [s.t for s in salidas if s.tipo in TIPOS]   # TIPOS = {"P2P"}
-    return max_en_ventana(horas, t)
+def count(outgoing, t: int) -> int:
+    times = [o.t for o in outgoing if o.type in TYPES]   # TYPES = {"P2P"}
+    return max_in_window(times, t)
 ```
 
 | Variable | Default | Meaning |

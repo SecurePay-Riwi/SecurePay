@@ -17,42 +17,43 @@ from services.decision_engine.schemas import (
     TransactionType,
 )
 
-# Lo que sale de la cuenta de origen queda en su historial de salidas.
-# Una recarga no tiene origen.
-TIPOS_SALIDA = {TransactionType.P2P, TransactionType.QR, TransactionType.RETIRO}
+# What leaves the source account goes into its outgoing history.
+# A top-up has no source account.
+OUTGOING_TYPES = {TransactionType.P2P, TransactionType.QR, TransactionType.RETIRO}
 
-# Versión de las reglas con que se decidió (el enunciado pide guardarla
-# en cada decisión). Mientras las reglas vivan en el código, la versión
-# es la del código: se sube al cambiar una regla. Cuando exista la
-# administración de reglas, sale de PostgreSQL.
-REGLAS_VERSION = "2026.10.1"
+# Version of the rules a decision was made with (the project brief asks
+# to store it with every decision). While the rules live in the code,
+# the version is the code's: raise it when a rule changes. Once rules
+# administration exists, it comes from PostgreSQL.
+RULES_VERSION = "2026.10.1"
 
-# Si varias reglas se activan, gana la más severa.
-SEVERIDAD = {Decision.APPROVE: 0, Decision.HOLD: 1, Decision.REJECT: 2}
+# When several rules fire, the most severe wins.
+SEVERITY = {Decision.APPROVE: 0, Decision.HOLD: 1, Decision.REJECT: 2}
 
-MOTIVO_SIN_REGLAS = "La transacción no activó las reglas configuradas."
+NO_RULES_REASON = "La transacción no activó las reglas configuradas."
 
 
 @dataclass(frozen=True)
-class ReglaActivada:
-    """Lo que dice una regla que se activó."""
+class TriggeredRule:
+    """What a rule that fired says."""
 
-    regla: str
+    rule: str
     decision: Decision
-    motivo: str
+    reason: str
 
 
-def elegir_decision(activadas: list[ReglaActivada]) -> tuple[Decision, str]:
-    """Junta lo que dijo cada regla en una sola decisión y su motivo.
+def choose_decision(triggered: list[TriggeredRule]) -> tuple[Decision, str]:
+    """Turn what each rule said into one decision and its reason.
 
-    Gana la más severa (rechazar, luego retener). Sin reglas activadas,
-    se aprueba. Con dos de la misma severidad, gana la primera evaluada.
+    The most severe wins (reject, then hold). With no rule fired, the
+    transaction is approved. Between two of the same severity, the first
+    one evaluated wins.
     """
-    if not activadas:
-        return Decision.APPROVE, MOTIVO_SIN_REGLAS
+    if not triggered:
+        return Decision.APPROVE, NO_RULES_REASON
 
-    peor = max(activadas, key=lambda r: SEVERIDAD[r.decision])
-    return peor.decision, peor.motivo
+    worst = max(triggered, key=lambda r: SEVERITY[r.decision])
+    return worst.decision, worst.reason
 
 
 class ReferenciaInvalida(Exception):
@@ -74,7 +75,7 @@ def _cargar_cuenta(session: Session, cuenta_id) -> Cuenta:
 
 
 def _decidir(session: Session, payload: TransactionRequest) -> dict:
-    """Aplica las reglas y devuelve la decisión, sin guardarla."""
+    """Apply the rules and return the decision, without storing it."""
     cuentas = {
         cuenta_id: _cargar_cuenta(session, cuenta_id)
         for cuenta_id in (
@@ -102,7 +103,7 @@ def _decidir(session: Session, payload: TransactionRequest) -> dict:
 
     titular = session.get(Usuario, principal.user_id)
 
-    # Regla: lista restrictiva.
+    # Rule: restricted list.
     en_lista = (
         session.query(ListaRestrictiva.id)
         .filter(
@@ -112,11 +113,11 @@ def _decidir(session: Session, payload: TransactionRequest) -> dict:
         .first()
     )
 
-    # Historial de la cuenta: se escribe antes de decidir, con cualquier
-    # decisión, porque el intento cuenta igual (ver history.py).
-    salidas = []
-    if payload.type in TIPOS_SALIDA:
-        salidas = history.registrar_salida(
+    # Account history: written before deciding, whatever the decision,
+    # because the attempt counts too (see history.py).
+    outgoing = []
+    if payload.type in OUTGOING_TYPES:
+        outgoing = history.record_outgoing(
             payload.source_account_id,
             payload.id,
             payload.type.value,
@@ -124,47 +125,48 @@ def _decidir(session: Session, payload: TransactionRequest) -> dict:
             payload.transaction_date,
         )
     if payload.type == TransactionType.P2P:
-        history.registrar_entrada(
+        history.record_incoming(
             payload.destination_account_id,
             payload.id,
             payload.source_account_id,
+            payload.amount,
             payload.transaction_date,
         )
 
-    # Regla: velocidad, solo si lo que se evalúa es una transferencia.
-    transferencias = 0
-    if payload.type.value in velocity.TIPOS:
-        transferencias = velocity.contar(
-            salidas, history.a_ms(payload.transaction_date)
+    # Rule: velocity, only when the transaction is a transfer.
+    transfers = 0
+    if payload.type.value in velocity.TYPES:
+        transfers = velocity.count(
+            outgoing, history.to_ms(payload.transaction_date)
         )
 
-    # Se evalúan todas las reglas aunque una ya rechace: la decisión
-    # guarda todas las que se activaron.
-    activadas = []
+    # Every rule is evaluated even if one already rejects: the decision
+    # records all the rules that fired.
+    triggered = []
 
     if en_lista:
-        activadas.append(ReglaActivada(
-            "lista_restrictiva",
+        triggered.append(TriggeredRule(
+            "restricted_list",
             Decision.REJECT,
             "Titular incluido en una lista restrictiva.",
         ))
 
-    if transferencias > velocity.LIMITE:
-        activadas.append(ReglaActivada(
-            "velocidad",
+    if transfers > velocity.LIMIT:
+        triggered.append(TriggeredRule(
+            "velocity",
             Decision.HOLD,
-            f"Velocidad: {transferencias} transferencias salientes en "
-            f"{velocity.VENTANA_MIN} minutos desde la misma cuenta.",
+            f"Velocidad: {transfers} transferencias salientes en "
+            f"{velocity.WINDOW_MIN} minutos desde la misma cuenta.",
         ))
 
-    decision, reason = elegir_decision(activadas)
+    decision, reason = choose_decision(triggered)
 
     return {
         "transaction_id": str(payload.id),
         "decision": decision.value,
         "decision_reason": reason,
-        "rules_version": REGLAS_VERSION,
-        "rules_triggered": [r.regla for r in activadas],
+        "rules_version": RULES_VERSION,
+        "rules_triggered": [r.rule for r in triggered],
         "processed_at": datetime.now(timezone.utc).isoformat(),
     }
 

@@ -1,5 +1,5 @@
-"""Historial por cuenta (history.py) y la regla de velocidad que cuenta
-sobre él (velocity.py)."""
+"""Per-account history (history.py) and the velocity rule that counts
+over it (velocity.py)."""
 
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
@@ -9,14 +9,14 @@ import valkey
 
 from services.decision_engine import history, velocity
 from services.decision_engine.history import (
-    a_ms,
-    clave_entradas,
-    clave_salidas,
-    entradas,
-    registrar_entrada,
-    registrar_salida,
+    to_ms,
+    incoming_key,
+    outgoing_key,
+    incoming,
+    record_incoming,
+    record_outgoing,
 )
-from services.decision_engine.velocity import max_en_ventana
+from services.decision_engine.velocity import max_in_window
 from shared.cache import get_cache
 
 
@@ -38,7 +38,7 @@ def cuenta():
     cuenta_id = str(uuid4())
     yield cuenta_id
 
-    get_cache().delete(clave_salidas(cuenta_id), clave_entradas(cuenta_id))
+    get_cache().delete(outgoing_key(cuenta_id), incoming_key(cuenta_id))
 
 
 def transferir(cuenta_id, minutos, tipo="P2P"):
@@ -48,42 +48,42 @@ def transferir(cuenta_id, minutos, tipo="P2P"):
     for m in minutos:
         tx_id = str(uuid4())
         ids.append(tx_id)
-        salidas = registrar_salida(cuenta_id, tx_id, tipo, "1.00", minuto(m))
-        conteos.append(velocity.contar(salidas, a_ms(minuto(m))))
+        salidas = record_outgoing(cuenta_id, tx_id, tipo, "1.00", minuto(m))
+        conteos.append(velocity.count(salidas, to_ms(minuto(m))))
     return ids, conteos
 
 
 def ids_salidas(cuenta_id):
-    return [m.split("|")[0] for m in get_cache().zrange(clave_salidas(cuenta_id), 0, -1)]
+    return [m.split("|")[0] for m in get_cache().zrange(outgoing_key(cuenta_id), 0, -1)]
 
 
 # Sin infraestructura: la ventana más cargada que contiene a t.
 
 
 def test_window_counts_only_events_within_ten_minutes():
-    horas = [a_ms(minuto(m)) for m in (0, 5, 10, 11)]
+    horas = [to_ms(minuto(m)) for m in (0, 5, 10, 11)]
     # Para el minuto 10, la ventana [0, 10] tiene 3 y [5, 15] también 3.
-    assert max_en_ventana(horas, a_ms(minuto(10))) == 3
+    assert max_in_window(horas, to_ms(minuto(10))) == 3
 
 
 def test_window_includes_later_events_for_a_late_one():
-    horas = [a_ms(minuto(m)) for m in (0, 1, 2, 3, 4, 5)]
+    horas = [to_ms(minuto(m)) for m in (0, 1, 2, 3, 4, 5)]
     # El del minuto 2 está en la ventana [0, 10] con los otros cinco.
-    assert max_en_ventana(horas, a_ms(minuto(2))) == 6
+    assert max_in_window(horas, to_ms(minuto(2))) == 6
 
 
 def test_window_edge_is_inclusive():
-    horas = [a_ms(minuto(0)), a_ms(minuto(10))]
-    assert max_en_ventana(horas, a_ms(minuto(10))) == 2
+    horas = [to_ms(minuto(0)), to_ms(minuto(10))]
+    assert max_in_window(horas, to_ms(minuto(10))) == 2
 
 
 def test_velocity_counts_only_p2p_outgoing():
-    t = a_ms(minuto(5))
+    t = to_ms(minuto(5))
     salidas = [
-        history.Salida(str(i), tipo, "1.00", a_ms(minuto(i)))
+        history.Outgoing(str(i), tipo, "1.00", to_ms(minuto(i)))
         for i, tipo in enumerate(["P2P", "QR", "RETIRO", "QR", "P2P", "P2P"])
     ]
-    assert velocity.contar(salidas, t) == 3
+    assert velocity.count(salidas, t) == 3
 
 
 # Velocidad con Valkey.
@@ -93,13 +93,13 @@ def test_six_transfers_in_eight_minutes_pass_the_limit(cuenta):
     _, conteos = transferir(cuenta, [0, 1.6, 3.2, 4.8, 6.4, 8])
 
     assert conteos == [1, 2, 3, 4, 5, 6]
-    assert conteos[-1] > velocity.LIMITE
+    assert conteos[-1] > velocity.LIMIT
 
 
 def test_five_transfers_stay_within_the_limit(cuenta):
     _, conteos = transferir(cuenta, [0, 2, 4, 6, 8])
 
-    assert max(conteos) == velocity.LIMITE
+    assert max(conteos) == velocity.LIMIT
 
 
 def test_transfers_more_than_ten_minutes_apart_do_not_add_up(cuenta):
@@ -138,16 +138,16 @@ def test_late_event_outside_the_window_does_not_count(cuenta):
 def test_first_movement_of_an_account_has_only_itself(cuenta):
     tx_id = str(uuid4())
 
-    salidas = registrar_salida(cuenta, tx_id, "RETIRO", "250000.00", minuto(0))
+    salidas = record_outgoing(cuenta, tx_id, "RETIRO", "250000.00", minuto(0))
 
-    assert salidas == [history.Salida(tx_id, "RETIRO", "250000.00", a_ms(minuto(0)))]
+    assert salidas == [history.Outgoing(tx_id, "RETIRO", "250000.00", to_ms(minuto(0)))]
 
 
 def test_outgoing_history_keeps_type_and_amount(cuenta):
-    registrar_salida(cuenta, "a", "P2P", "10.50", minuto(0))
-    salidas = registrar_salida(cuenta, "b", "QR", "3", minuto(1))
+    record_outgoing(cuenta, "a", "P2P", "10.50", minuto(0))
+    salidas = record_outgoing(cuenta, "b", "QR", "3", minuto(1))
 
-    assert [(s.id, s.tipo, s.monto) for s in salidas] == [
+    assert [(s.id, s.type, s.amount) for s in salidas] == [
         ("a", "P2P", "10.50"),
         ("b", "QR", "3"),
     ]
@@ -162,40 +162,40 @@ def test_history_follows_event_time_not_arrival(cuenta):
 
 def test_resent_id_is_not_counted_twice(cuenta):
     tx_id = str(uuid4())
-    registrar_salida(cuenta, tx_id, "P2P", "1.00", minuto(0))
-    salidas = registrar_salida(cuenta, tx_id, "P2P", "1.00", minuto(0))
+    record_outgoing(cuenta, tx_id, "P2P", "1.00", minuto(0))
+    salidas = record_outgoing(cuenta, tx_id, "P2P", "1.00", minuto(0))
 
     assert len(salidas) == 1
 
 
 def test_outgoing_history_older_than_retention_is_pruned(cuenta):
     viejo, _ = transferir(cuenta, [0])
-    transferir(cuenta, [history.SALIDAS_HORAS * 60 + 1])
+    transferir(cuenta, [history.OUT_HOURS * 60 + 1])
 
     assert viejo[0] not in ids_salidas(cuenta)
-    assert 0 < get_cache().ttl(clave_salidas(cuenta)) <= history.SALIDAS_MS // 1000
+    assert 0 < get_cache().ttl(outgoing_key(cuenta)) <= history.OUT_MS // 1000
 
 
 # Historial de entradas.
 
 
 def test_incoming_transfers_keep_the_sender_in_event_order(cuenta):
-    registrar_entrada(cuenta, "b", "remitente-2", minuto(5))
-    registrar_entrada(cuenta, "a", "remitente-1", minuto(1))
+    record_incoming(cuenta, "b", "sender-2", "40000.00", minuto(5))
+    record_incoming(cuenta, "a", "sender-1", "25000.00", minuto(1))
 
-    assert entradas(cuenta) == [
-        history.Entrada("a", "remitente-1", a_ms(minuto(1))),
-        history.Entrada("b", "remitente-2", a_ms(minuto(5))),
+    assert incoming(cuenta) == [
+        history.Incoming("a", "sender-1", "25000.00", to_ms(minuto(1))),
+        history.Incoming("b", "sender-2", "40000.00", to_ms(minuto(5))),
     ]
 
 
 def test_account_without_incoming_transfers_has_empty_history(cuenta):
-    assert entradas(cuenta) == []
+    assert incoming(cuenta) == []
 
 
 def test_incoming_history_older_than_retention_is_pruned(cuenta):
-    registrar_entrada(cuenta, "viejo", "r", minuto(0))
-    registrar_entrada(cuenta, "nuevo", "r", minuto(history.ENTRADAS_MIN + 1))
+    record_incoming(cuenta, "viejo", "r", "1.00", minuto(0))
+    record_incoming(cuenta, "nuevo", "r", "1.00", minuto(history.IN_MINUTES + 1))
 
-    assert [e.id for e in entradas(cuenta)] == ["nuevo"]
-    assert 0 < get_cache().ttl(clave_entradas(cuenta)) <= history.ENTRADAS_MS // 1000
+    assert [e.id for e in incoming(cuenta)] == ["nuevo"]
+    assert 0 < get_cache().ttl(incoming_key(cuenta)) <= history.IN_MS // 1000
