@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from shared.events import evento_decision
 from shared.models import Comercio, Cuenta, ListaRestrictiva, Usuario
+from services.decision_engine import history
 from services.decision_engine import idempotency as idem
 from services.decision_engine import publisher
 from services.decision_engine import velocity
@@ -16,9 +17,9 @@ from services.decision_engine.schemas import (
     TransactionType,
 )
 
-# Solo las transferencias entre cuentas cuentan para la velocidad: un pago
-# QR va a un comercio y un retiro sale a efectivo.
-TIPOS_VELOCIDAD = {TransactionType.P2P}
+# Lo que sale de la cuenta de origen queda en su historial de salidas.
+# Una recarga no tiene origen.
+TIPOS_SALIDA = {TransactionType.P2P, TransactionType.QR, TransactionType.RETIRO}
 
 # Versión de las reglas con que se decidió (el enunciado pide guardarla
 # en cada decisión). Mientras las reglas vivan en el código, la versión
@@ -111,12 +112,30 @@ def _decidir(session: Session, payload: TransactionRequest) -> dict:
         .first()
     )
 
-    # Regla: velocidad. Se registra aunque otra regla decida, porque el
-    # intento de transferir cuenta igual.
+    # Historial de la cuenta: se escribe antes de decidir, con cualquier
+    # decisión, porque el intento cuenta igual (ver history.py).
+    salidas = []
+    if payload.type in TIPOS_SALIDA:
+        salidas = history.registrar_salida(
+            payload.source_account_id,
+            payload.id,
+            payload.type.value,
+            payload.amount,
+            payload.transaction_date,
+        )
+    if payload.type == TransactionType.P2P:
+        history.registrar_entrada(
+            payload.destination_account_id,
+            payload.id,
+            payload.source_account_id,
+            payload.transaction_date,
+        )
+
+    # Regla: velocidad, solo si lo que se evalúa es una transferencia.
     transferencias = 0
-    if payload.type in TIPOS_VELOCIDAD:
-        transferencias = velocity.registrar_y_contar(
-            payload.source_account_id, payload.id, payload.transaction_date
+    if payload.type.value in velocity.TIPOS:
+        transferencias = velocity.contar(
+            salidas, history.a_ms(payload.transaction_date)
         )
 
     # Se evalúan todas las reglas aunque una ya rechace: la decisión

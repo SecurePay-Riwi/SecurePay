@@ -173,7 +173,8 @@ GRANT ALL ON SCHEMA public TO pagoseguro;
 ### Paso 5 --- Levantar Valkey y LocalStack
 
 El motor guarda en Valkey (en AWS es ElastiCache) la idempotencia y el
-historial de transferencias que usa la regla de velocidad. LocalStack
+historial de movimientos de cada cuenta que usan las reglas (`out:{cuenta}`
+y `in:{cuenta}`). LocalStack
 imita SNS, SQS y S3 en tu máquina: el motor publica ahí cada decisión y
 los consumidores la leen. LocalStack es solo para desarrollo; en AWS se
 usan los servicios reales.
@@ -419,7 +420,7 @@ docker exec pagoseguro-valkey valkey-cli FLUSHDB
 ```
 
 Limpia Valkey. Si no se hace, los ids de una corrida de hace menos de 1 h
-se tratan como reenvíos y el historial de velocidad arrastra la corrida
+se tratan como reenvíos y el historial de las cuentas arrastra la corrida
 anterior. Con `docker compose`, el contenedor se llama distinto:
 `docker compose exec valkey valkey-cli FLUSHDB`.
 
@@ -456,7 +457,8 @@ medidas con la hora del evento aunque lleguen desordenados). Con la
 semilla 42, las 3 transacciones de `RESTRICTED_LIST` salen REJECT, 4
 transferencias de `VELOCITY` salen HOLD (la que completa la ventana en
 cada caso) y todo lo demás sale APPROVE, porque las otras reglas todavía
-no existen.
+no existen. Cada respuesta trae además `rules_triggered` (todas las reglas
+que se activaron, aunque decida la más severa) y `rules_version`.
 
 Para revisar la mensajería (el `awslocal` del contenedor de LocalStack es
 el comando `aws` ya apuntado a LocalStack):

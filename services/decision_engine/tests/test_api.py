@@ -327,7 +327,7 @@ def _payloads_p2p(fechas: list[datetime], en_lista: bool = False) -> list[dict]:
             .order_by(Cuenta.id)
             .first()
         )
-        get_cache().delete(f"vel:{origen.id}")
+        get_cache().delete(f"out:{origen.id}", f"in:{origen.id}")
         destino = (
             session.query(Cuenta)
             .filter(Cuenta.moneda == origen.moneda, Cuenta.id != origen.id)
@@ -442,14 +442,15 @@ def test_engine_answers_when_sns_is_down(monkeypatch, caplog):
 
 def test_qr_payments_do_not_count_for_velocity():
     # La regla habla de transferencias: un pago QR es una compra en un
-    # comercio, así que seis seguidos no se retienen ni entran al historial.
+    # comercio, así que seis seguidos no se retienen. Sí quedan en el
+    # historial de salidas, que usarán otras reglas.
     cuenta = _cuenta_del_seed(en_lista=False)
-    get_cache().delete(f"vel:{cuenta.id}")
+    get_cache().delete(f"out:{cuenta.id}")
 
     payloads = [_payload_qr(cuenta) for _ in range(6)]
 
     assert _decisiones(payloads) == ["APPROVE"] * 6
-    assert get_cache().zcard(f"vel:{cuenta.id}") == 0
+    assert get_cache().zcard(f"out:{cuenta.id}") == 6
 
 
 def test_response_carries_rules_version_and_triggered_rules():
@@ -512,3 +513,100 @@ def test_decision_stored_before_rules_fields_is_still_replayed():
     assert response.json()["idempotent_replay"] is True
     assert response.json()["rules_triggered"] == []
     assert response.json()["rules_version"] is None
+
+
+# Historial por cuenta (out:{cuenta} e in:{cuenta}).
+
+
+def _limpiar_historial(*cuentas):
+    for cuenta_id in cuentas:
+        get_cache().delete(f"out:{cuenta_id}", f"in:{cuenta_id}")
+
+
+def _payload_sin_contraparte(cuenta: Cuenta, tipo: str) -> dict:
+    """Recarga (solo destino) o retiro (solo origen) de la cuenta."""
+    payload = _payload_qr(cuenta)
+    payload["type"] = tipo
+    payload["merchant_id"] = None
+
+    if tipo == "RECARGA":
+        payload["destination_account_id"] = payload.pop("source_account_id")
+        payload["destination_balance_before"] = payload.pop("source_balance_before")
+        payload["destination_balance_after"] = str(
+            cuenta.saldo + Decimal(payload["amount"])
+        )
+        payload.pop("source_balance_after")
+
+    return payload
+
+
+def test_same_transfer_is_held_only_for_an_account_with_history():
+    # La misma transferencia (minuto 5) sale distinta según el pasado de
+    # la cuenta: sin historial se aprueba; con cinco previas se retiene.
+    sin_historial = _payloads_p2p(_minutos(5))
+    assert _decisiones(sin_historial) == ["APPROVE"]
+
+    con_historial = _payloads_p2p(_minutos(0, 1, 2, 3, 4, 5))
+    assert _decisiones(con_historial) == ["APPROVE"] * 5 + ["HOLD"]
+
+
+def test_first_transaction_of_an_account_starts_its_history():
+    payload = _payloads_p2p(_minutos(0))[0]
+    origen = payload["source_account_id"]
+
+    response = client.post("/transactions", json=payload)
+
+    assert response.json()["rules_triggered"] == []
+    assert get_cache().zrange(f"out:{origen}", 0, -1) == [
+        f"{payload['id']}|P2P|{payload['amount']}"
+    ]
+
+
+def test_p2p_is_recorded_as_outgoing_and_incoming():
+    payload = _payloads_p2p(_minutos(0))[0]
+    origen = payload["source_account_id"]
+    destino = payload["destination_account_id"]
+    _limpiar_historial(destino)
+
+    client.post("/transactions", json=payload)
+
+    assert get_cache().zcard(f"out:{origen}") == 1
+    assert get_cache().zrange(f"in:{destino}", 0, -1) == [
+        f"{payload['id']}|{origen}"
+    ]
+    # La que recibe no gana una salida, y la que envía no gana una entrada.
+    assert get_cache().zcard(f"out:{destino}") == 0
+    assert get_cache().zcard(f"in:{origen}") == 0
+
+
+def test_withdrawal_is_recorded_and_recharge_is_not():
+    cuenta = _cuenta_del_seed(en_lista=False)
+    _limpiar_historial(cuenta.id)
+
+    retiro = _payload_sin_contraparte(cuenta, "RETIRO")
+    recarga = _payload_sin_contraparte(cuenta, "RECARGA")
+
+    assert _decisiones([retiro, recarga]) == ["APPROVE", "APPROVE"]
+    assert get_cache().zrange(f"out:{cuenta.id}", 0, -1) == [
+        f"{retiro['id']}|RETIRO|{retiro['amount']}"
+    ]
+    assert get_cache().zcard(f"in:{cuenta.id}") == 0
+
+
+def test_rejected_transaction_is_still_recorded():
+    # Se guardan los intentos, sin importar la decisión.
+    payload = _payloads_p2p(_minutos(0), en_lista=True)[0]
+
+    response = client.post("/transactions", json=payload)
+
+    assert response.json()["decision"] == "REJECT"
+    assert get_cache().zcard(f"out:{payload['source_account_id']}") == 1
+
+
+def test_resend_does_not_write_history_twice():
+    payload = _payloads_p2p(_minutos(0))[0]
+
+    client.post("/transactions", json=payload)
+    client.post("/transactions", json=payload)
+
+    assert get_cache().zcard(f"out:{payload['source_account_id']}") == 1

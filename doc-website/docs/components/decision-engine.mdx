@@ -148,29 +148,48 @@ The engine **does not write to PostgreSQL**. It only reads accounts, merchants, 
 4. The **same id with a different body** is `409`: it is a core error, not a resend.
 5. If deciding **fails**, the reservation is deleted so the retry can decide. If the process dies mid-decision, the 30-second reservation expires by itself.
 
-## Velocity and out-of-order events
+## Account history
 
-`services/decision_engine/velocity.py`. One sorted set per source account, `vel:{account}`, with the transaction id as member and `transaction_date` in milliseconds as score. Valkey keeps it sorted by score, so **an event that arrives late lands in its real place**, not at the end.
+`services/decision_engine/history.py`. The rules that look at the past of an account read one shared history instead of each keeping its own key. Two sorted sets per account, with `transaction_date` in milliseconds as score, so **an event that arrives late lands in its real place**, not at the end:
 
-A Lua script does it all atomically (two requests for the same account cannot interleave):
+| Key | What goes in | Member | Kept | Read by |
+| :--- | :--- | :--- | :--- | :--- |
+| `out:{account}` | What leaves the account: `P2P`, `QR`, `RETIRO` | `id\|type\|amount` | 24 h (`HISTORY_OUT_HOURS`) | Velocity (10 min); splitting later (24 h) |
+| `in:{account}` | `P2P` transfers that arrive, with the sender | `id\|sender_account` | 60 min (`HISTORY_IN_MINUTES`) | Mule account (30 min) |
 
-```lua
--- simplified from velocity.py. KEYS[1] = vel:{account}; ARGV = id, event time (ms), window (ms), history (ms), history (s)
-redis.call('ZADD', KEYS[1], t, ARGV[1])
--- drop what is older than the history, measured from the most recent event
-redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', '(' .. corte)
-redis.call('EXPIRE', KEYS[1], ARGV[5])
--- return the neighbours within ±10 minutes
-return redis.call('ZRANGEBYSCORE', KEYS[1], t - ventana, t + ventana, 'WITHSCORES')
+A `P2P` writes twice: `out:` of the source and `in:` of the destination. A `RECARGA` writes nothing (no sender, no money leaves). Each write is a Lua script on **one key** (ZADD, prune what is older than the retention measured from the most recent event, EXPIRE), so two requests for the same account cannot interleave. One key per script on purpose: in ElastiCache Serverless two keys can live on different nodes.
+
+```python
+# services/decision_engine/decision_service.py (simplified)
+if payload.type in TIPOS_SALIDA:              # P2P, QR, RETIRO
+    salidas = history.registrar_salida(origen, tx_id, tipo, monto, fecha)
+if payload.type == TransactionType.P2P:
+    history.registrar_entrada(destino, tx_id, origen, fecha)
 ```
 
-Python then finds the **busiest 10-minute window that contains this transfer**. If the transfer arrived late, transfers processed earlier but that happened after it also count. Decisions already returned never change: if a late transfer completes a window, the late one is held.
+Decisions about what goes in (Jorge, 2026-10-21):
+
+- **Attempts count, whatever the decision.** The history is written before deciding, in one call. Several people trying to send money to an account that withdraws it right away, or an account trying many transfers, is already the signal, even if the engine held one of them. Counting only approved ones would need a second write after deciding, inside the 200 ms. Every decision still reaches the event with its triggered rules.
+- **The amount is in the account's currency.** All the transactions of an account use its currency, so sums add up. The conversion to USD arrives when the engine reads the exchange-rates table (needed first by the default decision on timeout).
+- A resend never writes twice: idempotency answers it before the rules run, and if a decision fails after writing, the retry writes the same member, which Valkey does not duplicate.
+
+## Velocity and out-of-order events
+
+`services/decision_engine/velocity.py`. It counts on the `out:` history the engine just read: only `P2P` entries, and only when the transaction being evaluated is itself a `P2P`. Python finds the **busiest 10-minute window that contains this transfer**. If the transfer arrived late, transfers processed earlier but that happened after it also count. Decisions already returned never change: if a late transfer completes a window, the late one is held.
+
+```python
+# services/decision_engine/velocity.py
+def contar(salidas, t: int) -> int:
+    horas = [s.t for s in salidas if s.tipo in TIPOS]   # TIPOS = {"P2P"}
+    return max_en_ventana(horas, t)
+```
 
 | Variable | Default | Meaning |
 | :--- | ---: | :--- |
 | `VELOCITY_WINDOW_MINUTES` | 10 | Window size. |
 | `VELOCITY_LIMIT` | 5 | Held when the window has **more than** this. |
-| `VELOCITY_HISTORY_HOURS` | 24 | History kept per account. An event later than this is evaluated with incomplete history. |
+| `HISTORY_OUT_HOURS` | 24 | Outgoing history kept per account. An event later than this is evaluated with incomplete history. |
+| `HISTORY_IN_MINUTES` | 60 | Incoming history kept per account. Must stay above the mule window (30 min). |
 
 ## Publishing the decision
 
@@ -184,5 +203,6 @@ Each new decision is published to SNS by a background thread without making the 
 | `schemas.py` | Request and response models and their validation. |
 | `decision_service.py` | Idempotency + rules + publish. |
 | `idempotency.py` | `idem:{id}` keys in Valkey. |
-| `velocity.py` | `vel:{account}` sorted sets and the busiest-window calculation. |
+| `history.py` | `out:{account}` and `in:{account}` sorted sets: the account history every rule reads. |
+| `velocity.py` | Velocity rule: the busiest-window calculation over the outgoing history. |
 | `publisher.py` | Background SNS publisher. |
