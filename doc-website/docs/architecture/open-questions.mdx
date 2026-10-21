@@ -21,13 +21,12 @@ ElastiCache Serverless for Valkey was chosen ([ADR-03](./decisions.mdx#adr-03)),
 | What | Estimate | Depends on |
 | :--- | :--- | :--- |
 | Idempotency | 18 MB (1 h TTL) to 430 MB (24 h TTL) | The TTL |
-| 24-hour sums | 100 to 200 MB | Accounts active per day |
 | 10–30 min windows | ~15 MB | Accounts active in the window |
-| Velocity history (24 h) | ~100 MB | Not in the original estimate; ~5 MB with 1 h |
+| Account history (`out:` 24 h, `in:` 60 min) | ~260 MB of entries plus ~100 MB of keys | Measured at ~70 bytes per entry in Valkey: ~3.7 million live outgoing entries at 50 tx/s. Replaces the earlier 100–200 MB of 24-hour sums and ~100 MB of velocity history |
 | Restricted list cache | ~5 MB | 50 thousand records |
 | Active rules | A few KB | — |
 
-To be measured with the full-mode seed (2.3 million users) and the load test. Also pending: the real latency of the serverless layer and the operations it consumes per transaction.
+With the account history the cache would be ~400–450 MB (~$8 more per month); the cost table does not change until the load test confirms it. To be measured with the full-mode seed (2.3 million users) and the load test. Also pending: the real latency of the serverless layer and the operations it consumes per transaction.
 
 ## 🔵 Cases consumer: Lambda or Fargate
 
@@ -53,6 +52,10 @@ Both writes were decided on 2026-10-14 ([Team decisions](./team-decisions.mdx#ga
 | :--- | :--- |
 | Data Lake raw layer | One object per batch of 10 messages would be 12.96 M PUTs, $64.80/month, plus a small files problem. Grouping into ~5 MB objects with Kinesis Data Firehose costs ~$0.07 + ~$1.89. Approved: Firehose writes the raw layer in AWS. |
 | Evidence in Glacier IR | One object per case costs ~$3/month at a realistic case rate; sealing in batches is cheaper but leaves a window where evidence is not yet immutable. Decided: one object per case, so there is no unprotected window. |
+
+## 🟡 Where the Kaggle history lives in production
+
+Today the PaySim and Sparkov sample linked to the seed users is in the PostgreSQL `transacciones` table (loaded once, never edited), and the full CSVs are in `raw/kaggle/` in S3. Still to decide whether in production the sample also moves to S3 (and DynamoDB), so that all the history is in one place. Jorge sees S3 as the more feasible option (2026-10-19); for now it stays as it is.
 
 ## Other open items
 
