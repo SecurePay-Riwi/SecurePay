@@ -1,0 +1,75 @@
+name: Docker validation (MAG-31 / MAG-32)
+
+on:
+  push:
+    branches:
+      - feat/MAG-31-MAG-32-docker-setup
+    paths:
+      - 'Dockerfile'
+      - 'docker-compose.yml'
+      - '.dockerignore'
+      - '.github/workflows/docker-validation.yml'
+      - '**/pyproject.toml'
+      - '**/uv.lock'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docker-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout SecurePay
+        uses: actions/checkout@v4
+        with:
+          path: SecurePay
+          ref: feat/MAG-31-MAG-32-docker-setup
+
+      - name: Checkout securepay-apis
+        uses: actions/checkout@v4
+        with:
+          repository: SecurePay-Riwi/securepay-apis
+          path: securepay-apis
+          ref: feat/MAG-31-MAG-32-docker-setup
+
+      - name: Checkout securepay-csv
+        uses: actions/checkout@v4
+        with:
+          repository: SecurePay-Riwi/securepay-csv
+          path: securepay-csv
+          ref: feat/MAG-31-MAG-32-docker-setup
+
+      - name: Checkout securepay-seed
+        uses: actions/checkout@v4
+        with:
+          repository: SecurePay-Riwi/securepay-seed
+          path: securepay-seed
+          ref: feat/MAG-31-MAG-32-docker-setup
+
+      - name: Checkout securepay-generator
+        uses: actions/checkout@v4
+        with:
+          repository: SecurePay-Riwi/securepay-generator
+          path: securepay-generator
+          ref: feat/MAG-31-MAG-32-docker-setup
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate Compose configuration
+        working-directory: SecurePay
+        env:
+          # Only a placeholder for Compose interpolation; never used to start LocalStack.
+          LOCALSTACK_AUTH_TOKEN: validation-only
+        run: |
+          docker compose config --quiet
+          docker compose config --services
+
+      - name: Build all component images
+        working-directory: SecurePay
+        env:
+          # Compose requires a non-empty value while resolving the config.
+          LOCALSTACK_AUTH_TOKEN: validation-only
+        run: docker compose build
