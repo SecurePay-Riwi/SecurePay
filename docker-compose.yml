@@ -129,6 +129,9 @@ services:
       localstack: {condition: service_healthy}
     restart: unless-stopped
 
+  # GEN_OUTPUT=http sends events to the engine AND writes events.jsonl,
+  # labels.jsonl and generation_report.json under /app/generated/instance-0.
+  # partner-statements consumes those files from the same named volume.
   generator:
     build: {context: ../securepay-generator, dockerfile: Dockerfile}
     environment:
