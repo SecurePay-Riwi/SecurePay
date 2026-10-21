@@ -138,15 +138,21 @@ def _decide(session: Session, payload: TransactionRequest) -> dict:
             "The transaction currency is not the account currency."
         )
 
-    owner = session.get(Usuario, main_account.user_id)
+    # Pre-check: consult the restricted list for every account owner
+    # involved in the transaction before evaluating business rules.
+    owners = [
+        session.get(Usuario, account.user_id)
+        for account in accounts.values()
+    ]
+    documents = {
+        normalize_document(owner.documento)
+        for owner in owners
+    }
 
     # Rule: restricted list.
     on_list = (
         session.query(ListaRestrictiva.id)
-        .filter(
-            ListaRestrictiva.documento
-            == normalize_document(owner.documento)
-        )
+        .filter(ListaRestrictiva.documento.in_(documents))
         .first()
     )
 
