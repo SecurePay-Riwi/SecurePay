@@ -1,12 +1,18 @@
 
+import logging
+import os
 import re
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as DecisionTimeout
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
 from shared.events import evento_decision
 from shared.models import Comercio, Cuenta, ListaRestrictiva, Usuario
+from services.decision_engine import currency
 from services.decision_engine import history
 from services.decision_engine import idempotency as idem
 from services.decision_engine import publisher
@@ -31,6 +37,31 @@ RULES_VERSION = "2026.10.1"
 SEVERITY = {Decision.APPROVE: 0, Decision.HOLD: 1, Decision.REJECT: 2}
 
 NO_RULES_REASON = "The transaction did not trigger any configured rule."
+
+log = logging.getLogger(__name__)
+
+# RN-01: every transaction gets a decision in 200 ms. The engine stops
+# waiting for the rules well before that, so the default decision and
+# the network still fit in the budget.
+TIMEOUT_MS = int(os.getenv("DECISION_TIMEOUT_MS", "120"))
+# RN-01 default when the rules do not answer in time: approve below this
+# amount, hold from it up.
+DEFAULT_LIMIT_USD = Decimal(os.getenv("DEFAULT_DECISION_LIMIT_USD", "50"))
+# Threads that evaluate the rules. A decision that times out keeps its
+# thread until it ends, so this matches the requests FastAPI serves at
+# once (40 by default).
+WORKERS = int(os.getenv("DECISION_WORKERS", "40"))
+
+if TIMEOUT_MS <= 0 or DEFAULT_LIMIT_USD <= 0 or WORKERS <= 0:
+    raise ValueError("Timeout, default limit and workers must be positive.")
+
+DEFAULT_RULE = "default_timeout"
+
+# Set on the session when a decision outlives its request: the late
+# thread closes the session, not the request (see main.get_db).
+LATE_SESSION = "closed_by_late_decision"
+
+_workers = ThreadPoolExecutor(max_workers=WORKERS, thread_name_prefix="decision")
 
 
 @dataclass(frozen=True)
@@ -167,8 +198,62 @@ def _decide(session: Session, payload: TransactionRequest) -> dict:
         "decision_reason": reason,
         "rules_version": RULES_VERSION,
         "rules_triggered": [r.rule for r in triggered],
+        "by_default": False,
         "processed_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def default_decision(payload: TransactionRequest) -> dict:
+    """RN-01: the decision when the rules do not answer in time.
+
+    Approve below USD 50, hold from USD 50 up. Never reject: being slow
+    is not a reason to turn a customer down.
+    """
+    amount_usd = currency.to_usd(payload.amount, payload.currency)
+
+    if amount_usd < DEFAULT_LIMIT_USD:
+        decision = Decision.APPROVE
+    else:
+        decision = Decision.HOLD
+
+    return {
+        "transaction_id": str(payload.id),
+        "decision": decision.value,
+        "decision_reason": (
+            f"Default decision: the rules did not answer in {TIMEOUT_MS} ms "
+            f"(USD {amount_usd}, limit USD {DEFAULT_LIMIT_USD})."
+        ),
+        "rules_version": RULES_VERSION,
+        "rules_triggered": [DEFAULT_RULE],
+        "by_default": True,
+        "processed_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _decide_in_time(session: Session, payload: TransactionRequest) -> dict:
+    """Run the rules, or answer with the default decision if they take
+    longer than TIMEOUT_MS.
+
+    A Python thread cannot be stopped, so the late evaluation finishes in
+    the background and its result is dropped: the stored and published
+    decision is the default one. It keeps the session, so it closes it.
+    """
+    future = _workers.submit(_decide, session, payload)
+
+    try:
+        return future.result(timeout=TIMEOUT_MS / 1000)
+    except DecisionTimeout:
+        session.info[LATE_SESSION] = True
+        future.add_done_callback(lambda _: _close_late(session, payload.id))
+        log.warning("Transaction %s: rules timed out, default decision", payload.id)
+        return default_decision(payload)
+
+
+def _close_late(session: Session, tx_id) -> None:
+    try:
+        session.close()
+    except Exception:
+        log.exception("Transaction %s: could not close the late session", tx_id)
 
 
 def process_transaction(
@@ -193,7 +278,7 @@ def process_transaction(
         return previous, True
 
     try:
-        result = _decide(session, payload)
+        result = _decide_in_time(session, payload)
     except Exception:
         # No decision means nothing to replay: the retry must decide.
         idem.liberar(payload.id)

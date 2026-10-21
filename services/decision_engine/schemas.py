@@ -125,5 +125,8 @@ class TransactionResponse(BaseModel):
     # existieran estos campos se puede seguir repitiendo.
     rules_version: str | None = None
     rules_triggered: list[str] = []
+    # True when the rules did not answer in time and RN-01's default
+    # decision was applied.
+    by_default: bool = False
     processed_at: datetime
     idempotent_replay: bool = False
