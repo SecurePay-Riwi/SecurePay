@@ -1,0 +1,19 @@
+.git
+.venv
+**/.venv
+__pycache__
+**/__pycache__
+.pytest_cache
+**/.pytest_cache
+.env
+**/.env
+generated/
+**/generated/
+data/kaggle/
+**/data/kaggle/
+dump.rdb
+# Not needed at runtime: documentation site and the pre-split backups.
+doc-website/
+db/
+generators/
+sources/

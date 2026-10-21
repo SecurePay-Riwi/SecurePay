@@ -248,3 +248,13 @@ Read these before changing the design, not to work on the code:
 - Data flow: https://securepay-riwi.github.io/SecurePay/docs/architecture/data-flow
 - Logbook: https://securepay-riwi.github.io/SecurePay/docs/logbook
 - Run the data sources: https://securepay-riwi.github.io/SecurePay/docs/getting-started/run-data-sources
+
+## Docker images and local ecosystem (MAG-31 / MAG-32)
+
+- Dockerfile builds the product image with Python 3.12 and uv; the same image runs the decision engine and consumers with different commands.
+- docker-compose.yml orchestrates the local stack. Satellite repositories must be cloned beside this repository because Compose builds from sibling directories.
+- Use service hostnames inside containers (postgres, valkey, localstack, decision-engine); localhost inside a container is not another service.
+- Never commit .env, tokens, generated files or downloaded Kaggle datasets.
+- The seed service uses SEED_RESET=true; do not run the stack against data that must be preserved.
+- Valkey has no persistence in Compose on purpose: every run starts with empty idempotency keys and account history.
+- When the engine reads a new environment variable, add it to the `decision-engine` service with `${VAR:-default}` as well as to `.env.example`.

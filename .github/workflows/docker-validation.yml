@@ -1,0 +1,101 @@
+name: Docker validation (MAG-31 / MAG-32)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - 'docker-compose.yml'
+      - '.dockerignore'
+      - '.github/workflows/docker-validation.yml'
+      - 'README.md'
+      - 'AGENTS.md'
+      - 'doc-website/docs/getting-started/local-setup.mdx'
+      - '**/pyproject.toml'
+      - '**/uv.lock'
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - 'docker-compose.yml'
+      - '.dockerignore'
+      - '.github/workflows/docker-validation.yml'
+      - '**/pyproject.toml'
+      - '**/uv.lock'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docker-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
+    steps:
+      - name: Checkout SecurePay
+        uses: actions/checkout@v4
+        with:
+          path: SecurePay
+
+      - name: Checkout securepay-apis
+        uses: actions/checkout@v4
+        with:
+          repository: SecurePay-Riwi/securepay-apis
+          path: securepay-apis
+          ref: main
+
+      - name: Checkout securepay-csv
+        uses: actions/checkout@v4
+        with:
+          repository: SecurePay-Riwi/securepay-csv
+          path: securepay-csv
+          ref: main
+
+      - name: Checkout securepay-seed
+        uses: actions/checkout@v4
+        with:
+          repository: SecurePay-Riwi/securepay-seed
+          path: securepay-seed
+          ref: main
+
+      - name: Checkout securepay-generator
+        uses: actions/checkout@v4
+        with:
+          repository: SecurePay-Riwi/securepay-generator
+          path: securepay-generator
+          ref: main
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate Compose configuration
+        working-directory: SecurePay
+        env:
+          LOCALSTACK_AUTH_TOKEN: validation-only
+        run: |
+          docker compose config --quiet
+          docker compose config --services
+
+      - name: Build all component images
+        working-directory: SecurePay
+        env:
+          LOCALSTACK_AUTH_TOKEN: validation-only
+        run: docker compose build
+
+      - name: Start ecosystem and check health endpoints
+        if: ${{ env.LOCALSTACK_AUTH_TOKEN != '' }}
+        working-directory: SecurePay
+        run: |
+          set -euo pipefail
+          cleanup() {
+            docker compose logs --no-color --tail=200 || true
+            docker compose down -v --remove-orphans || true
+          }
+          trap cleanup EXIT
+          docker compose up -d
+          curl --fail --retry 30 --retry-delay 5 --retry-connrefused http://localhost:8000/health
+          curl --fail --retry 30 --retry-delay 5 --retry-connrefused http://localhost:8001/health
+          docker compose ps --all
+          docker compose logs --no-color --tail=200
