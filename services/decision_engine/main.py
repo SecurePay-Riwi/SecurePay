@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from shared.db import get_session
 from services.decision_engine.schemas import TransactionRequest, TransactionResponse
 from services.decision_engine.decision_service import (
+    LATE_SESSION,
     InvalidReference,
     process_transaction,
 )
@@ -60,7 +61,10 @@ def get_db() -> Generator[Session, None, None]:
     try:
         yield session
     finally:
-        session.close()
+        # A decision that timed out still uses the session in the
+        # background and closes it itself when it ends.
+        if not session.info.get(LATE_SESSION):
+            session.close()
 
 
 @app.get("/health")

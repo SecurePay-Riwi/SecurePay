@@ -44,6 +44,9 @@ See [Seed](../components/seed.mdx).
 | `VELOCITY_LIMIT` | `5` | Held when the window has more transfers than this. |
 | `HISTORY_OUT_HOURS` | `24` | Outgoing history kept per account (`out:{account}`). Velocity needs 10 minutes; splitting will need 24 hours. |
 | `HISTORY_IN_MINUTES` | `60` | Incoming history kept per account (`in:{account}`), for the mule rule (30 minutes). |
+| `DECISION_TIMEOUT_MS` | `120` | How long the engine waits for the rules before applying the default decision (RN-01). Below 200 ms so the answer and the network still fit. |
+| `DEFAULT_DECISION_LIMIT_USD` | `50` | Default decision: `APPROVE` below this amount in USD, `HOLD` from it up. |
+| `DECISION_WORKERS` | `40` | Threads that evaluate the rules. A timed-out evaluation keeps its thread until it ends. |
 
 See [Decision engine](../components/decision-engine.mdx).
 
