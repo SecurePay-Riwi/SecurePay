@@ -246,3 +246,118 @@ There is no order yet; we have a list of what the client wants:
 - Architecture document v2.0: final infrastructure design (network, security groups, IAM roles, secrets, resource inventory).
 - PR #12 merged: architecture summary and AWS infrastructure pages on this site.
 - Decision with the professor: the card payment history uses the Sparkov dataset instead of the one in the assignment (see [Team decisions](./architecture/team-decisions.mdx#card-payment-history-sparkov)).
+
+---
+
+**10/15/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Data sources and site review  
+
+**Description:**  
+- PR #13 merged and reverted the same day: it linked the exchange rates as a Git dependency and broke the generator.
+- PR #14 merged: fixes from the site review and the Sparkov decision.
+- PR #15 merged: Frankfurter exchange rates client, saving a local JSON for now.
+- PR #16 merged: introduction restructured into seven sections; the team moved to Contributing.
+- PR #17 merged: Kaggle datasets downloaded, validated and loaded into the Data Lake (Yulianis).
+- The leader confirmed that the ECS vs EKS exercise must be done: a short EKS deployment in week 5, measured against Fargate (see [ADR-06](./architecture/decisions.mdx#adr-06)).
+
+---
+
+**10/16/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Friday delivery  
+
+**Description:**  
+- PR #18 merged: the Architecture section reorganized into nine pages (data flow and security pages added) and the Testing page rewritten.
+- PR #19 merged: a page to run each data source locally, and the PostgreSQL port fixed in the docs.
+- Friday deliverables for the PM: data sources running locally with LocalStack, this site deployed, and the final architecture and infrastructure design. The PM made the AWS deployment optional for this date.
+
+---
+
+**10/18/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Sparkov and the Kaggle ETL  
+
+**Description:**  
+- PR #20 merged: the card history uses Sparkov (`fraudTest.csv`) instead of the old card dataset, and a new ETL loads a sample of PaySim and Sparkov into the PostgreSQL `transacciones` table (Yulianis).
+
+---
+
+**10/19/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Fixes and site design  
+
+**Description:**  
+- PRs #21 to #23, #25, #27 and #28 merged: new theme, landing page and visual layout of this site (Habith).
+- PR #24 merged: PostgreSQL port 5433 everywhere, and the intro structure restored.
+- PR #26 merged: each Sparkov card and each PaySim source account is linked to one seed user (see [Team decisions](./architecture/team-decisions.mdx#card-payment-history-sparkov)).
+- The source code was split into its own repositories (`securepay-seed`, `securepay-generator`, `securepay-csv`, `securepay-apis`) and `shared/` was published on PyPI as `securepay-shared` (Habith).
+
+---
+
+**10/20/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Separate repositories and Sprint 2 engine work  
+
+**Description:**  
+- Each source repository fixed to install and run its tests on its own, with the monorepo history kept (PR #3 in each one); PRs #29, #30, #32 and #33 pointed the README and this site to the new repositories and added `AGENTS.md`.
+- PR #34 and `securepay-apis` #4 merged: the daily exchange rates are stored in a DynamoDB table; `securepay-generator` #4 converts each amount with the rate of its own date.
+- PR #35 merged: Kaggle datasets and exchange rates marked as done.
+- PRs #36 and #37 merged: each decision records the rules it triggered and the rules version, and the engine keeps an outgoing and incoming history per account in Valkey that every history-based rule reads (Jorge).
+- PR #38 and `securepay-generator` #5 merged: the generator uses the engine's English rule names.
+
+---
+
+**10/21/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Sprint 2 engine work  
+
+**Description:**  
+- PR #39 merged: when the rules do not answer in 120 ms, the engine applies the default decision (`APPROVE` below USD 50, `HOLD` from USD 50), stored and published like any other (Habith).
+- PR #40 merged: mule account rule; a withdrawal of 80 % or more of the balance after transfers from 3 or more accounts in 30 minutes is held and opens a case (Habith).
+- PR #42 merged: the restricted list is checked for every party before the other rules (Yulianis).
+- PR #43 merged: a Docker image for the engine and for each source repository, and the whole environment started with one command (Yulianis, Habith).
+- PRs #45, #46 and `securepay-apis` #6 merged: Swagger documents every status code of the engine and the restricted list service, with examples; this site got a light/dark theme switch (Jorge).
+- All Sprint 2 stories merged.
