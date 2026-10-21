@@ -547,3 +547,5 @@ Para revisar logs o apagar los servicios:
 Para borrar también los volúmenes persistentes usa docker compose down -v. La descarga de Kaggle es opcional y requiere KAGGLE_API_TOKEN en el .env:
 
     docker compose run --rm --no-deps partner-statements python -m securepay_csv.kaggle_datasets
+
+En el workflow de GitHub Actions, la validación de arranque y health checks de Docker se ejecuta cuando está configurado el secreto de repositorio `LOCALSTACK_AUTH_TOKEN` (Settings → Secrets and variables → Actions). El token no debe guardarse en archivos versionados ni compartirse en mensajes.
