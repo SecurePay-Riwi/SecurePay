@@ -67,7 +67,7 @@ There is no `user_id`: the owner comes from the account.
 {
   "transaction_id": "6f1c…",
   "decision": "HOLD",
-  "decision_reason": "Velocidad: 6 transferencias salientes en 10 minutos desde la misma cuenta.",
+  "decision_reason": "Velocity: 6 outgoing transfers in 10 minutes from the same account.",
   "rules_version": "2026.10.1",
   "rules_triggered": ["velocity"],
   "processed_at": "2026-10-14T00:10:03.512+00:00",
@@ -96,7 +96,7 @@ There is no `user_id`: the owner comes from the account.
 | :--- | :--- | :--- |
 | Restricted list | `REJECT` | The owner's document, normalized to digits only, is in `listas_restrictivas`. |
 | Velocity | `HOLD` | More than 5 outgoing **P2P** transfers in 10 minutes from the same account, measured by event time. |
-| Anything else | `APPROVE` | "La transacción no activó las reglas configuradas." |
+| Anything else | `APPROVE` | "The transaction did not trigger any configured rule." |
 
 Every rule is evaluated, even when one already rejects, and each one that fires adds a `TriggeredRule` (rule name, decision, reason) to a list. `choose_decision()` turns the list into one decision: **the most severe wins** (`REJECT`, then `HOLD`); with none, `APPROVE`. So an owner on the restricted list who also makes six transfers in a row gets `REJECT` with `rules_triggered: ["restricted_list", "velocity"]`.
 
@@ -118,22 +118,22 @@ def choose_decision(triggered: list[TriggeredRule]) -> tuple[Decision, str]:
 ```python
 # services/decision_engine/decision_service.py (simplified)
 def process_transaction(session, payload):
-    transaccion = payload.model_dump(mode="json")
-    firma = idem.huella(transaccion)          # SHA-256 of the normalized body
+    transaction = payload.model_dump(mode="json")
+    fingerprint = idem.huella(transaction)          # SHA-256 of the normalized body
 
-    previo = idem.reservar(payload.id, firma)  # SET NX in Valkey
-    if previo:
-        return previo, True                    # resend: same decision, not published again
+    previous = idem.reservar(payload.id, fingerprint)  # SET NX in Valkey
+    if previous:
+        return previous, True                    # resend: same decision, not published again
 
     try:
-        resultado = _decidir(session, payload)  # rules
+        result = _decide(session, payload)      # rules
     except Exception:
         idem.liberar(payload.id)               # no decision: let the retry decide
         raise
 
-    idem.guardar(payload.id, firma, resultado)  # 1 h TTL
-    publisher.publicar(evento_decision(transaccion, resultado))  # does not wait for SNS
-    return resultado, False
+    idem.guardar(payload.id, fingerprint, result)  # 1 h TTL
+    publisher.publicar(evento_decision(transaction, result))  # does not wait for SNS
+    return result, False
 ```
 
 The engine **does not write to PostgreSQL**. It only reads accounts, merchants, users and the restricted list. The decision is stored in Valkey and published; the [consumers](./consumers.mdx) store what needs storing.

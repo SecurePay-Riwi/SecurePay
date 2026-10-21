@@ -448,7 +448,7 @@ que debería dispararse y lo que respondió el motor:
 
 ``` json
 {"id": "...", "pattern": "VELOCITY", "is_fraud": true, "expected_rule": "velocidad",
- "response": {"status": 200, "decision": "HOLD", "reason": "Velocidad: 6 transferencias salientes en 10 minutos desde la misma cuenta."}}
+ "response": {"status": 200, "decision": "HOLD", "reason": "Velocity: 6 outgoing transfers in 10 minutes from the same account."}}
 ```
 
 Hoy el motor aplica dos reglas: lista restrictiva (REJECT) y velocidad

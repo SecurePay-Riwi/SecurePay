@@ -159,7 +159,7 @@ stop and ask instead of working around it.
 Read this before adding or changing a rule in `services/decision_engine/`.
 
 - **Each rule adds a `TriggeredRule`** (rule name, decision, reason) to the
-  `triggered` list in `_decidir()` (`decision_service.py`). Do not decide
+  `triggered` list in `_decide()` (`decision_service.py`). Do not decide
   inside the rule: `choose_decision()` picks the most severe one (`REJECT`,
   then `HOLD`, else `APPROVE`). Every rule is evaluated, and the decision
   records all of them in `rules_triggered` plus `rules_version`.

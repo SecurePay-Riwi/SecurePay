@@ -201,7 +201,7 @@ def test_owner_on_restricted_list_is_rejected():
     assert response.json()["decision"] == "REJECT"
     assert response.json()["rules_triggered"] == ["restricted_list"]
     assert response.json()["decision_reason"] == (
-        "Titular incluido en una lista restrictiva."
+        "Account owner is on a restricted list."
     )
 
 
@@ -212,7 +212,7 @@ def test_nonexistent_account_returns_422():
     response = client.post("/transactions", json=payload)
 
     assert response.status_code == 422, response.text
-    assert "no existe" in response.json()["detail"]
+    assert "does not exist" in response.json()["detail"]
 
 
 def test_amount_with_too_many_decimals_returns_400():
@@ -481,7 +481,7 @@ def test_every_triggered_rule_is_kept_and_the_most_severe_wins():
         "velocity",
     ]
     assert respuestas[-1]["decision_reason"] == (
-        "Titular incluido en una lista restrictiva."
+        "Account owner is on a restricted list."
     )
 
 

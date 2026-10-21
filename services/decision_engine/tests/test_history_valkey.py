@@ -86,7 +86,7 @@ def test_velocity_counts_only_p2p_outgoing():
     assert velocity.count(salidas, t) == 3
 
 
-# Velocidad con Valkey.
+# Velocity with Valkey.
 
 
 def test_six_transfers_in_eight_minutes_pass_the_limit(cuenta):
