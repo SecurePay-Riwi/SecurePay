@@ -611,3 +611,94 @@ def test_resend_does_not_write_history_twice():
     client.post("/transactions", json=payload)
 
     assert get_cache().zcard(f"out:{payload['source_account_id']}") == 1
+
+
+def test_restricted_list_precheck_covers_all_parties_before_velocity(monkeypatch):
+    from types import SimpleNamespace
+
+    from services.decision_engine import decision_service
+    from services.decision_engine.schemas import TransactionRequest
+    from shared.models import ListaRestrictiva
+
+    source_id, destination_id = uuid4(), uuid4()
+    source_user_id, destination_user_id = uuid4(), uuid4()
+    source_document = "11122333"
+    destination_document = "99988777"
+    accounts = {
+        source_id: SimpleNamespace(
+            id=source_id, user_id=source_user_id, moneda="COP"
+        ),
+        destination_id: SimpleNamespace(
+            id=destination_id, user_id=destination_user_id, moneda="COP"
+        ),
+    }
+    users = {
+        source_user_id: SimpleNamespace(documento=source_document),
+        destination_user_id: SimpleNamespace(documento=destination_document),
+    }
+    events = []
+    queried_documents = []
+
+    class FakeQuery:
+        def filter(self, expression):
+            assert expression.left == ListaRestrictiva.documento
+            queried_documents.extend(expression.right.value)
+            events.append("restricted_list_query_started")
+            return self
+
+        def first(self):
+            events.append("restricted_list_query_completed")
+            return object() if destination_document in queried_documents else None
+
+    class FakeSession:
+        def get(self, model, key):
+            if model.__name__ == "Usuario":
+                return users[key]
+            return None
+
+        def query(self, _column):
+            return FakeQuery()
+
+    monkeypatch.setattr(
+        decision_service,
+        "_load_account",
+        lambda _session, account_id: accounts[account_id],
+    )
+    monkeypatch.setattr(
+        decision_service.history, "record_outgoing", lambda *args, **kwargs: []
+    )
+    monkeypatch.setattr(
+        decision_service.history, "record_incoming", lambda *args, **kwargs: None
+    )
+
+    def count_velocity(*_args, **_kwargs):
+        events.append("velocity_rule_evaluated")
+        return 0
+
+    monkeypatch.setattr(decision_service.velocity, "count", count_velocity)
+
+    payload = TransactionRequest(
+        id=uuid4(),
+        type="P2P",
+        channel="APP",
+        source_account_id=source_id,
+        destination_account_id=destination_id,
+        merchant_id=None,
+        amount="10.00",
+        currency="COP",
+        source_balance_before="100.00",
+        source_balance_after="90.00",
+        destination_balance_before="100.00",
+        destination_balance_after="110.00",
+        device_id=uuid4(),
+        transaction_date=datetime.now(timezone.utc),
+    )
+
+    result = decision_service._decide(FakeSession(), payload)
+
+    assert set(queried_documents) == {source_document, destination_document}
+    assert result["decision"] == "REJECT"
+    assert "restricted_list" in result["rules_triggered"]
+    assert events.index("restricted_list_query_completed") < events.index(
+        "velocity_rule_evaluated"
+    )
