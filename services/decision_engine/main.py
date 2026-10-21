@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from shared.db import get_session
 from services.decision_engine.schemas import TransactionRequest, TransactionResponse
 from services.decision_engine.decision_service import (
-    ReferenciaInvalida,
+    InvalidReference,
     process_transaction,
 )
 from services.decision_engine import publisher
@@ -96,7 +96,7 @@ def evaluate_transaction(
             detail="El id ya se usó con otro contenido.",
         ) from exc
 
-    except ReferenciaInvalida as exc:
+    except InvalidReference as exc:
         raise HTTPException(
             status_code=422,
             detail=str(exc),

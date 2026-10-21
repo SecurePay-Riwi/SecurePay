@@ -42,7 +42,8 @@ See [Seed](../components/seed.mdx).
 | `IDEMPOTENCY_TTL_SECONDS` | `3600` | How long a decision is returned to resends. |
 | `VELOCITY_WINDOW_MINUTES` | `10` | Velocity window. |
 | `VELOCITY_LIMIT` | `5` | Held when the window has more transfers than this. |
-| `VELOCITY_HISTORY_HOURS` | `24` | Transfer history kept per account. |
+| `HISTORY_OUT_HOURS` | `24` | Outgoing history kept per account (`out:{account}`). Velocity needs 10 minutes; splitting will need 24 hours. |
+| `HISTORY_IN_MINUTES` | `60` | Incoming history kept per account (`in:{account}`), for the mule rule (30 minutes). |
 
 See [Decision engine](../components/decision-engine.mdx).
 

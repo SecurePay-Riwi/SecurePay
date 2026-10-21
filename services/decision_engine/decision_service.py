@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from shared.events import evento_decision
 from shared.models import Comercio, Cuenta, ListaRestrictiva, Usuario
+from services.decision_engine import history
 from services.decision_engine import idempotency as idem
 from services.decision_engine import publisher
 from services.decision_engine import velocity
@@ -16,136 +17,156 @@ from services.decision_engine.schemas import (
     TransactionType,
 )
 
-# Solo las transferencias entre cuentas cuentan para la velocidad: un pago
-# QR va a un comercio y un retiro sale a efectivo.
-TIPOS_VELOCIDAD = {TransactionType.P2P}
+# What leaves the source account goes into its outgoing history.
+# A top-up has no source account.
+OUTGOING_TYPES = {TransactionType.P2P, TransactionType.QR, TransactionType.RETIRO}
 
-# Versión de las reglas con que se decidió (el enunciado pide guardarla
-# en cada decisión). Mientras las reglas vivan en el código, la versión
-# es la del código: se sube al cambiar una regla. Cuando exista la
-# administración de reglas, sale de PostgreSQL.
-REGLAS_VERSION = "2026.10.1"
+# Version of the rules a decision was made with (the project brief asks
+# to store it with every decision). While the rules live in the code,
+# the version is the code's: raise it when a rule changes. Once rules
+# administration exists, it comes from PostgreSQL.
+RULES_VERSION = "2026.10.1"
 
-# Si varias reglas se activan, gana la más severa.
-SEVERIDAD = {Decision.APPROVE: 0, Decision.HOLD: 1, Decision.REJECT: 2}
+# When several rules fire, the most severe wins.
+SEVERITY = {Decision.APPROVE: 0, Decision.HOLD: 1, Decision.REJECT: 2}
 
-MOTIVO_SIN_REGLAS = "La transacción no activó las reglas configuradas."
+NO_RULES_REASON = "The transaction did not trigger any configured rule."
 
 
 @dataclass(frozen=True)
-class ReglaActivada:
-    """Lo que dice una regla que se activó."""
+class TriggeredRule:
+    """What a rule that fired says."""
 
-    regla: str
+    rule: str
     decision: Decision
-    motivo: str
+    reason: str
 
 
-def elegir_decision(activadas: list[ReglaActivada]) -> tuple[Decision, str]:
-    """Junta lo que dijo cada regla en una sola decisión y su motivo.
+def choose_decision(triggered: list[TriggeredRule]) -> tuple[Decision, str]:
+    """Turn what each rule said into one decision and its reason.
 
-    Gana la más severa (rechazar, luego retener). Sin reglas activadas,
-    se aprueba. Con dos de la misma severidad, gana la primera evaluada.
+    The most severe wins (reject, then hold). With no rule fired, the
+    transaction is approved. Between two of the same severity, the first
+    one evaluated wins.
     """
-    if not activadas:
-        return Decision.APPROVE, MOTIVO_SIN_REGLAS
+    if not triggered:
+        return Decision.APPROVE, NO_RULES_REASON
 
-    peor = max(activadas, key=lambda r: SEVERIDAD[r.decision])
-    return peor.decision, peor.motivo
-
-
-class ReferenciaInvalida(Exception):
-    """La transacción nombra una cuenta o un comercio que no sirve."""
+    worst = max(triggered, key=lambda r: SEVERITY[r.decision])
+    return worst.decision, worst.reason
 
 
-def normalizar_documento(documento: str) -> str:
-    """Deja solo los dígitos, que es como se guarda la lista restrictiva."""
-    return re.sub(r"\D", "", documento)
+class InvalidReference(Exception):
+    """The transaction names an account or a merchant that cannot be used."""
 
 
-def _cargar_cuenta(session: Session, cuenta_id) -> Cuenta:
-    cuenta = session.get(Cuenta, cuenta_id)
-
-    if cuenta is None:
-        raise ReferenciaInvalida(f"La cuenta {cuenta_id} no existe.")
-
-    return cuenta
+def normalize_document(document: str) -> str:
+    """Keep only the digits, which is how the restricted list is stored."""
+    return re.sub(r"\D", "", document)
 
 
-def _decidir(session: Session, payload: TransactionRequest) -> dict:
-    """Aplica las reglas y devuelve la decisión, sin guardarla."""
-    cuentas = {
-        cuenta_id: _cargar_cuenta(session, cuenta_id)
-        for cuenta_id in (
+def _load_account(session: Session, account_id) -> Cuenta:
+    account = session.get(Cuenta, account_id)
+
+    if account is None:
+        raise InvalidReference(f"Account {account_id} does not exist.")
+
+    return account
+
+
+def _decide(session: Session, payload: TransactionRequest) -> dict:
+    """Apply the rules and return the decision, without storing it."""
+    accounts = {
+        account_id: _load_account(session, account_id)
+        for account_id in (
             payload.source_account_id,
             payload.destination_account_id,
         )
-        if cuenta_id is not None
+        if account_id is not None
     }
 
     if payload.merchant_id is not None:
         if session.get(Comercio, payload.merchant_id) is None:
-            raise ReferenciaInvalida(
-                f"El comercio {payload.merchant_id} no existe."
+            raise InvalidReference(
+                f"Merchant {payload.merchant_id} does not exist."
             )
 
-    # La cuenta principal es la de origen; en una recarga, la de destino.
-    principal = cuentas[
+    # The main account is the source; in a top-up, the destination.
+    main_account = accounts[
         payload.source_account_id or payload.destination_account_id
     ]
 
-    if principal.moneda != payload.currency:
-        raise ReferenciaInvalida(
-            "La moneda de la transacción no es la de la cuenta."
+    if main_account.moneda != payload.currency:
+        raise InvalidReference(
+            "The transaction currency is not the account currency."
         )
 
-    titular = session.get(Usuario, principal.user_id)
+    owner = session.get(Usuario, main_account.user_id)
 
-    # Regla: lista restrictiva.
-    en_lista = (
+    # Rule: restricted list.
+    on_list = (
         session.query(ListaRestrictiva.id)
         .filter(
             ListaRestrictiva.documento
-            == normalizar_documento(titular.documento)
+            == normalize_document(owner.documento)
         )
         .first()
     )
 
-    # Regla: velocidad. Se registra aunque otra regla decida, porque el
-    # intento de transferir cuenta igual.
-    transferencias = 0
-    if payload.type in TIPOS_VELOCIDAD:
-        transferencias = velocity.registrar_y_contar(
-            payload.source_account_id, payload.id, payload.transaction_date
+    # Account history: written before deciding, whatever the decision,
+    # because the attempt counts too (see history.py).
+    outgoing = []
+    if payload.type in OUTGOING_TYPES:
+        outgoing = history.record_outgoing(
+            payload.source_account_id,
+            payload.id,
+            payload.type.value,
+            payload.amount,
+            payload.transaction_date,
+        )
+    if payload.type == TransactionType.P2P:
+        history.record_incoming(
+            payload.destination_account_id,
+            payload.id,
+            payload.source_account_id,
+            payload.amount,
+            payload.transaction_date,
         )
 
-    # Se evalúan todas las reglas aunque una ya rechace: la decisión
-    # guarda todas las que se activaron.
-    activadas = []
+    # Rule: velocity, only when the transaction is a transfer.
+    transfers = 0
+    if payload.type.value in velocity.TYPES:
+        transfers = velocity.count(
+            outgoing, history.to_ms(payload.transaction_date)
+        )
 
-    if en_lista:
-        activadas.append(ReglaActivada(
-            "lista_restrictiva",
+    # Every rule is evaluated even if one already rejects: the decision
+    # records all the rules that fired.
+    triggered = []
+
+    if on_list:
+        triggered.append(TriggeredRule(
+            "restricted_list",
             Decision.REJECT,
-            "Titular incluido en una lista restrictiva.",
+            "Account owner is on a restricted list.",
         ))
 
-    if transferencias > velocity.LIMITE:
-        activadas.append(ReglaActivada(
-            "velocidad",
+    if transfers > velocity.LIMIT:
+        triggered.append(TriggeredRule(
+            "velocity",
             Decision.HOLD,
-            f"Velocidad: {transferencias} transferencias salientes en "
-            f"{velocity.VENTANA_MIN} minutos desde la misma cuenta.",
+            f"Velocity: {transfers} outgoing transfers in "
+            f"{velocity.WINDOW_MIN} minutes from the same account.",
         ))
 
-    decision, reason = elegir_decision(activadas)
+    decision, reason = choose_decision(triggered)
 
     return {
         "transaction_id": str(payload.id),
         "decision": decision.value,
         "decision_reason": reason,
-        "rules_version": REGLAS_VERSION,
-        "rules_triggered": [r.regla for r in activadas],
+        "rules_version": RULES_VERSION,
+        "rules_triggered": [r.rule for r in triggered],
         "processed_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -155,32 +176,32 @@ def process_transaction(
     payload: TransactionRequest,
 ) -> tuple[dict, bool]:
     """
-    Evalúa una transacción una sola vez por id.
+    Evaluate a transaction only once per id.
 
-    Devuelve (resultado, replay).
-    replay=True indica que se reutilizó una decisión existente.
+    Returns (result, replay).
+    replay=True means an existing decision was reused.
 
-    Solo la primera decisión se publica en SNS: un reenvío devuelve la
-    decisión guardada sin volver a publicarla.
+    Only the first decision is published to SNS: a resend returns the
+    stored decision without publishing it again.
     """
-    transaccion = payload.model_dump(mode="json")
-    firma = idem.huella(transaccion)
+    transaction = payload.model_dump(mode="json")
+    fingerprint = idem.huella(transaction)
 
-    previo = idem.reservar(payload.id, firma)
+    previous = idem.reservar(payload.id, fingerprint)
 
-    if previo:
-        return previo, True
+    if previous:
+        return previous, True
 
     try:
-        resultado = _decidir(session, payload)
+        result = _decide(session, payload)
     except Exception:
-        # Sin decisión no hay nada que repetir: el reintento debe decidir.
+        # No decision means nothing to replay: the retry must decide.
         idem.liberar(payload.id)
         raise
 
-    idem.guardar(payload.id, firma, resultado)
+    idem.guardar(payload.id, fingerprint, result)
 
-    # No espera a SNS: deja el evento para el hilo de fondo y sigue.
-    publisher.publicar(evento_decision(transaccion, resultado))
+    # Does not wait for SNS: hands the event to the background thread.
+    publisher.publicar(evento_decision(transaction, result))
 
-    return resultado, False
+    return result, False

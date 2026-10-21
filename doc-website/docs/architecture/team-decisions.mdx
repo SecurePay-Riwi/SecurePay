@@ -52,7 +52,16 @@ A resent transaction gets the same decision for 1 hour (`IDEMPOTENCY_TTL_SECONDS
 - The rule says "outgoing transfers", so **QR payments to merchants do not count**. If needed, they can become their own rule with its own threshold once rule management exists.
 - The window uses `transaction_date`, **not the arrival time**, so out-of-order events are counted where they really belong.
 - Decisions already returned never change: if a late event completes a window, the late event is the one held.
-- History per account is 24 hours (`VELOCITY_HISTORY_HOURS`). At 50 tx/s that is ~100 MB that was not in the 300 MB cache estimate; 1 hour would be enough for velocity (~5 MB). To confirm in the load test.
+- History per account is 24 hours. Since 2026-10-21 it is the shared account history (see below).
+
+## Account history for the rules
+
+**Decided on 2026-10-21 (story HU-11, Jorge).**
+
+- One history per account that every rule reads, instead of one key per rule: `out:{account}` (what leaves: P2P, QR, withdrawal; 24 h, for velocity and later splitting) and `in:{account}` (P2P received with the sender and the amount; 60 min, for the mule rule).
+- **Attempts count, whatever the decision.** The history is written before deciding, in a single call; the statement does not say, and an attempt is already the signal. Every decision still records its triggered rules.
+- Amounts are kept in the account's currency; USD arrives when the engine reads the exchange rates (default-decision story).
+- Memory, measured in Valkey with realistic members (~70 bytes per entry): ~3.7 M outgoing entries alive at 50 tx/s, ~260 MB plus ~100 MB of keys. It replaces the 100–200 MB of "24 h sums" already in the 300 MB estimate and the ~100 MB velocity history noted above, so the cache would be ~400–450 MB (~$8/month more). To confirm in the load test.
 
 ## Data for the seed and the generator
 
