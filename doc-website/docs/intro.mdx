@@ -78,7 +78,7 @@ It runs on AWS (Ohio, `us-east-2`, two Availability Zones), managed services fir
 ## 6. Project structure
 
 The project is split across five repositories in the [SecurePay-Riwi](https://github.com/SecurePay-Riwi) organization.
-All satellite repos install [`securepay-shared`](https://pypi.org/project/securepay-shared/) from PyPI — no need to clone the monorepo to work on a data source.
+All source repositories install [`securepay-shared`](https://pypi.org/project/securepay-shared/) from PyPI, so you only clone `SecurePay` when you work on the engine, the consumers or this site.
 
 ```text
 SecurePay-Riwi (GitHub org)
@@ -92,7 +92,7 @@ PyPI
 └── securepay-shared 0.1.0 ← models, db, config, aws (shared by all repos)
 ```
 
-**Monorepo layout (`SecurePay/`):**
+**Product repository layout (`SecurePay/`):**
 
 ```text
 SecurePay/
@@ -116,7 +116,7 @@ SecurePay/
 | :--- | :--- | :--- |
 | [Seed](./components/seed.mdx) | `securepay-seed`: `src/securepay_seed/` | Done: users, accounts, devices, device–account pairs, merchants and restricted lists in PostgreSQL. |
 | [Transaction generator](./components/generator.mdx) | `securepay-generator`: `src/securepay_generator/` | Done: plays the wallet core, with labeled fraud patterns and data defects. |
-| [Decision engine](./components/decision-engine.mdx) | `SecurePay`: `services/decision_engine/` | Running with two rules (restricted list and velocity), idempotency and out-of-order handling in Valkey. |
+| [Decision engine](./components/decision-engine.mdx) | `SecurePay`: `services/decision_engine/` | Running with three rules (restricted list, velocity and mule account), the default decision when the rules time out, idempotency and a per-account history in Valkey. Splitting, shared device, account takeover and rules managed through an API come in later stories. |
 | [Messaging](./components/messaging.mdx) | `SecurePay`: `services/decision_engine/publisher.py`, `infra/localstack/` | Done locally: SNS topic, three SQS queues with dead-letter queues, on LocalStack. |
 | [Consumers](./components/consumers.mdx) | `SecurePay`: `services/consumers/` | Analytics writes to S3; cases and history are skeletons. |
 | [Partner statements](./components/partner-statements.mdx) | `securepay-csv`: `src/securepay_csv/partner_statements/` | Done: daily files of the four payment partners, with their defects, locally and in LocalStack. |
