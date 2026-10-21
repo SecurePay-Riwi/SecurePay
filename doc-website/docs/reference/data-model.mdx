@@ -1,14 +1,14 @@
 ---
 sidebar_position: 2
 title: Data model
-description: PostgreSQL tables, Valkey keys and the S3 layout used today.
+description: PostgreSQL tables, Valkey keys, the DynamoDB rates table and the S3 layout used today.
 ---
 
 # Data model
 
 ## PostgreSQL
 
-Defined with SQLAlchemy in `shared/models.py`, shared by the engine, the seed and the generator. Table and column names are in Spanish.
+Defined with SQLAlchemy in `shared/models.py`, published as the [`securepay-shared`](https://pypi.org/project/securepay-shared/) package and shared by the engine, the seed, the Kaggle ETL and the generator. Table and column names are in Spanish.
 
 ```text
 usuarios 1 ── 1 cuentas 1 ── * dispositivo_cuenta * ── 1 dispositivos
@@ -80,9 +80,25 @@ Many-to-many: a device used on an account since a date. This is what the shared 
 | `tipo` | text | |
 | `fecha_inclusion` | date | |
 
-### `transacciones` (legacy)
+### `transacciones`
 
-Still defined in `shared/models.py` but **no longer written**: the seed stopped generating transactions and the engine does not write to PostgreSQL. Transactions and decisions travel as [events](../components/messaging.mdx#the-decision-event).
+**Labeled history only.** The [Kaggle ETL](../components/kaggle-datasets.mdx) (`securepay-seed`) loads a sample of PaySim and Sparkov here once, linked to the seed users, devices and merchants. It is not live traffic: the seed does not create transactions and the engine does not write to PostgreSQL; live transactions and decisions travel as [events](../components/messaging.mdx#the-decision-event).
+
+| Column | Type | Notes |
+| :--- | :--- | :--- |
+| `id` | UUID | Primary key, deterministic in the ETL. |
+| `user_id` | UUID | FK to `usuarios`, indexed. Each card (`cc_num`) or PaySim source account belongs to one user. |
+| `device_id` | UUID | FK to `dispositivos`: a device the user already had. |
+| `merchant_id` | UUID | FK to `comercios`: for Sparkov, a merchant of the equivalent category when there is one. |
+| `amount` | numeric(12,2) | |
+| `transaction_date` | timestamp | Moved to fall before the reference date (2026-10-01). |
+| `channel` | varchar(30) | Valid for the transaction type. |
+| `is_fraud` | boolean | Label from the dataset. |
+| `fraud_pattern` | varchar(50) | Only on frauds. |
+| `decision`, `decision_reason`, `processed_at` | | Empty: these rows never go through the engine. |
+| `created_at` | timestamp | Set by the database. |
+
+Whether this history moves to S3 in production is an [open question](../architecture/open-questions.mdx).
 
 ## Valkey
 
@@ -91,6 +107,18 @@ Still defined in `shared/models.py` but **no longer written**: the seed stopped 
 | `idem:{transaction_id}` | string (JSON) | 30 s while `PENDING`, 1 h when `DONE` | State, body fingerprint and the decision. |
 | `out:{account_id}` | sorted set | 24 h after the last outgoing movement (`HISTORY_OUT_HOURS`) | What leaves the account (`P2P`, `QR`, `RETIRO`). Member: `id\|type\|amount`. Score: `transaction_date` in ms. |
 | `in:{account_id}` | sorted set | 60 min after the last incoming transfer (`HISTORY_IN_MINUTES`) | `P2P` transfers received. Member: `id\|sender_account\|amount` (the mule rule compares what came in with what is withdrawn). Score: `transaction_date` in ms. |
+
+## DynamoDB
+
+Table `pagoseguro-exchange-rates`, written by the [exchange rates](../components/exchange_rates.mdx) job (`securepay-apis`). The engine will load it whole and convert each transaction to USD with the rate of its own date; until then `currency.py` uses a fixed snapshot of the 2026-10-01 rates. Created locally by `infra/localstack/init/03_exchange_rates.py`.
+
+| Attribute | Key | Content |
+| :--- | :--- | :--- |
+| `base` | Partition | Always `USD`. |
+| `rate_date` | Sort | `YYYY-MM-DD`, the date Frankfurter gives. One query returns the latest day or every day, already ordered. |
+| `rates` | | `{"USD": 1, "COP": …, "EUR": …, "JPY": …}` as decimals. |
+| `source` | | The URL that was called, as evidence. |
+| `expires_at` | TTL | Epoch seconds, 30 days after the item was written. LocalStack does not delete expired items. |
 
 ## S3
 

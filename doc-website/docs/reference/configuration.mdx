@@ -6,7 +6,17 @@ description: Every environment variable in .env.example, what it does and its de
 
 # Configuration
 
-All configuration comes from environment variables, loaded from `.env` with `python-dotenv`. Copy `.env.example` to `.env`; the defaults work for local development. Never commit `.env`.
+All configuration comes from environment variables, loaded from `.env` with `python-dotenv`. Each repository has its own `.env.example` with only the variables it uses: copy it to `.env` in that repository; the defaults work for local development. Never commit `.env`.
+
+| Repository | Sections on this page |
+| :--- | :--- |
+| `SecurePay` | Database, Decision engine, Messaging and Data Lake, Docker Compose |
+| `securepay-seed` | Database, Seed, Kaggle ETL, AWS variables (to export the restricted list to S3) |
+| `securepay-generator` | Database, Transaction generator |
+| `securepay-csv` | Kaggle datasets, Partner statements, AWS variables |
+| `securepay-apis` | Restricted list service, Exchange rates, AWS variables |
+
+The AWS variables (`AWS_ENDPOINT_URL`, `AWS_DEFAULT_REGION` and the fake keys) are described under Messaging and Data Lake and work the same in every repository.
 
 ## Database
 
@@ -78,6 +88,21 @@ See [Messaging](../components/messaging.mdx).
 
 It also uses `DATALAKE_BUCKET` and the shared AWS variables. See [Kaggle datasets](../components/kaggle-datasets.mdx).
 
+## Kaggle ETL
+
+In `securepay-seed`. All optional: if you change them, the whole team must use the same values, or the samples (and the fingerprint) will differ.
+
+| Variable | Default | What it does |
+| :--- | :--- | :--- |
+| `HIST_PAYSIM_FILAS` | `50000` | PaySim rows loaded into `transacciones`. |
+| `HIST_PAYSIM_FRAUDE_PCT` | `3` | Fraud percentage in the PaySim sample. |
+| `HIST_FRAUDTEST_FILAS` | `20000` | Sparkov `fraudTest.csv` rows loaded. |
+| `HIST_FRAUDTEST_FRAUDE_PCT` | `3` | Fraud percentage in the Sparkov sample. |
+| `HIST_TAMANO_LOTE` | `5000` | Rows per insert batch. |
+| `HIST_RAW_DIR` | not set | Folder with the two CSVs. If not set, the ETL looks in `src/securepay_seed/kaggle_etl/raw`, then `KAGGLE_DOWNLOAD_DIR`, then `../securepay-csv/data/kaggle`. |
+
+See [Kaggle datasets](../components/kaggle-datasets.mdx).
+
 ## Docker Compose
 
 | Variable | Default | What it does |
@@ -130,3 +155,15 @@ It also uses `SEED` and `DATALAKE_BUCKET`. See [Partner statements](../component
 | `LISTA_SEMILLA` | none | Fixes the randomness of latency and failures. |
 
 See [Restricted list service](../components/restricted-list.mdx).
+
+## Exchange rates
+
+In `securepay-apis`.
+
+| Variable | Default | What it does |
+| :--- | :--- | :--- |
+| `RATES_OUTPUT` | `file` | `file` writes a JSON per day under `src/securepay_apis/exchange_rates/data/`; `dynamodb` writes to the rates table (LocalStack locally). |
+| `RATES_TABLE` | `pagoseguro-exchange-rates` | DynamoDB table, created locally by `infra/localstack/init/03_exchange_rates.py` in `SecurePay`. |
+| `RATES_FROM` | not set | Not set: only today's rates, like the daily Lambda. A date (`2026-10-01`): every published day from that date to today, so the engine has the rates of the simulated transactions. |
+
+See [Exchange rates](../components/exchange_rates.mdx).

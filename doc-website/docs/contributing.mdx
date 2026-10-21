@@ -44,7 +44,7 @@ SecurePay/
 └── db/, generators/, sources/   # backup from before the split; do not edit
 ```
 
-Coming later: `services/admin-api/`, `services/restricted-list-mock/`, `services/scheduled/`, `jobs/` (PySpark) and Terraform under `infra/`. Shared code that the engine and Spark must run identically, like the **rule interpreter**, goes in `shared/`.
+Coming later: `services/admin-api/`, `services/scheduled/`, `jobs/` (PySpark) and Terraform under `infra/`. Shared code that the engine and Spark must run identically, like the **rule interpreter**, goes in `shared/`.
 
 Folders use underscores (`decision_engine`, not `decision-engine`) because Python cannot import modules with hyphens.
 
@@ -102,3 +102,30 @@ npm run start
 | #10 | Daily partner statements |
 | #11 | Simulated restricted list service |
 | #12 | Architecture summary and AWS infrastructure pages |
+| #13 | Exchange rates as a Git dependency (reverted: it broke the generator) |
+| #14 | Fixes from the site review and the Sparkov decision |
+| #15 | Frankfurter exchange rates client |
+| #16 | Introduction restructured; team moved to Contributing |
+| #17 | Kaggle datasets loaded into the Data Lake (Yulianis) |
+| #18 | Architecture section reorganized into nine pages |
+| #19 | Page to run each data source locally; PostgreSQL port fixed |
+| #20 | Sparkov instead of the old card dataset, and the Kaggle ETL to PostgreSQL (Yulianis) |
+| #21–#23, #25, #27, #28 | Site theme, landing page and visual layout (Habith) |
+| #24 | PostgreSQL port 5433 everywhere and the intro structure restored |
+| #26 | Each Kaggle card and source account linked to one seed user |
+| #29, #30 | `CLAUDE.md` and the `securepay-shared` package in the README |
+| #32, #33 | Site and README pointed to the four source repositories; `AGENTS.md` |
+| #34 | DynamoDB exchange rates table in LocalStack |
+| #35 | Kaggle datasets and exchange rates marked as done |
+| #36 | Engine: triggered rules and rules version in each decision, one test per outcome |
+| #37 | Engine: shared account history (`out:` and `in:`) for the history-based rules, names in English |
+| #38 | English rule names in the `expected_rule` examples |
+| #39 | Engine: default decision when the rules time out (Habith) |
+| #40 | Engine: mule account rule, which opens a case (Habith) |
+| #41 | Local Valkey snapshot (`dump.rdb`) removed and ignored |
+| #42 | Engine: restricted list checked for every party before the other rules (Yulianis) |
+| #43 | Docker image of the engine and the whole environment with one command (Yulianis, Habith) |
+| #45 | Every engine status code and examples in Swagger; light/dark theme switch on this site |
+| #46 | Swagger docs tests restored |
+
+The source repositories keep their own history: in each one, PR #1 brought the code from the monorepo, #2 the README and #3 made it install and run on its own (October 19–20). After that, `securepay-apis` #4 stores the daily rates in DynamoDB, `securepay-generator` #4 converts each amount with the rate of its own date `securepay-generator` #5 uses the engine's English rule names, each repository got its Docker image (Yulianis), and `securepay-apis` #6 documents the restricted list endpoints in Swagger.

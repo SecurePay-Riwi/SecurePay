@@ -70,7 +70,7 @@ Full mode inserts row by row today, so 2.3 million users take a long time. Batch
 
 - **Deterministic ids.** Ids come from `uuid5` over a fixed namespace (`user:0`, `user:1`, …), not from `uuid4`.
 - **Insert or skip.** Every insert uses `ON CONFLICT DO NOTHING` on a natural key (document for users, `user_id` for accounts, fingerprint for devices), so a second run creates no duplicates.
-- **Fixed reference date.** All dates are calculated back from `2026-10-01 00:00 UTC` (`FECHA_REFERENCIA` in `shared/config.py`), not from "now".
+- **Fixed reference date.** All dates are calculated back from `2026-10-01 00:00 UTC` (`FECHA_REFERENCIA` in `securepay_shared.config`), not from "now".
 - **No dates from Faker.** Faker gives different dates on Windows and Linux with the same seed, so `src/securepay_seed/fechas.py` draws them in whole seconds or days. User agents only come from Chrome, Safari or Opera (Faker's Firefox one embeds a date).
 - **Tables are created first.** `Base.metadata.create_all` runs before the reset, so the `TRUNCATE` does not fail on a table added later.
 
