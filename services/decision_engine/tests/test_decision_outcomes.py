@@ -15,6 +15,7 @@ from services.decision_engine.schemas import Decision
 
 RESTRICTED = TriggeredRule("restricted_list", Decision.REJECT, "restricted list reason")
 VELOCITY = TriggeredRule("velocity", Decision.HOLD, "velocity reason")
+MULE = TriggeredRule("mule", Decision.HOLD, "mule reason")
 OTHER_HOLD = TriggeredRule("other", Decision.HOLD, "other reason")
 
 
@@ -43,4 +44,15 @@ def test_same_severity_keeps_the_first_reason():
     assert choose_decision([VELOCITY, OTHER_HOLD]) == (
         Decision.HOLD,
         "velocity reason",
+    )
+
+
+def test_mule_is_held():
+    assert choose_decision([MULE]) == (Decision.HOLD, "mule reason")
+
+
+def test_mule_and_restricted_list_is_rejected():
+    assert choose_decision([MULE, RESTRICTED]) == (
+        Decision.REJECT,
+        "restricted list reason",
     )
