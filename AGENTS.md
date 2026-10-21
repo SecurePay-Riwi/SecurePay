@@ -256,3 +256,5 @@ Read these before changing the design, not to work on the code:
 - Use service hostnames inside containers (postgres, valkey, localstack, decision-engine); localhost inside a container is not another service.
 - Never commit .env, tokens, generated files or downloaded Kaggle datasets.
 - The seed service uses SEED_RESET=true; do not run the stack against data that must be preserved.
+- Valkey has no persistence in Compose on purpose: every run starts with empty idempotency keys and account history.
+- When the engine reads a new environment variable, add it to the `decision-engine` service with `${VAR:-default}` as well as to `.env.example`.

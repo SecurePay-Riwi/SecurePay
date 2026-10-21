@@ -539,6 +539,8 @@ Compose coordina PostgreSQL, Valkey, LocalStack, el seed, el motor antifraude, l
 - API de listas restrictivas: http://localhost:8001/health
 - PostgreSQL: puerto 5433; Valkey: 6379; LocalStack: 4566.
 
+Valkey arranca vacío en cada `up` (sin persistencia), así que no hace falta `FLUSHDB` entre corridas. Las variables del motor (historial, timeout, mula) se toman del `.env` con los mismos valores por defecto que `.env.example`.
+
 Para revisar logs o apagar los servicios:
 
     docker compose logs -f decision-engine

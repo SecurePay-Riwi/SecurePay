@@ -145,4 +145,6 @@ Compose builds and coordinates PostgreSQL, Valkey, LocalStack, the seed, decisio
 - Decision engine: http://localhost:8000/health
 - Restricted-list API: http://localhost:8001/health
 
+Valkey starts empty on every `up` (no persistence), so no `FLUSHDB` is needed between runs. The engine settings (history, timeout, mule) are read from `.env`, with the same defaults as `.env.example`.
+
 To stop containers while retaining named volumes, run `docker compose down`. To delete the persisted data too, run `docker compose down -v`. Kaggle download is optional and requires `KAGGLE_API_TOKEN` in `.env`.
