@@ -99,7 +99,7 @@ uv run python -m securepay_generator
 It must end with:
 
 ```text
-Listo: 1035 eventos. Archivos en generated/instance-0
+Listo: 1036 eventos. Archivos en generated/instance-0
 ```
 
 `generated/instance-0/` now has `events.jsonl` (the events), `labels.jsonl` (the fraud label of each one) and `generation_report.json`. To send them to the engine instead, see [Simulate the full flow](./simulate-full-flow.mdx). More options in [Transaction generator](../components/generator.mdx).
@@ -184,26 +184,30 @@ LocalStack keeps nothing when it stops, so after restarting it run the seed with
 
 ## 5. Exchange rates
 
-In `securepay-apis`. It calls the public Frankfurter API, so it needs internet. It needs no database and no token.
+In `securepay-apis`. It calls the public Frankfurter API, so it needs internet. By default it writes a file and needs no database, LocalStack or token.
 
 ```bash
 uv run python -m securepay_apis.exchange_rates
 ```
 
-It prints the day's rates and the file it saved:
+It prints the day's rates and where it saved them:
 
 ```text
 Fetching rates from Frankfurter...
-Rates date: 2026-10-15
-  1 USD = 1 USD
-  1 USD = ... COP
-  1 USD = ... EUR
-  1 USD = ... JPY
+  2026-10-20: 1 USD = 1 USD, ... COP, ... EUR, ... JPY
 
-Rates saved to: .../src/securepay_apis/exchange_rates/data/rates_2026-10-15.json
+1 day(s) saved to .../src/securepay_apis/exchange_rates/data
 ```
 
-The date is the last business day published by Frankfurter, and the values change every day. The file is not tracked by Git. More in [Exchange rates](../components/exchange_rates.mdx).
+The date is the last business day published by Frankfurter, and the values change every day. The file is not tracked by Git.
+
+To load the DynamoDB table in LocalStack instead (LocalStack creates it on start-up), with every day since the generator's reference date:
+
+```bash
+RATES_OUTPUT=dynamodb RATES_FROM=2026-10-01 uv run python -m securepay_apis.exchange_rates
+```
+
+LocalStack keeps nothing when it stops, so run it again after restarting LocalStack. More in [Exchange rates](../components/exchange_rates.mdx).
 
 ## Check everything with the tests
 
