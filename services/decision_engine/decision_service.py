@@ -15,6 +15,7 @@ from shared.models import Comercio, Cuenta, ListaRestrictiva, Usuario
 from services.decision_engine import currency
 from services.decision_engine import history
 from services.decision_engine import idempotency as idem
+from services.decision_engine import mule
 from services.decision_engine import publisher
 from services.decision_engine import velocity
 from services.decision_engine.schemas import (
@@ -31,12 +32,17 @@ OUTGOING_TYPES = {TransactionType.P2P, TransactionType.QR, TransactionType.RETIR
 # to store it with every decision). While the rules live in the code,
 # the version is the code's: raise it when a rule changes. Once rules
 # administration exists, it comes from PostgreSQL.
-RULES_VERSION = "2026.10.1"
+RULES_VERSION = "2026.10.2"
 
 # When several rules fire, the most severe wins.
 SEVERITY = {Decision.APPROVE: 0, Decision.HOLD: 1, Decision.REJECT: 2}
 
 NO_RULES_REASON = "The transaction did not trigger any configured rule."
+
+# Rules whose decision opens a case in the analyst's inbox (team
+# decision of 2026-10-13). The others only hold and show on the
+# dashboard. Splitting joins when it exists.
+CASE_RULES = {"restricted_list", "mule"}
 
 log = logging.getLogger(__name__)
 
@@ -171,6 +177,14 @@ def _decide(session: Session, payload: TransactionRequest) -> dict:
             outgoing, history.to_ms(payload.transaction_date)
         )
 
+    # Rule: mule account, only when the money leaves as a withdrawal.
+    mule_senders = 0
+    if payload.type.value in mule.TYPES:
+        mule_senders = mule.senders(
+            history.incoming(payload.source_account_id),
+            history.to_ms(payload.transaction_date),
+        )
+
     # Every rule is evaluated even if one already rejects: the decision
     # records all the rules that fired.
     triggered = []
@@ -190,6 +204,18 @@ def _decide(session: Session, payload: TransactionRequest) -> dict:
             f"{velocity.WINDOW_MIN} minutes from the same account.",
         ))
 
+    if mule_senders >= mule.MIN_SENDERS and mule.withdraws_enough(
+        payload.amount, payload.source_balance_before
+    ):
+        pct = mule.withdrawn_pct(payload.amount, payload.source_balance_before)
+        triggered.append(TriggeredRule(
+            "mule",
+            Decision.HOLD,
+            f"Mule account: received transfers from {mule_senders} accounts "
+            f"and withdrew {pct}% of the balance in less than "
+            f"{mule.WINDOW_MIN} minutes.",
+        ))
+
     decision, reason = choose_decision(triggered)
 
     return {
@@ -198,6 +224,7 @@ def _decide(session: Session, payload: TransactionRequest) -> dict:
         "decision_reason": reason,
         "rules_version": RULES_VERSION,
         "rules_triggered": [r.rule for r in triggered],
+        "opens_case": any(r.rule in CASE_RULES for r in triggered),
         "by_default": False,
         "processed_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -225,6 +252,7 @@ def default_decision(payload: TransactionRequest) -> dict:
         ),
         "rules_version": RULES_VERSION,
         "rules_triggered": [DEFAULT_RULE],
+        "opens_case": False,
         "by_default": True,
         "processed_at": datetime.now(timezone.utc).isoformat(),
     }

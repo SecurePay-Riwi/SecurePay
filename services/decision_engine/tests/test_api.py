@@ -200,6 +200,7 @@ def test_owner_on_restricted_list_is_rejected():
     assert response.status_code == 200, response.text
     assert response.json()["decision"] == "REJECT"
     assert response.json()["rules_triggered"] == ["restricted_list"]
+    assert response.json()["opens_case"] is True
     assert response.json()["decision_reason"] == (
         "Account owner is on a restricted list."
     )

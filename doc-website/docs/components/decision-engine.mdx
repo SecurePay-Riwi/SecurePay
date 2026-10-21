@@ -68,8 +68,9 @@ There is no `user_id`: the owner comes from the account.
   "transaction_id": "6f1c…",
   "decision": "HOLD",
   "decision_reason": "Velocity: 6 outgoing transfers in 10 minutes from the same account.",
-  "rules_version": "2026.10.1",
+  "rules_version": "2026.10.2",
   "rules_triggered": ["velocity"],
+  "opens_case": false,
   "by_default": false,
   "processed_at": "2026-10-14T00:10:03.512+00:00",
   "idempotent_replay": false
@@ -78,6 +79,7 @@ There is no `user_id`: the owner comes from the account.
 
 - `rules_triggered` lists **every** rule that fired, not only the one that decided (the statement asks every decision to record the rule version and the rules that fired). It feeds the rule effectiveness analysis and lets the cases consumer open a case only for the rules that require one.
 - `rules_version` is the version of the rules the decision used. While the rules live in the code it is the constant `RULES_VERSION` in `decision_service.py`, raised whenever a rule changes; with the rules administration it will come from PostgreSQL.
+- `opens_case` is `true` when a rule that opens a case in the analyst's inbox fired: mule account or restricted list (splitting joins when it exists). Velocity, account takeover and the default decision only hold. The rules that open a case are `CASE_RULES` in `decision_service.py` ([Team decisions](../architecture/team-decisions.mdx)); the cases consumer reads this flag.
 - `by_default` is `true` when the rules did not answer in time and the default decision was applied (see [Default decision on timeout](#default-decision-on-timeout)). Then `rules_triggered` is `["default_timeout"]`.
 - `idempotent_replay` is `true` when the answer is a stored decision returned to a resend. A decision stored before `rules_version` and `rules_triggered` existed is replayed with `null` and `[]`.
 
@@ -98,6 +100,7 @@ There is no `user_id`: the owner comes from the account.
 | :--- | :--- | :--- |
 | Restricted list | `REJECT` | The owner's document, normalized to digits only, is in `listas_restrictivas`. |
 | Velocity | `HOLD` | More than 5 outgoing **P2P** transfers in 10 minutes from the same account, measured by event time. |
+| Mule account | `HOLD` and opens a case | A **withdrawal** of 80 % or more of the balance, after `P2P` transfers from 3 or more different accounts, all in less than 30 minutes. |
 | Default decision | `APPROVE` below USD 50, `HOLD` from USD 50 | The rules did not answer in 120 ms. Never `REJECT`. |
 | Anything else | `APPROVE` | "The transaction did not trigger any configured rule." |
 
@@ -114,7 +117,7 @@ def choose_decision(triggered: list[TriggeredRule]) -> tuple[Decision, str]:
     return worst.decision, worst.reason
 ```
 
-`choose_decision()` is a pure function, so `tests/test_decision_outcomes.py` checks every outcome without PostgreSQL or Valkey. The velocity transfer is recorded even when another rule decides, because the attempt to transfer still counts. The other rules (mule account, splitting, shared device, account takeover, rules from the database) arrive in Sprint 2.
+`choose_decision()` is a pure function, so `tests/test_decision_outcomes.py` checks every outcome without PostgreSQL or Valkey. The velocity transfer is recorded even when another rule decides, because the attempt to transfer still counts. The other rules (splitting, shared device, account takeover, rules from the database) arrive in later stories.
 
 ## Default decision on timeout
 
@@ -204,6 +207,36 @@ def count(outgoing, t: int) -> int:
 | `HISTORY_OUT_HOURS` | 24 | Outgoing history kept per account. An event later than this is evaluated with incomplete history. |
 | `HISTORY_IN_MINUTES` | 60 | Incoming history kept per account. Must stay above the mule window (30 min). |
 
+## Mule account
+
+`services/decision_engine/mule.py` (RN-03, HU-13). A mule account receives money from several accounts and takes it out right away. The rule runs on a **withdrawal** (`RETIRO`), which is when the money leaves the wallet:
+
+1. It reads the account's `in:` history and counts the **different** senders whose transfer happened in the 30 minutes before the withdrawal. Three transfers from the same account count as one.
+2. It compares the withdrawal with `source_balance_before`, the balance the core reports before the withdrawal. That balance already includes what came in; the engine keeps no balances of its own ([Team decisions](../architecture/team-decisions.mdx)).
+3. With 3 or more senders and 80 % or more withdrawn, it adds `mule` with `HOLD`, and the decision carries `opens_case: true`.
+
+```python
+# services/decision_engine/mule.py
+def senders(incoming, t: int) -> int:
+    return len({i.sender for i in incoming if t - WINDOW_MS < i.t <= t})
+
+def withdraws_enough(amount, balance_before) -> bool:
+    return amount * 100 >= WITHDRAWN_PCT * balance_before
+```
+
+- **Withdrawal only.** RN-03 says "withdraws", like the generator's pattern. Moving the money on with a `P2P` or paying a merchant does not trigger it; adding them is one line (`mule.TYPES`).
+- **Out-of-order events.** A transfer that arrives late but happened before the withdrawal counts in its real place. One recorded with a time after the withdrawal does not. A transfer that arrives after the withdrawal was decided cannot change that decision.
+- **Amounts in the account's currency.** The rule compares a share of the balance, so it needs no USD conversion.
+- **The case itself** (table, inbox, 4-hour timer) is HU-25 in Sprint 4: the cases consumer will open one for each event with `opens_case: true`.
+
+| Variable | Default | Meaning |
+| :--- | ---: | :--- |
+| `MULE_WINDOW_MINUTES` | 30 | Window from the first transfer to the withdrawal. Must not exceed `HISTORY_IN_MINUTES`. |
+| `MULE_MIN_SENDERS` | 3 | Different senders needed. |
+| `MULE_WITHDRAWN_PCT` | 80 | Share of the balance before the withdrawal, from 0 to 100. |
+
+`tests/test_mule.py` covers the generator's pattern (3 senders, 90 % at minute 20) and its control (2 senders), the same sender three times, the 80 % limit, a transfer outside the window, one recorded after the withdrawal, a `P2P` instead of a withdrawal, and that velocity does not open a case. Replaying a 3,000-transaction generator run through the engine, the 9 labeled mule withdrawals were held and none of the 9 control withdrawals or any other transaction was flagged as mule.
+
 ## Publishing the decision
 
 Each new decision is published to SNS by a background thread without making the core wait. See [Messaging](./messaging.mdx).
@@ -218,5 +251,6 @@ Each new decision is published to SNS by a background thread without making the 
 | `idempotency.py` | `idem:{id}` keys in Valkey. |
 | `history.py` | `out:{account}` and `in:{account}` sorted sets: the account history every rule reads. |
 | `velocity.py` | Velocity rule: the busiest-window calculation over the outgoing history. |
+| `mule.py` | Mule account rule: different senders in the incoming history and the share of the balance withdrawn. |
 | `currency.py` | Amounts in USD for the dollar thresholds (fixed 2026-10-01 rates until HU-42). |
 | `publisher.py` | Background SNS publisher. |

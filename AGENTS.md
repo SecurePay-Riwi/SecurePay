@@ -188,6 +188,15 @@ Read this before adding or changing a rule in `services/decision_engine/`.
   them stable. New code in this folder is in English.
 - Velocity counts only `P2P` (QR payments to merchants and withdrawals do
   not count: the rule says "outgoing transfers").
+- Mule account (`mule.py`, HU-13) runs only on a `RETIRO`: 3 or more
+  different senders in `in:{account}` in the 30 min before it, and the
+  withdrawal is 80 % or more of `source_balance_before` (the core's
+  balance; the engine keeps none). Thresholds: `MULE_*` variables.
+- **A decision says whether it opens a case** (`opens_case`): true when a
+  rule in `CASE_RULES` (`decision_service.py`) fired, today
+  `restricted_list` and `mule` (team decision 2026-10-13; splitting joins
+  it). The engine does not create cases: the cases consumer (HU-25)
+  reads the flag from the `transaction.decided` event.
 
 ---
 
