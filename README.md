@@ -522,3 +522,28 @@ Necesita internet. Detalles en la página
 | `Could not connect to the endpoint URL` | LocalStack apagado: `docker compose up -d localstack` y `docker compose ps` (debe quedar `healthy`). |
 | El ETL o los extractos no encuentran datos | Falta correr el seed (paso 7) o el generador (paso 9), o los repos no están uno al lado del otro (paso 1). |
 | Aparecen columnas `V1`, `V2`... en un dataset | Es `creditcard.csv`, que el proyecto no usa. Usa `fraudTest.csv` (README de `securepay-csv`). |
+
+## Docker: levantar el ecosistema completo (MAG-31 / MAG-32)
+
+Clona los repositorios satélite al mismo nivel que SecurePay, abre Docker Desktop y, desde la raíz de SecurePay, crea el archivo .env a partir de .env.example. Configura LOCALSTACK_AUTH_TOKEN con tu token personal de LocalStack; nunca lo subas a Git. Compose construye imágenes desde securepay-seed, securepay-generator, securepay-csv y securepay-apis, que deben estar clonados al lado.
+
+Valida la configuración y levanta el stack:
+
+    docker compose config --quiet
+    docker compose up --build -d
+    docker compose ps
+
+Compose coordina PostgreSQL, Valkey, LocalStack, el seed, el motor antifraude, la API de listas restrictivas, los consumidores, el generador y los extractos. El seed y el generador son tareas de una sola ejecución. El seed usa SEED_RESET=true para regenerar los datos de desarrollo al iniciar; no uses este stack contra una base de datos con datos que quieras conservar.
+
+- Motor antifraude: http://localhost:8000/health y http://localhost:8000/docs
+- API de listas restrictivas: http://localhost:8001/health
+- PostgreSQL: puerto 5433; Valkey: 6379; LocalStack: 4566.
+
+Para revisar logs o apagar los servicios:
+
+    docker compose logs -f decision-engine
+    docker compose down
+
+Para borrar también los volúmenes persistentes usa docker compose down -v. La descarga de Kaggle es opcional y requiere KAGGLE_API_TOKEN en el .env:
+
+    docker compose run --rm --no-deps partner-statements python -m securepay_csv.kaggle_datasets
