@@ -4,12 +4,19 @@ from collections.abc import Generator
 from contextlib import asynccontextmanager
 
 import valkey
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Body, Depends, FastAPI, HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from shared.db import get_session
-from services.decision_engine.schemas import TransactionRequest, TransactionResponse
+from services.decision_engine.docs.app import APP
+from services.decision_engine.docs.health import HEALTH
+from services.decision_engine.docs.transactions import EVALUATE, REQUEST_EXAMPLES
+from services.decision_engine.schemas import (
+    HealthResponse,
+    TransactionRequest,
+    TransactionResponse,
+)
 from services.decision_engine.decision_service import (
     LATE_SESSION,
     InvalidReference,
@@ -35,11 +42,7 @@ async def lifespan(app: FastAPI):
     publisher.detener()
 
 
-app = FastAPI(
-    title="SecurePay Antifraude API",
-    version="1.0.0",
-    lifespan=lifespan,
-)
+app = FastAPI(**APP, lifespan=lifespan)
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(
@@ -67,20 +70,16 @@ def get_db() -> Generator[Session, None, None]:
             session.close()
 
 
-@app.get("/health")
+@app.get("/health", response_model=HealthResponse, **HEALTH)
 def health_check():
     # La mensajería no cambia el "ok": si SNS falla, el motor sigue
     # decidiendo y el balanceador no debe sacarlo de servicio.
     return {"status": "ok", "messaging": publisher.estado()}
 
 
-@app.post(
-    "/transactions",
-    response_model=TransactionResponse,
-    status_code=200,
-)
+@app.post("/transactions", response_model=TransactionResponse, **EVALUATE)
 def evaluate_transaction(
-    payload: TransactionRequest,
+    payload: TransactionRequest = Body(openapi_examples=REQUEST_EXAMPLES),
     session: Session = Depends(get_db),
 ):
     try:

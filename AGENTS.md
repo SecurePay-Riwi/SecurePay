@@ -87,6 +87,12 @@ stop and ask instead of working around it.
 5. Dependencies only with uv; commit `pyproject.toml` and `uv.lock` together.
 6. When a command, variable, folder or repository changes, update `README.md`,
    the Docusaurus pages in `doc-website/docs/` and this file in the same change.
+7. The engine's Swagger docs live in `services/decision_engine/docs/` (one file
+   per group of endpoints: summaries, descriptions, examples of every status
+   code); only the field descriptions stay in `schemas.py`. When an endpoint,
+   status code or response field changes, update `docs/` and the Docusaurus
+   page together; `test_openapi.py` checks the documented status codes and
+   that the examples are valid.
 
 ---
 
