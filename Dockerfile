@@ -7,8 +7,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_LINK_MODE=copy \
     PATH="/app/.venv/bin:$PATH"
 
-COPY . .
+# Dependencies first, so a code change does not reinstall them.
+COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
+
+COPY . .
 
 EXPOSE 8000
 CMD ["uvicorn", "services.decision_engine.main:app", "--host", "0.0.0.0", "--port", "8000"]

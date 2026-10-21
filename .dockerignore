@@ -11,3 +11,9 @@ generated/
 **/generated/
 data/kaggle/
 **/data/kaggle/
+dump.rdb
+# Not needed at runtime: documentation site and the pre-split backups.
+doc-website/
+db/
+generators/
+sources/
