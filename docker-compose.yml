@@ -1,13 +1,3 @@
-# Entorno local: PostgreSQL, Valkey y LocalStack (SNS, SQS y S3).
-#
-# Base de la historia del Compose de un solo comando: el seed y el motor
-# como servicios se agregan en esa historia (ver la guía de Docker).
-#
-#   docker compose up -d      levantar
-#   docker compose ps         todo debe quedar "healthy"
-#   docker compose down       apagar (los datos de PostgreSQL se conservan)
-#   docker compose down -v    apagar y borrar los datos
-
 services:
   postgres:
     image: postgres:16
@@ -15,44 +5,177 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-pagoseguro}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pagoseguro}
       POSTGRES_DB: ${POSTGRES_DB:-pagoseguro}
-    ports:
-      - "5433:5432"   # 5433 afuera para no chocar con un PostgreSQL instalado
-    volumes:
-      - pgdata:/var/lib/postgresql/data
+    ports: ["5433:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
+      timeout: 5s
       retries: 10
+    restart: unless-stopped
 
   valkey:
     image: valkey/valkey:8
-    ports:
-      - "6379:6379"   # el mismo puerto que el contenedor suelto pagoseguro-valkey
+    command: ["valkey-server", "--appendonly", "yes"]
+    ports: ["6379:6379"]
+    volumes: [valkeydata:/data]
     healthcheck:
       test: ["CMD", "valkey-cli", "ping"]
       interval: 5s
+      timeout: 3s
       retries: 10
+    restart: unless-stopped
 
   localstack:
-    # Versión fija para que todo el equipo use la misma. Desde marzo de 2026
-    # las versiones nuevas piden cuenta y token (el plan Hobby es gratis).
     image: localstack/localstack:2026.09.1
     environment:
-      # dynamodb: tabla de tasas de cambio (03_exchange_rates.py).
       SERVICES: sns,sqs,s3,dynamodb
-      AWS_DEFAULT_REGION: us-east-2
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-2}
       LOCALSTACK_AUTH_TOKEN: ${LOCALSTACK_AUTH_TOKEN:?Falta LOCALSTACK_AUTH_TOKEN en el .env}
-    ports:
-      - "4566:4566"
-    volumes:
-      # Lo que haya aquí se ejecuta cuando LocalStack está listo:
-      # crea el tema, las colas, los buckets y la tabla de tasas.
-      - ./infra/localstack/init:/etc/localstack/init/ready.d:ro
+    ports: ["4566:4566"]
+    volumes: [./infra/localstack/init:/etc/localstack/init/ready.d:ro]
     healthcheck:
-      # "ready" solo cuando terminaron los scripts de init.
-      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/init/ready | grep -q '\"completed\": true'"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/init/ready | grep -q completed"]
       interval: 5s
+      timeout: 5s
       retries: 30
+    restart: unless-stopped
+
+  seed:
+    build: {context: ../securepay-seed, dockerfile: Dockerfile}
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pagoseguro}:${POSTGRES_PASSWORD:-pagoseguro}@postgres:5432/${POSTGRES_DB:-pagoseguro}
+      SEED: ${SEED:-42}
+      SEED_MODE: ${SEED_MODE:-dev}
+      SEED_RESET: "true"
+      SEED_LIST_OUTPUT: file
+      PROVEEDOR_LISTAS_BUCKET: ${PROVEEDOR_LISTAS_BUCKET:-pagoseguro-proveedor-listas}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-2}
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL: http://localstack:4566
+    volumes: [seed-data:/app/generated]
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: "no"
+
+  decision-engine:
+    build: {context: ., dockerfile: Dockerfile}
+    command: ["uvicorn", "services.decision_engine.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pagoseguro}:${POSTGRES_PASSWORD:-pagoseguro}@postgres:5432/${POSTGRES_DB:-pagoseguro}
+      VALKEY_URL: redis://valkey:6379/0
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-2}
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      SNS_DECISIONES_TOPIC_ARN: ${SNS_DECISIONES_TOPIC_ARN:-arn:aws:sns:us-east-2:000000000000:decisiones}
+      IDEMPOTENCY_TTL_SECONDS: ${IDEMPOTENCY_TTL_SECONDS:-3600}
+      VELOCITY_WINDOW_MINUTES: ${VELOCITY_WINDOW_MINUTES:-10}
+      VELOCITY_LIMIT: ${VELOCITY_LIMIT:-5}
+      VELOCITY_HISTORY_HOURS: ${VELOCITY_HISTORY_HOURS:-24}
+      PUBLISH_BATCH_WAIT_MS: ${PUBLISH_BATCH_WAIT_MS:-500}
+      PUBLISH_BUFFER_SIZE: ${PUBLISH_BUFFER_SIZE:-10000}
+      PUBLISH_RETRIES: ${PUBLISH_RETRIES:-3}
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      valkey: {condition: service_healthy}
+      localstack: {condition: service_healthy}
+      seed: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  restricted-list-api:
+    build: {context: ../securepay-apis, dockerfile: Dockerfile}
+    environment:
+      LISTA_SOURCE: file
+      SEED_LIST_FILE: /app/generated/listas/lista_restrictiva.jsonl
+      LISTA_LATENCIA_MIN_MS: ${LISTA_LATENCIA_MIN_MS:-50}
+      LISTA_LATENCIA_MAX_MS: ${LISTA_LATENCIA_MAX_MS:-3000}
+      LISTA_FALLA_PCT: ${LISTA_FALLA_PCT:-5}
+      PROVEEDOR_LISTAS_BUCKET: ${PROVEEDOR_LISTAS_BUCKET:-pagoseguro-proveedor-listas}
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-2}
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    volumes: [seed-data:/app/generated:ro]
+    ports: ["8001:8001"]
+    depends_on:
+      seed: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  consumers:
+    build: {context: ., dockerfile: Dockerfile}
+    command: ["python", "-m", "services.consumers"]
+    environment:
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-2}
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      DATALAKE_BUCKET: ${DATALAKE_BUCKET:-pagoseguro-datalake}
+    depends_on:
+      localstack: {condition: service_healthy}
+    restart: unless-stopped
+
+  # GEN_OUTPUT=http sends events to the engine AND writes events.jsonl,
+  # labels.jsonl and generation_report.json under /app/generated/instance-0.
+  # partner-statements consumes those files from the same named volume.
+  generator:
+    build: {context: ../securepay-generator, dockerfile: Dockerfile}
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pagoseguro}:${POSTGRES_PASSWORD:-pagoseguro}@postgres:5432/${POSTGRES_DB:-pagoseguro}
+      SEED: ${SEED:-42}
+      GEN_MODE: ${GEN_MODE:-dev}
+      GEN_OUTPUT: http
+      GEN_ENGINE_URL: http://decision-engine:8000
+      GEN_OUTPUT_DIR: /app/generated
+      GEN_RATE: ${GEN_RATE:-50}
+      GEN_FRAUD_PERCENTAGE: ${GEN_FRAUD_PERCENTAGE:-5}
+      GEN_DUPLICATE_PERCENTAGE: ${GEN_DUPLICATE_PERCENTAGE:-2}
+      GEN_OUT_OF_ORDER_PERCENTAGE: ${GEN_OUT_OF_ORDER_PERCENTAGE:-2}
+      GEN_DECIMAL_DEFECT_PERCENTAGE: ${GEN_DECIMAL_DEFECT_PERCENTAGE:-1}
+    volumes: [generated-data:/app/generated]
+    depends_on:
+      seed: {condition: service_completed_successfully}
+      decision-engine: {condition: service_healthy}
+    restart: "no"
+
+  partner-statements:
+    build: {context: ../securepay-csv, dockerfile: Dockerfile}
+    environment:
+      SEED: ${SEED:-42}
+      EXT_OUTPUT: file
+      EXT_INPUT_DIR: /app/generated
+      EXT_OUTPUT_DIR: /app/generated/extractos
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-2}
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      DATALAKE_BUCKET: ${DATALAKE_BUCKET:-pagoseguro-datalake}
+      KAGGLE_API_TOKEN: ${KAGGLE_API_TOKEN:-}
+      KAGGLE_DOWNLOAD_DIR: /app/data/kaggle
+    volumes:
+      - generated-data:/app/generated
+      - kaggle-data:/app/data/kaggle
+    depends_on:
+      generator: {condition: service_completed_successfully}
+    restart: "no"
 
 volumes:
   pgdata:
+  valkeydata:
+  seed-data:
+  generated-data:
+  kaggle-data:
