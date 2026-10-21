@@ -20,6 +20,8 @@ jobs:
   docker-validation:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
     steps:
       - name: Checkout SecurePay
         uses: actions/checkout@v4
@@ -73,3 +75,19 @@ jobs:
           # Compose requires a non-empty value while resolving the config.
           LOCALSTACK_AUTH_TOKEN: validation-only
         run: docker compose build
+
+      - name: Start ecosystem, check endpoints, and inspect logs
+        if: ${{ env.LOCALSTACK_AUTH_TOKEN != '' }}
+        working-directory: SecurePay
+        run: |
+          set -euo pipefail
+          cleanup() {
+            docker compose logs --no-color --tail=200 || true
+            docker compose down -v --remove-orphans || true
+          }
+          trap cleanup EXIT
+          docker compose up -d
+          curl --fail --retry 30 --retry-delay 5 --retry-connrefused http://localhost:8000/health
+          curl --fail --retry 30 --retry-delay 5 --retry-connrefused http://localhost:8001/health
+          docker compose ps --all
+          docker compose logs --no-color --tail=200
