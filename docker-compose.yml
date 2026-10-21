@@ -35,7 +35,7 @@ services:
     ports: ["4566:4566"]
     volumes: [./infra/localstack/init:/etc/localstack/init/ready.d:ro]
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/init/ready | grep -q '\\\"completed\\\": true'"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/init/ready | grep -q completed"]
       interval: 5s
       timeout: 5s
       retries: 30
