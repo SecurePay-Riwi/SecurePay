@@ -15,3 +15,6 @@ generated/
 /data/kaggle/
 /db/datasets/raw/
 RESUMEN.md
+
+# Valkey/Redis snapshot written by a local server started in the repo
+dump.rdb
