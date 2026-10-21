@@ -219,6 +219,34 @@ Read this before adding or changing a rule in `services/decision_engine/`.
 
 ---
 
+## Git workflow (commits, branches, pull requests)
+
+Team conventions, based on the guides the professor shared. They apply to
+every repository in the SecurePay-Riwi organization.
+
+- **Commits:** `type(scope): description` (Conventional Commits). Types:
+  `feat`, `fix`, `perf`, `build`, `ci`, `docs`, `refactor`, `style`, `test`,
+  `chore`. The scope is the component or the Jira ticket (`feat(MAG-31): ...`).
+  Imperative mood ("add", not "added"), no final period, title of 50
+  characters or less; extra context goes in the body. Reference issues with
+  `closes #12`. No `Co-Authored-By` lines.
+- **Branches:** `type/TICKET-short-description`, lowercase with hyphens:
+  `feature/`, `bugfix/`, `hotfix/`, `refactor/`, `test/`, `doc/`
+  (for example `feature/MAG-123-mule-rule`). Branches that already exist
+  keep their names.
+- **Pull requests:** small (ideally under 10 files and a few hundred lines),
+  opened as Draft while in progress, with at least one other team member as
+  reviewer, preferably merged with "Squash and merge", and the branch deleted after the
+  merge. The PR title follows the commit format.
+- **PR description:** GitHub fills it from the organization template
+  ([`SecurePay-Riwi/.github/pull_request_template.md`](https://github.com/SecurePay-Riwi/.github/blob/main/pull_request_template.md)).
+  When you write a PR body yourself (an AI agent, or `gh pr create --body`),
+  follow the same sections: Context (with the Jira ticket), Type of change,
+  Before / After, How and why, Missing, How to test (the exact commands, the
+  folder or service they run in and the expected result) and Checklist.
+
+---
+
 ## Local setup
 
 ```bash
