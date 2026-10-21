@@ -114,7 +114,8 @@ If a dataset fails validation or upload:
 | `HIST_PAYSIM_FRAUDE_PCT` | `3` | Fraud percentage in the PaySim sample |
 | `HIST_FRAUDTEST_FILAS` | `20000` | Number of `fraudTest` rows selected |
 | `HIST_FRAUDTEST_FRAUDE_PCT` | `3` | Fraud percentage in the `fraudTest` sample |
-| `HIST_RAW_DIR` | `src/securepay_seed/kaggle_etl/raw`, then `data/kaggle` | Directory containing the ETL CSVs |
+| `HIST_RAW_DIR` | `src/securepay_seed/kaggle_etl/raw`, then `KAGGLE_DOWNLOAD_DIR`, then `../securepay-csv/data/kaggle` | Directory containing the ETL CSVs |
+| `HIST_TAMANO_LOTE` | `5000` | Rows per insert batch in the ETL |
 | `KAGGLE_API_TOKEN` | — | Required only for automatic download |
 | `KAGGLE_DOWNLOAD_DIR` | `data/kaggle` | Local directory for Data Lake CSVs |
 | `DATALAKE_BUCKET` | `pagoseguro-datalake` | S3 bucket name |
