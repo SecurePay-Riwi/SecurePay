@@ -1,5 +1,6 @@
 
 import re
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
@@ -18,6 +19,39 @@ from services.decision_engine.schemas import (
 # Solo las transferencias entre cuentas cuentan para la velocidad: un pago
 # QR va a un comercio y un retiro sale a efectivo.
 TIPOS_VELOCIDAD = {TransactionType.P2P}
+
+# Versión de las reglas con que se decidió (el enunciado pide guardarla
+# en cada decisión). Mientras las reglas vivan en el código, la versión
+# es la del código: se sube al cambiar una regla. Cuando exista la
+# administración de reglas, sale de PostgreSQL.
+REGLAS_VERSION = "2026.10.1"
+
+# Si varias reglas se activan, gana la más severa.
+SEVERIDAD = {Decision.APPROVE: 0, Decision.HOLD: 1, Decision.REJECT: 2}
+
+MOTIVO_SIN_REGLAS = "La transacción no activó las reglas configuradas."
+
+
+@dataclass(frozen=True)
+class ReglaActivada:
+    """Lo que dice una regla que se activó."""
+
+    regla: str
+    decision: Decision
+    motivo: str
+
+
+def elegir_decision(activadas: list[ReglaActivada]) -> tuple[Decision, str]:
+    """Junta lo que dijo cada regla en una sola decisión y su motivo.
+
+    Gana la más severa (rechazar, luego retener). Sin reglas activadas,
+    se aprueba. Con dos de la misma severidad, gana la primera evaluada.
+    """
+    if not activadas:
+        return Decision.APPROVE, MOTIVO_SIN_REGLAS
+
+    peor = max(activadas, key=lambda r: SEVERIDAD[r.decision])
+    return peor.decision, peor.motivo
 
 
 class ReferenciaInvalida(Exception):
@@ -85,23 +119,33 @@ def _decidir(session: Session, payload: TransactionRequest) -> dict:
             payload.source_account_id, payload.id, payload.transaction_date
         )
 
+    # Se evalúan todas las reglas aunque una ya rechace: la decisión
+    # guarda todas las que se activaron.
+    activadas = []
+
     if en_lista:
-        decision = Decision.REJECT
-        reason = "Titular incluido en una lista restrictiva."
-    elif transferencias > velocity.LIMITE:
-        decision = Decision.HOLD
-        reason = (
+        activadas.append(ReglaActivada(
+            "lista_restrictiva",
+            Decision.REJECT,
+            "Titular incluido en una lista restrictiva.",
+        ))
+
+    if transferencias > velocity.LIMITE:
+        activadas.append(ReglaActivada(
+            "velocidad",
+            Decision.HOLD,
             f"Velocidad: {transferencias} transferencias salientes en "
-            f"{velocity.VENTANA_MIN} minutos desde la misma cuenta."
-        )
-    else:
-        decision = Decision.APPROVE
-        reason = "La transacción no activó las reglas configuradas."
+            f"{velocity.VENTANA_MIN} minutos desde la misma cuenta.",
+        ))
+
+    decision, reason = elegir_decision(activadas)
 
     return {
         "transaction_id": str(payload.id),
         "decision": decision.value,
         "decision_reason": reason,
+        "rules_version": REGLAS_VERSION,
+        "rules_triggered": [r.regla for r in activadas],
         "processed_at": datetime.now(timezone.utc).isoformat(),
     }
 

@@ -9,8 +9,11 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 from sqlalchemy import func
 
+from services.decision_engine import idempotency as idem
 from services.decision_engine import publisher
+from services.decision_engine.decision_service import REGLAS_VERSION
 from services.decision_engine.main import app
+from services.decision_engine.schemas import TransactionRequest
 from services.decision_engine.publisher import MARCA_FALLA, Publicador
 from shared.cache import get_cache
 from shared.db import get_session
@@ -196,6 +199,7 @@ def test_owner_on_restricted_list_is_rejected():
 
     assert response.status_code == 200, response.text
     assert response.json()["decision"] == "REJECT"
+    assert response.json()["rules_triggered"] == ["lista_restrictiva"]
     assert response.json()["decision_reason"] == (
         "Titular incluido en una lista restrictiva."
     )
@@ -297,7 +301,7 @@ def test_database_error_returns_500_and_releases_reservation():
     assert retry.json()["idempotent_replay"] is False
 
 
-def _payloads_p2p(fechas: list[datetime]) -> list[dict]:
+def _payloads_p2p(fechas: list[datetime], en_lista: bool = False) -> list[dict]:
     """Transferencias P2P desde una cuenta del seed, una por fecha.
 
     Se borra el historial de velocidad de la cuenta para no heredar el de
@@ -314,7 +318,12 @@ def _payloads_p2p(fechas: list[datetime]) -> list[dict]:
                 ListaRestrictiva,
                 ListaRestrictiva.documento == DOCUMENTO_NORMALIZADO,
             )
-            .filter(Cuenta.estado == "activa", ListaRestrictiva.id.is_(None))
+            .filter(
+                Cuenta.estado == "activa",
+                ListaRestrictiva.id.isnot(None)
+                if en_lista
+                else ListaRestrictiva.id.is_(None),
+            )
             .order_by(Cuenta.id)
             .first()
         )
@@ -429,3 +438,77 @@ def test_engine_answers_when_sns_is_down(monkeypatch, caplog):
     caido.detener()
     assert caido.fallidos == 1
     assert MARCA_FALLA in caplog.text
+
+
+def test_qr_payments_do_not_count_for_velocity():
+    # La regla habla de transferencias: un pago QR es una compra en un
+    # comercio, así que seis seguidos no se retienen ni entran al historial.
+    cuenta = _cuenta_del_seed(en_lista=False)
+    get_cache().delete(f"vel:{cuenta.id}")
+
+    payloads = [_payload_qr(cuenta) for _ in range(6)]
+
+    assert _decisiones(payloads) == ["APPROVE"] * 6
+    assert get_cache().zcard(f"vel:{cuenta.id}") == 0
+
+
+def test_response_carries_rules_version_and_triggered_rules():
+    payloads = _payloads_p2p(_minutos(0, 1, 2, 3, 4, 5))
+
+    respuestas = [
+        client.post("/transactions", json=p).json() for p in payloads
+    ]
+
+    assert [r["rules_triggered"] for r in respuestas] == (
+        [[]] * 5 + [["velocidad"]]
+    )
+    assert {r["rules_version"] for r in respuestas} == {REGLAS_VERSION}
+
+
+def test_every_triggered_rule_is_kept_and_the_most_severe_wins():
+    # Titular en la lista que además hace seis transferencias seguidas:
+    # se activan las dos reglas y gana el rechazo.
+    payloads = _payloads_p2p(_minutos(0, 1, 2, 3, 4, 5), en_lista=True)
+
+    respuestas = [
+        client.post("/transactions", json=p).json() for p in payloads
+    ]
+
+    assert [r["decision"] for r in respuestas] == ["REJECT"] * 6
+    assert respuestas[-1]["rules_triggered"] == [
+        "lista_restrictiva",
+        "velocidad",
+    ]
+    assert respuestas[-1]["decision_reason"] == (
+        "Titular incluido en una lista restrictiva."
+    )
+
+
+def test_published_event_carries_the_triggered_rules(eventos_publicados):
+    payload = _payload_qr(_cuenta_del_seed(en_lista=True))
+
+    client.post("/transactions", json=payload)
+
+    decision = eventos_publicados[0]["decision"]
+    assert decision["rules_triggered"] == ["lista_restrictiva"]
+    assert decision["rules_version"] == REGLAS_VERSION
+
+
+def test_decision_stored_before_rules_fields_is_still_replayed():
+    # Una decisión guardada en Valkey antes de que existieran
+    # rules_version y rules_triggered se sigue repitiendo sin error.
+    payload = _payload_normal()
+    firma = idem.huella(TransactionRequest(**payload).model_dump(mode="json"))
+    idem.guardar(payload["id"], firma, {
+        "transaction_id": payload["id"],
+        "decision": "APPROVE",
+        "decision_reason": "Decisión vieja.",
+        "processed_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    response = client.post("/transactions", json=payload)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["idempotent_replay"] is True
+    assert response.json()["rules_triggered"] == []
+    assert response.json()["rules_version"] is None
