@@ -121,5 +121,9 @@ class TransactionResponse(BaseModel):
     transaction_id: UUID
     decision: Decision
     decision_reason: str
+    # Con valor por defecto: una decisión guardada en Valkey antes de que
+    # existieran estos campos se puede seguir repitiendo.
+    rules_version: str | None = None
+    rules_triggered: list[str] = []
     processed_at: datetime
     idempotent_replay: bool = False

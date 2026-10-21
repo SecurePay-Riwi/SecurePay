@@ -68,12 +68,16 @@ There is no `user_id`: the owner comes from the account.
   "transaction_id": "6f1c…",
   "decision": "HOLD",
   "decision_reason": "Velocidad: 6 transferencias salientes en 10 minutos desde la misma cuenta.",
+  "rules_version": "2026.10.1",
+  "rules_triggered": ["velocidad"],
   "processed_at": "2026-10-14T00:10:03.512+00:00",
   "idempotent_replay": false
 }
 ```
 
-`idempotent_replay` is `true` when the answer is a stored decision returned to a resend.
+- `rules_triggered` lists **every** rule that fired, not only the one that decided (the statement asks every decision to record the rule version and the rules that fired). It feeds the rule effectiveness analysis and lets the cases consumer open a case only for the rules that require one.
+- `rules_version` is the version of the rules the decision used. While the rules live in the code it is the constant `REGLAS_VERSION` in `decision_service.py`, raised whenever a rule changes; with the rules administration it will come from PostgreSQL.
+- `idempotent_replay` is `true` when the answer is a stored decision returned to a resend. A decision stored before `rules_version` and `rules_triggered` existed is replayed with `null` and `[]`.
 
 ## Status codes
 
@@ -94,7 +98,20 @@ There is no `user_id`: the owner comes from the account.
 | Velocity | `HOLD` | More than 5 outgoing **P2P** transfers in 10 minutes from the same account, measured by event time. |
 | Anything else | `APPROVE` | "La transacción no activó las reglas configuradas." |
 
-The restricted list wins over velocity. The velocity transfer is recorded even when another rule decides, because the attempt to transfer still counts. The other rules (mule account, splitting, shared device, account takeover, default decision on timeout, rules from the database) arrive in Sprint 2.
+Every rule is evaluated, even when one already rejects, and each one that fires adds a `ReglaActivada` (rule name, decision, reason) to a list. `elegir_decision()` turns the list into one decision: **the most severe wins** (`REJECT`, then `HOLD`); with none, `APPROVE`. So an owner on the restricted list who also makes six transfers in a row gets `REJECT` with `rules_triggered: ["lista_restrictiva", "velocidad"]`.
+
+```python
+# services/decision_engine/decision_service.py
+SEVERIDAD = {Decision.APPROVE: 0, Decision.HOLD: 1, Decision.REJECT: 2}
+
+def elegir_decision(activadas: list[ReglaActivada]) -> tuple[Decision, str]:
+    if not activadas:
+        return Decision.APPROVE, MOTIVO_SIN_REGLAS
+    peor = max(activadas, key=lambda r: SEVERIDAD[r.decision])
+    return peor.decision, peor.motivo
+```
+
+`elegir_decision()` is a pure function, so `tests/test_decision_outcomes.py` checks every outcome without PostgreSQL or Valkey. The velocity transfer is recorded even when another rule decides, because the attempt to transfer still counts. The other rules (mule account, splitting, shared device, account takeover, default decision on timeout, rules from the database) arrive in Sprint 2.
 
 ## Request flow
 
