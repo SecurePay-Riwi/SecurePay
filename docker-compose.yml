@@ -1,3 +1,12 @@
+# Full local ecosystem (MAG-32): infrastructure, seed, decision engine,
+# restricted-list API, consumers, generator and partner statements.
+# The satellite repositories must be cloned beside this one.
+#
+#   docker compose up --build -d   build and start everything
+#   docker compose ps              services "healthy", one-shot jobs "Exited (0)"
+#   docker compose down            stop (PostgreSQL data is kept)
+#   docker compose down -v         stop and delete the data
+
 services:
   postgres:
     image: postgres:16
@@ -5,7 +14,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-pagoseguro}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pagoseguro}
       POSTGRES_DB: ${POSTGRES_DB:-pagoseguro}
-    ports: ["5433:5432"]
+    ports: ["5433:5432"]   # 5433 outside so it does not clash with a local PostgreSQL
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -16,9 +25,9 @@ services:
 
   valkey:
     image: valkey/valkey:8
-    command: ["valkey-server", "--appendonly", "yes"]
+    # No persistence on purpose: idempotency keys and account history must
+    # start empty on every run, or a new run inherits the previous one.
     ports: ["6379:6379"]
-    volumes: [valkeydata:/data]
     healthcheck:
       test: ["CMD", "valkey-cli", "ping"]
       interval: 5s
@@ -27,15 +36,20 @@ services:
     restart: unless-stopped
 
   localstack:
+    # Pinned so the whole team uses the same version. Since March 2026 new
+    # versions need an account and token (the Hobby plan is free).
     image: localstack/localstack:2026.09.1
     environment:
       SERVICES: sns,sqs,s3,dynamodb
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-2}
       LOCALSTACK_AUTH_TOKEN: ${LOCALSTACK_AUTH_TOKEN:?Falta LOCALSTACK_AUTH_TOKEN en el .env}
     ports: ["4566:4566"]
+    # Scripts here run once LocalStack is ready: they create the topic,
+    # queues, buckets and the exchange-rates table.
     volumes: [./infra/localstack/init:/etc/localstack/init/ready.d:ro]
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/init/ready | grep -q completed"]
+      # Healthy only after the init scripts finish ("completed": false while running).
+      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/init/ready | grep -q '\"completed\": true'"]
       interval: 5s
       timeout: 5s
       retries: 30
@@ -73,7 +87,14 @@ services:
       IDEMPOTENCY_TTL_SECONDS: ${IDEMPOTENCY_TTL_SECONDS:-3600}
       VELOCITY_WINDOW_MINUTES: ${VELOCITY_WINDOW_MINUTES:-10}
       VELOCITY_LIMIT: ${VELOCITY_LIMIT:-5}
-      VELOCITY_HISTORY_HOURS: ${VELOCITY_HISTORY_HOURS:-24}
+      HISTORY_OUT_HOURS: ${HISTORY_OUT_HOURS:-24}
+      HISTORY_IN_MINUTES: ${HISTORY_IN_MINUTES:-60}
+      DECISION_TIMEOUT_MS: ${DECISION_TIMEOUT_MS:-120}
+      DEFAULT_DECISION_LIMIT_USD: ${DEFAULT_DECISION_LIMIT_USD:-50}
+      DECISION_WORKERS: ${DECISION_WORKERS:-40}
+      MULE_WINDOW_MINUTES: ${MULE_WINDOW_MINUTES:-30}
+      MULE_MIN_SENDERS: ${MULE_MIN_SENDERS:-3}
+      MULE_WITHDRAWN_PCT: ${MULE_WITHDRAWN_PCT:-80}
       PUBLISH_BATCH_WAIT_MS: ${PUBLISH_BATCH_WAIT_MS:-500}
       PUBLISH_BUFFER_SIZE: ${PUBLISH_BUFFER_SIZE:-10000}
       PUBLISH_RETRIES: ${PUBLISH_RETRIES:-3}
@@ -175,7 +196,6 @@ services:
 
 volumes:
   pgdata:
-  valkeydata:
   seed-data:
   generated-data:
   kaggle-data:
