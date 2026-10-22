@@ -70,6 +70,7 @@ A resent transaction gets the same decision for 1 hour (`IDEMPOTENCY_TTL_SECONDS
 - **Attempts count, whatever the decision.** The history is written before deciding, in a single call; the statement does not say, and an attempt is already the signal. Every decision still records its triggered rules.
 - Amounts are kept in the account's currency; USD arrives when the engine reads the exchange rates (default-decision story).
 - Memory, measured in Valkey with realistic members (~70 bytes per entry): ~3.7 M outgoing entries alive at 50 tx/s, ~260 MB plus ~100 MB of keys. It replaces the 100–200 MB of "24 h sums" already in the 300 MB estimate and the ~100 MB velocity history noted above, so the cache would be ~400–450 MB (~$8/month more). To confirm in the load test.
+- **Device history (HU-14, Habith, 2026-10-22).** The first design had the history consumer keep the device-account pairs in DynamoDB. The engine writes them itself in Valkey instead, like the rest of the history: `dev:{device}`, one member per account scored by the last time it was seen, kept 30 days, written before deciding. Reading DynamoDB inside the 200 ms is not needed; DynamoDB stays for the durable copy and the device network analysis.
 
 ## Data for the seed and the generator
 

@@ -201,6 +201,11 @@ Read this before adding or changing a rule in `services/decision_engine/`.
   - `in:{account}`: `P2P` received, member `id|sender_account|amount`, kept 60 min
     (`HISTORY_IN_MINUTES`). `record_incoming()` writes it; `incoming()`
     reads it. **The mule rule (HU-13) reads incoming transfers from here.**
+  - `dev:{device}`: the accounts that used a device, member `account_id`
+    scored by the last time it was seen, kept 30 days
+    (`HISTORY_DEVICE_DAYS`). `record_device()` writes the main account
+    (source; in a top-up, destination) on every transaction and returns
+    the set, which reaches the rules as `RuleContext.device_accounts`.
   - Recharges are not recorded. Attempts count whatever the decision: the
     history is written before deciding (team decision, 2026-10-21).
   - One key per Lua script: ElastiCache Serverless may put two keys on
@@ -219,6 +224,11 @@ Read this before adding or changing a rule in `services/decision_engine/`.
   different senders in `in:{account}` in the 30 min before it, and the
   withdrawal is 80 % or more of `source_balance_before` (the core's
   balance; the engine keeps none). Thresholds: the catalog's `mule` entry.
+- Shared device (`rules/shared_device.py`, HU-14) runs on every
+  transaction: more than 3 different accounts in `dev:{device}` in the
+  last 30 days. By default `APPROVE` with score 30: it raises
+  `risk_score`, it does not hold. Thresholds: the catalog's
+  `shared_device` entry.
 - **A decision says whether it opens a case** (`opens_case`): true when a
   rule whose catalog entry has `opens_case` fired, by default
   `restricted_list` and `mule` (team decision 2026-10-13; splitting joins

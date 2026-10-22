@@ -1,15 +1,18 @@
 """Per-account movement history in Valkey, ordered by event time. Read
 by the rules that look at the account's past.
 
-Two sorted sets per account, scored by transaction_date in milliseconds
-(an event that arrives late lands in its real place, not at the end):
+Sorted sets scored by transaction_date in milliseconds (an event that
+arrives late lands in its real place, not at the end):
 
 - `out:{account}`: what leaves the account (P2P, QR and withdrawal).
-  Member `id|type|amount`. Used by velocity (10 min) and, later,
-  splitting (24 h).
+  Member `id|type|amount`. Used by velocity (10 min) and splitting
+  (24 h).
 - `in:{account}`: incoming P2P transfers. Member `id|sender|amount`.
   Used by the mule account rule (30 min): it needs the senders and the
   amount received to compare it with what is withdrawn.
+- `dev:{device}`: the accounts that used a device. Member the account
+  id, scored by the last time it was seen (ZADD moves it). Used by the
+  shared device rule (30 days).
 
 A top-up is not stored: it does not come from another account and no
 money leaves.
@@ -31,12 +34,14 @@ from shared.cache import get_cache
 
 OUT_HOURS = int(os.getenv("HISTORY_OUT_HOURS", "24"))
 IN_MINUTES = int(os.getenv("HISTORY_IN_MINUTES", "60"))
+DEVICE_DAYS = int(os.getenv("HISTORY_DEVICE_DAYS", "30"))
 
-if OUT_HOURS <= 0 or IN_MINUTES <= 0:
+if OUT_HOURS <= 0 or IN_MINUTES <= 0 or DEVICE_DAYS <= 0:
     raise ValueError("History retention must be positive.")
 
 OUT_MS = OUT_HOURS * 3600 * 1000
 IN_MS = IN_MINUTES * 60 * 1000
+DEVICE_MS = DEVICE_DAYS * 24 * 3600 * 1000
 
 # Everything in one script so two requests for the same account do not
 # overlap: Valkey runs a whole script before serving another command.
@@ -76,12 +81,22 @@ class Incoming:
     t: int
 
 
+@dataclass(frozen=True)
+class DeviceUse:
+    account: str
+    t: int  # last time the account used the device, in ms
+
+
 def outgoing_key(account_id) -> str:
     return f"out:{account_id}"
 
 
 def incoming_key(account_id) -> str:
     return f"in:{account_id}"
+
+
+def device_key(device_id) -> str:
+    return f"dev:{device_id}"
 
 
 def to_ms(date) -> int:
@@ -143,3 +158,15 @@ def incoming(account_id) -> list[Incoming]:
         id_, sender, amount = m.split("|")
         result.append(Incoming(id_, sender, amount, int(t)))
     return result
+
+
+def record_device(device_id, account_id, date) -> list[DeviceUse]:
+    """Store that the account used the device and return every account
+    retained for it, with the last time each one was seen.
+
+    An event older than the one already stored for that account moves
+    its last time back; that only shortens how long it is kept.
+    """
+    raw = record(device_key(device_id), str(account_id), date, DEVICE_MS,
+                 return_history=True)
+    return [DeviceUse(m, int(float(t))) for m, t in _pairs(raw)]
