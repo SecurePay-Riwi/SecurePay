@@ -5,7 +5,7 @@ sidebar_position: 5
 # Sprint backlog 3
 ## Advanced Rules + Initial AWS Setup
 
-**Sprint Goal:** Have the system's foundation up and running: data generated, the ingestion pipeline operational, and the architecture documented, so that the team can begin building the anti-fraud engine on a solid and reproducible foundation
+**Sprint Goal:** Make every antifraud rule configurable, versioned and switchable through an API without a redeploy (RF-03, RN-08, CA-06), add the shared device, splitting and account takeover rules, and build the first AWS infrastructure with Terraform: network, IAM, security groups, S3 and RDS, with the cost analysis v1.
 
 **Sprint Period:**
 **Scrum Master / Leader:** Habith  
@@ -15,14 +15,30 @@ sidebar_position: 5
 
 ## User Stories & Tasks Table
 
-| User Story | Epic | Description | MoSCoW |
-|---|---|---|---|
-| HU-14 | EP-03 | Risk associated with shared devices | Should |
-| HU-15 | EP-03 | Detect transaction splitting | Should |
-| HU-17 | EP-03 | Detect account takeover | Should |
-| HU-19 | EP-04 | Create anti-fraud rules through an API | Must |
-| HU-20 | EP-04 | Modify rules without redeployment | Must |
-| HU-21 | EP-04 | Enable / disable rules | Must |
-| HU-22 | EP-04 | Version rules | Must |
-| HU-23 | EP-04 | Identify the rule version that produced a decision | Should |
-| HU-55 | EP-11 | Design the AWS network: VPC, subnets, IAM, and Security Groups | Must |
+| User Story | Jira | Epic | Description | MoSCoW | Owner |
+|---|---|---|---|---|---|
+| HU-14 | MAG-129 | EP-03 | Risk associated with shared devices | Should | Habith |
+| HU-15 | MAG-131 | EP-03 | Detect transaction splitting | Should | Habith |
+| HU-17 | MAG-132 | EP-03 | Detect account takeover | Should | Jorge |
+| HU-19 | MAG-133 | EP-04 | Create anti-fraud rules through an API | Must | Yulianis |
+| HU-20 | MAG-134 | EP-04 | Modify rules without redeployment | Must | Yulianis |
+| HU-21 | MAG-135 | EP-04 | Enable / disable rules | Must | Yulianis |
+| HU-22 | MAG-136 | EP-04 | Version rules | Must | Yulianis |
+| HU-23 | MAG-137 | EP-04 | Identify the rule version that produced a decision | Should | Habith |
+| HU-55 | MAG-138 | EP-11 | Design the AWS network: VPC, subnets, IAM, and Security Groups | Must | Jorge |
+| HU-56 | MAG-139 | EP-11 | S3, RDS and cost analysis v1 | Must | Jorge |
+
+## How the work is split
+
+The sprint is split **by module**, so each person works on their own part of the code and nobody waits for or collides with another person in the same files:
+
+- **Yulianis** takes the whole rule catalog, in order: HU-19 → HU-20 → HU-21 → HU-22. One line of work in one module.
+- **Jorge** takes AWS (HU-55 → HU-56), where he is strongest, and account takeover (HU-17), which he can interleave.
+- **Habith**, as Scrum Master, keeps the lightest load because he reviews and integrates: first a refactor ("step 0", PR #49) that puts the shared shape of the catalog in the code, then HU-14 → HU-15, and HU-23 at the end.
+
+## Dependencies and waits
+
+- HU-20, HU-21 and HU-22 depend on HU-19; HU-23 depends on HU-22; HU-56 depends on HU-55 (see [Dependencies](./hu-dependencies.mdx)).
+- Step 0 had to land before any work on rules. It is in `main` since October 22, so nobody waits for it anymore.
+- The only wait between people is **HU-23 (Habith) after HU-22 (Yulianis)**, so HU-23 goes last.
+- At the end of the sprint every rule, old and new, is managed through the catalog: a threshold changed through the API is used by the next decision, which records the new version, without restarting the engine (CA-06).

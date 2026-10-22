@@ -15,17 +15,24 @@ sidebar_position: 4
 
 ## User Stories & Tasks Table
 
-| HU | Epic | Description | MoSCoW |
-| :--- | :--- | :--- | :--- |
-| HU-10 | EP-03 | APPROVE / HOLD / REJECT decision | Must |
-| HU-11 | EP-03 | Evaluate rules using user history | Must |
-| HU-12 | EP-03 | Detect multiple outgoing transfers | Must |
-| HU-13 | EP-03 | Detect money-mule pattern | Must |
-| HU-16 | EP-03 | Reject transactions on restricted lists | Must |
-| HU-18 | EP-03 | Default decision if engine exceeds 200 ms | Must |
-| HU-33 | EP-06 | Check restricted lists before deciding | Must |
-| HU-63 | EP-12 | Package components into Docker images | Must |
-| HU-64 | EP-12 | Spin up entire ecosystem with a single command | Must |
+| HU | Epic | Description | MoSCoW | Owner | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| HU-10 | EP-03 | APPROVE / HOLD / REJECT decision | Must | Jorge | Done (PR #36) |
+| HU-11 | EP-03 | Evaluate rules using user history | Must | Jorge | Done (PR #37) |
+| HU-12 | EP-03 | Detect multiple outgoing transfers | Must | Jorge | Done (PR #37) |
+| HU-13 | EP-03 | Detect money-mule pattern | Must | Habith | Done (PR #40) |
+| HU-16 | EP-03 | Reject transactions on restricted lists | Must | Habith | Done |
+| HU-18 | EP-03 | Default decision if engine exceeds 200 ms | Must | Habith | Done (PR #39) |
+| HU-33 | EP-06 | Check restricted lists before deciding | Must | Yulianis | Done (PR #42) |
+| HU-63 | EP-12 | Package components into Docker images | Must | Yulianis | Done (PR #43) |
+| HU-64 | EP-12 | Spin up entire ecosystem with a single command | Must | Yulianis | Done (PR #43) |
+
+## Sprint result
+
+All nine stories were merged into `main` by October 21, 2026, with 256 tests passing. The engine decides with three rules (restricted list, velocity, mule account), applies the default decision when the rules take longer than 120 ms, records every triggered rule, and the whole environment starts with one Docker Compose command. Two criteria are covered only in part and continue in later stories:
+
+- HU-13, criterion 2 ("a case is generated"): the engine marks the decision with `opens_case`; the case itself is created by the cases consumer (HU-25, Sprint 4).
+- HU-33: the restricted list is checked for every party, in PostgreSQL. Loading it into Valkey comes in a later story.
 
 ## Acceptance Criteria
 

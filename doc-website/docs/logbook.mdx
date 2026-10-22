@@ -360,4 +360,24 @@ There is no order yet; we have a list of what the client wants:
 - PR #42 merged: the restricted list is checked for every party before the other rules (Yulianis).
 - PR #43 merged: a Docker image for the engine and for each source repository, and the whole environment started with one command (Yulianis, Habith).
 - PRs #45, #46 and `securepay-apis` #6 merged: Swagger documents every status code of the engine and the restricted list service, with examples; this site got a light/dark theme switch (Jorge).
+- PR #47 merged: this site brought up to date after Sprint 2 (test counts, Kaggle history table, rates table, variables per repository, logbook and PR history) (Jorge).
+- PR #48 and its twins in the four source repositories merged: the Git workflow conventions (commit format, branch names, pull request flow and template) in every `AGENTS.md` (Jorge).
 - All Sprint 2 stories merged.
+- Sprint 3 planned: Sprints 3 to 6 created in Jira with their stories. Sprint 3 is split by module so the three people work in parallel without touching the same files: Yulianis takes the rule catalog (HU-19 → HU-22), Jorge the AWS infrastructure (HU-55 → HU-56) and account takeover (HU-17), and Habith a first refactor ("step 0"), shared device (HU-14), splitting (HU-15) and the rule version per decision (HU-23, after HU-22). Every rule, old and new, is configured through the catalog (see [Team decisions](./architecture/team-decisions.mdx)).
+
+---
+
+**10/22/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Sprint 3 start  
+
+**Description:**  
+- PR #49 merged ("step 0"): the rules read their thresholds, decision, case flag and score from a rule catalog (`shared/rule_catalog.py`); one module per rule in `services/decision_engine/rules/`; `rules_version` is the catalog version (`"0"` for the defaults in the code) and decisions carry `risk_score`. `VELOCITY_*`, `MULE_*` and `DEFAULT_DECISION_LIMIT_USD` are no longer environment variables. Decisions did not change (Habith).
+- PR #50 merged: this site brought up to date with PRs #47 to #49, the Git conventions on the Contributing page and the Sprint 2 and 3 backlogs.

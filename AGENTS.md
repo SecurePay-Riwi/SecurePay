@@ -32,7 +32,7 @@ SecurePay/                  ← this repo: the product (engine, consumers, infra
 │   ├── events.py           ← transaction.decided event format (used only by services/)
 │   └── rule_catalog.py     ← rule catalog models and defaults (used only by services/)
 ├── services/
-│   ├── decision_engine/    ← FastAPI antifraud engine (HU-05, HU-06, HU-07)
+│   ├── decision_engine/    ← FastAPI antifraud engine (rules in rules/, catalog in catalog.py)
 │   └── consumers/          ← SNS/SQS consumers and analytics
 ├── infra/                  ← LocalStack setup (init scripts create the SNS/SQS
 │                             messaging, S3 buckets and the exchange-rates DynamoDB
@@ -135,29 +135,36 @@ stop and ask instead of working around it.
 
 ---
 
-## Sprint state (as of 2026-10-20)
+## Sprint state (as of 2026-10-22)
 
 ### Sprint 1 — Done ✅
 - Seed + generator + Kaggle ETL + partner statements + exchange rates + restricted list API
-- Decision engine skeleton + HU-05 (restricted list reject)
+- Decision engine skeleton + restricted list reject
 - LocalStack + Docker Compose
 - Docusaurus doc site
 
-### Docs milestone — Done ✅ (between sprints)
-- `CLAUDE.md` — AI context file committed to monorepo (PR #29)
-- `README.md` — updated with `securepay-shared` PyPI section + satellite repo table (PR #30)
-- READMEs for all 4 satellite repos committed (PR #2 in each repo)
-- Docusaurus updated: satellite repo badges on all component pages, multi-repo table in
-  run-data-sources, intro.mdx section 6 rewritten, kaggle-datasets stale refs fixed (PR #32)
+### Sprint 2 — Done ✅ (Jira numbering)
+| HU | Description | Owner | PR |
+|----|-------------|-------|----|
+| HU-10 | APPROVE / HOLD / REJECT decision | Jorge | #36 |
+| HU-11, HU-12 | Account history, velocity (RN-02) | Jorge | #37 |
+| HU-13 | Mule account (RN-03) | Habith | #40 |
+| HU-16 | Restricted list reject (RN-06) | Habith | — |
+| HU-18 | Default decision on timeout (RN-01) | Habith | #39 |
+| HU-33 | Restricted list checked for every party | Yulianis | #42 |
+| HU-63, HU-64 | Docker images, full stack with one command | Yulianis | #43 |
 
-### Sprint 2 — In progress
-| HU | Description | Owner | Status |
-|----|-------------|-------|--------|
-| HU-06 | Reject by restricted list (RN-06) | Jorge | ✅ Done |
-| HU-07 | Rules with history (RN-02, RN-03) | Yulianis | 🔄 In progress |
-| HU-08 | Velocity / mule / list pre-check in cache | Habith | 🔄 Starting |
-| HU-09 | Docker images per component | Yulianis | 🔄 In progress |
-| HU-10 | Docker Compose full stack | Unassigned | ⏳ Pending |
+### Sprint 3 — In progress
+Split by module so the three work in parallel. "Step 0" (PR #49, rule
+catalog in code) is merged; the only wait between people is HU-23 after HU-22.
+
+| HU | Jira | Description | Owner |
+|----|------|-------------|-------|
+| HU-19 → HU-22 | MAG-133..136 | Rules API, change without redeploy, enable/disable, versioning | Yulianis |
+| HU-55 → HU-56 | MAG-138, MAG-139 | AWS with Terraform: network, IAM, SGs; S3, RDS, costs v1 | Jorge |
+| HU-17 | MAG-132 | Account takeover (RN-07) | Jorge |
+| HU-14, HU-15 | MAG-129, MAG-131 | Shared device (RN-04), splitting (RN-05) | Habith |
+| HU-23 | MAG-137 | Rule version per decision (after HU-22) | Habith |
 
 ---
 
