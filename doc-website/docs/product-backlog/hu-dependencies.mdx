@@ -50,7 +50,7 @@ A dependency indicates that a User Story cannot start or be completed without an
 | :--- | :--- | :--- |
 | HU-14 | HU-11 | Device risk requires history |
 | HU-15 | HU-11 | Structuring requires transaction history |
-| HU-17 | HU-11, HU-14 | Account takeover combines history and devices |
+| HU-17 | HU-11 | Account takeover needs the device and password change events per account; it does not use the shared-device data of HU-14, so both can be built in parallel |
 | HU-19 | HU-10 | Rules are created on the existing engine |
 | HU-20 | HU-19 | Cannot modify what does not exist |
 | HU-21 | HU-19 | Cannot enable or disable what does not exist |
@@ -121,7 +121,7 @@ A dependency indicates that a User Story cannot start or be completed without an
 
 - HU-01 → HU-02, 03, 04, 05
 - HU-05 → HU-06 → HU-07, 08, 09
-- HU-06 → HU-10 → HU-11 → HU-12, 13, 14, 15
+- HU-06 → HU-10 → HU-11 → HU-12, 13, 14, 15, 17
 - HU-10 → HU-16, 18, 19, 25
 - HU-19 → HU-20, 21, 22 → HU-23
 - HU-25 → HU-26 → HU-27 → HU-30 → HU-31, 32

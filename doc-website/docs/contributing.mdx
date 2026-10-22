@@ -44,25 +44,33 @@ SecurePay/
 └── db/, generators/, sources/   # backup from before the split; do not edit
 ```
 
-Coming later: `services/admin-api/`, `services/scheduled/`, `jobs/` (PySpark) and Terraform under `infra/`. Shared code that the engine and Spark must run identically, like the **rule interpreter**, goes in `shared/`.
+Coming later: `services/rules_api/` (the rules API, HU-19), `services/scheduled/`, `jobs/` (PySpark) and Terraform under `infra/`. Shared code that the engine and Spark must run identically, like the **rule interpreter**, goes in `shared/`.
 
 Folders use underscores (`decision_engine`, not `decision-engine`) because Python cannot import modules with hyphens.
 
+These conventions apply to every repository of the SecurePay-Riwi organization; they are also in each repository's `AGENTS.md` (PR #48).
+
 ## Branches
+
+`type/TICKET-short-description`, lowercase with hyphens. The ticket is the Jira key.
 
 | Branch | Use |
 | :--- | :--- |
 | `main` | Always working. Only changes through pull requests. |
-| `feature/<short-name>` | New work, e.g. `feature/async-messaging`. |
-| `refactor/<short-name>` | Restructuring without behavior changes. |
-| `docs/<short-name>` | Documentation only. |
-| `hotfix/<short-name>` | Urgent fixes to `main`. |
+| `feature/MAG-123-short-name` | New work, e.g. `feature/MAG-129-shared-device`. |
+| `bugfix/MAG-123-short-name` | A fix that is not urgent. |
+| `hotfix/MAG-123-short-name` | Urgent fixes to `main`. |
+| `refactor/MAG-123-short-name` | Restructuring without behavior changes. |
+| `test/MAG-123-short-name` | Tests only. |
+| `doc/MAG-123-short-name` | Documentation only. |
 
-There is no `develop` branch today: feature branches merge straight into `main` through pull requests.
+Branches that already exist keep their names. There is no `develop` branch: branches merge straight into `main` through pull requests.
 
 ## Commits
 
-- In **English**, in the [Conventional Commits](https://www.conventionalcommits.org/) style: `feat(decision-engine): …`, `fix(seed): …`, `docs: …`, `test: …`, `chore: …`.
+- In **English**, in the [Conventional Commits](https://www.conventionalcommits.org/) style: `type(scope): description`. Types: `feat`, `fix`, `perf`, `build`, `ci`, `docs`, `refactor`, `style`, `test`, `chore`. The scope is the component or the Jira key: `feat(MAG-31): …`, `fix(seed): …`.
+- Imperative mood ("add", not "added"), no final period, a title of 50 characters or less; extra context goes in the body. Reference issues with `closes #12`.
+- No `Co-Authored-By` lines.
 - One logical change per commit. Commits made before October 13, 2026 are in Spanish and stay that way.
 - Never commit `.env`, tokens or passwords. `.env.example` lists every variable with safe defaults.
 
@@ -70,9 +78,14 @@ There is no `develop` branch today: feature branches merge straight into `main` 
 
 1. Branch from an up-to-date `main`.
 2. Run `uv run pytest` with PostgreSQL (seeded), Valkey and LocalStack up.
-3. Update the repository `README.md` and these docs when you add setup steps, environment variables or ways to run something.
-4. Open the PR against `main` with a title and description in English: what a reader would see before and after, and how it was done.
-5. Another team member reviews before merging.
+3. Update the repository `README.md`, these docs and `AGENTS.md` when you add setup steps, environment variables or ways to run something.
+4. Keep it small: ideally under 10 files and a few hundred lines. Open it as **Draft** while it is in progress, with a title in the commit format.
+5. The description follows the organization template ([`pull_request_template.md`](https://github.com/SecurePay-Riwi/.github/blob/main/pull_request_template.md)): Context (with the Jira key), Type of change, Before / After, How and why, Missing, How to test (exact commands, where they run and the expected result) and Checklist.
+6. At least one other team member reviews before merging. Prefer **Squash and merge**, and delete the branch after the merge.
+
+## Continuous integration
+
+`.github/workflows/docker-validation.yml` runs on every pull request to `main` that touches the `Dockerfile`, `docker-compose.yml`, `.dockerignore`, a `pyproject.toml` or `uv.lock`, `README.md`, `AGENTS.md` or the local setup page, and on pushes to `main` that touch the Docker files or dependencies. It checks out this repository and the four source repositories side by side, validates the Compose file, builds every image and starts the whole environment, checking the health endpoints. The test suite does not run in CI yet (EP-12).
 
 ## Documentation site
 
@@ -127,5 +140,9 @@ npm run start
 | #43 | Docker image of the engine and the whole environment with one command (Yulianis, Habith) |
 | #45 | Every engine status code and examples in Swagger; light/dark theme switch on this site |
 | #46 | Swagger docs tests restored |
+| #47 | Site brought up to date after Sprint 2 (Jorge) |
+| #48 | Git workflow conventions in `AGENTS.md`, also in the four source repositories (Jorge) |
+| #49 | Engine: rules read from a rule catalog ("step 0" of Sprint 3) (Habith) |
+| #50 | Site up to date with #47 to #49 and the Git conventions on this page |
 
-The source repositories keep their own history: in each one, PR #1 brought the code from the monorepo, #2 the README and #3 made it install and run on its own (October 19–20). After that, `securepay-apis` #4 stores the daily rates in DynamoDB, `securepay-generator` #4 converts each amount with the rate of its own date `securepay-generator` #5 uses the engine's English rule names, each repository got its Docker image (Yulianis), and `securepay-apis` #6 documents the restricted list endpoints in Swagger.
+The source repositories keep their own history: in each one, PR #1 brought the code from the monorepo, #2 the README and #3 made it install and run on its own (October 19–20). After that, `securepay-apis` #4 stores the daily rates in DynamoDB, `securepay-generator` #4 converts each amount with the rate of its own date, `securepay-generator` #5 uses the engine's English rule names, each repository got its Docker image (Yulianis), `securepay-apis` #6 documents the restricted list endpoints in Swagger, and the Git workflow conventions reached every `AGENTS.md` (seed #5, generator #7, csv #5, apis #7).

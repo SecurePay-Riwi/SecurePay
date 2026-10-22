@@ -71,7 +71,7 @@ It runs on AWS (Ohio, `us-east-2`, two Availability Zones), managed services fir
 | Batch processing | **PySpark** on EMR Serverless (planned) |
 | Local environment | **Docker Compose** and **LocalStack**, which emulates AWS on a laptop |
 | AWS | ALB, ECS Fargate, Lambda, ElastiCache Serverless, RDS, DynamoDB, S3, Step Functions, EventBridge Scheduler, Glue, Athena |
-| Infrastructure and CI/CD | **Terraform** and **GitHub Actions** (planned) |
+| Infrastructure and CI/CD | **Terraform** (planned) and **GitHub Actions** (Docker images validated on every pull request; tests in CI planned) |
 | Dashboard | **Power BI** |
 | Documentation | **Docusaurus**, deployed to GitHub Pages |
 
@@ -117,7 +117,7 @@ SecurePay/
 | :--- | :--- | :--- |
 | [Seed](./components/seed.mdx) | `securepay-seed`: `src/securepay_seed/` | Done: users, accounts, devices, device–account pairs, merchants and restricted lists in PostgreSQL. |
 | [Transaction generator](./components/generator.mdx) | `securepay-generator`: `src/securepay_generator/` | Done: plays the wallet core, with labeled fraud patterns and data defects. |
-| [Decision engine](./components/decision-engine.mdx) | `SecurePay`: `services/decision_engine/` | Running with three rules (restricted list, velocity and mule account), the default decision when the rules time out, idempotency and a per-account history in Valkey. Splitting, shared device, account takeover and rules managed through an API come in later stories. |
+| [Decision engine](./components/decision-engine.mdx) | `SecurePay`: `services/decision_engine/` | Running with three rules (restricted list, velocity and mule account), the default decision when the rules time out, idempotency and a per-account history in Valkey. The rules read their thresholds from a rule catalog (defaults in the code for now). Splitting, shared device, account takeover and the API that manages the catalog come in Sprint 3. |
 | [Messaging](./components/messaging.mdx) | `SecurePay`: `services/decision_engine/publisher.py`, `infra/localstack/` | Done locally: SNS topic, three SQS queues with dead-letter queues, on LocalStack. |
 | [Consumers](./components/consumers.mdx) | `SecurePay`: `services/consumers/` | Analytics writes to S3; cases and history are skeletons. |
 | [Partner statements](./components/partner-statements.mdx) | `securepay-csv`: `src/securepay_csv/partner_statements/` | Done: daily files of the four payment partners, with their defects, locally and in LocalStack. |
