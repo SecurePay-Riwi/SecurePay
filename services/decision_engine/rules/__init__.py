@@ -9,7 +9,11 @@ from services.decision_engine.rules import (
     mule,
     restricted_list,
     shared_device,
+    splitting,
     velocity,
 )
 
-REGISTRY = {m.TYPE: m for m in (restricted_list, velocity, mule, shared_device)}
+REGISTRY = {
+    m.TYPE: m
+    for m in (restricted_list, velocity, mule, shared_device, splitting)
+}
