@@ -8,6 +8,14 @@ description: Decisions taken by the team while building Sprint 1, and why.
 
 Smaller decisions than the [ADRs](./decisions.mdx), taken while building. Each one says what was decided and why.
 
+## Every rule is configured by the catalog
+
+**Decided on 2026-10-21.**
+
+All the rules, the Sprint 2 ones (restricted list, velocity, mule account) and the new ones (shared device, splitting, account takeover), read their thresholds, their decision, whether they open a case and their risk score from the rule catalog (`shared/rule_catalog.py`), not from the code or from environment variables. Each decision records the catalog version it used.
+
+**Why.** The assignment asks that rules can be created, versioned, enabled and disabled through an API without a redeploy, and that every decision records the rule version (RF-03, RN-08, CA-06). Three people build the catalog and the new rules at the same time in Sprint 3; with one shared shape, each new rule is connected to the catalog from its first line instead of being rewritten at the end of the sprint. Until the rules API (HU-19) publishes a catalog, the engine uses the defaults in the code (version 0). See [Rules and the catalog](../components/decision-engine.mdx#rule-catalog).
+
 ## Which held transactions open a case
 
 **Decided by the team on 2026-10-13.**

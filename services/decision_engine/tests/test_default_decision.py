@@ -13,7 +13,7 @@ from uuid import uuid4
 
 import pytest
 
-from services.decision_engine import currency
+from services.decision_engine import catalog, currency
 from services.decision_engine import decision_service as ds
 from services.decision_engine.schemas import TransactionRequest
 
@@ -45,13 +45,13 @@ def _payload(amount: str, currency_code: str = "USD") -> TransactionRequest:
 
 
 def _rules_answer(decision: str, delay_s: float = 0):
-    def fake_decide(session, payload):
+    def fake_decide(session, payload, snapshot):
         time.sleep(delay_s)
         return {
             "transaction_id": str(payload.id),
             "decision": decision,
             "decision_reason": "rules answered",
-            "rules_version": ds.RULES_VERSION,
+            "rules_version": str(snapshot.version),
             "rules_triggered": [],
             "by_default": False,
             "processed_at": datetime.now(timezone.utc).isoformat(),
@@ -66,8 +66,8 @@ def slow_rules(monkeypatch):
     late = threading.Event()
     slow = _rules_answer("REJECT", delay_s=ds.TIMEOUT_MS / 1000 * 3)
 
-    def decide(session, payload):
-        result = slow(session, payload)
+    def decide(session, payload, snapshot):
+        result = slow(session, payload, snapshot)
         late.set()
         return result
 
@@ -104,7 +104,7 @@ def test_rules_in_time_return_their_own_decision(monkeypatch):
 
 def test_default_decision_is_never_reject():
     for amount in ("0.01", "50.00", "999999.00"):
-        result = ds.default_decision(_payload(amount))
+        result = ds.default_decision(_payload(amount), catalog.current())
         assert result["decision"] in {"APPROVE", "HOLD"}
 
 

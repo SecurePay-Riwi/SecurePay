@@ -105,7 +105,8 @@ SecurePay/
 │   ├── config.py               # env vars and constants
 │   ├── aws.py                  # boto3 client factory (LocalStack-aware)
 │   ├── cache.py                # Valkey client (services/ only)
-│   └── events.py               # transaction.decided event (services/ only)
+│   ├── events.py               # transaction.decided event (services/ only)
+│   └── rule_catalog.py         # rule catalog models and defaults (services/ only)
 ├── infra/localstack/           # creates SNS, SQS, S3 and DynamoDB in LocalStack
 ├── doc-website/                # this site
 ├── docker-compose.yml          # PostgreSQL, Valkey and LocalStack

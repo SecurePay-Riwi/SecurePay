@@ -11,7 +11,7 @@ from sqlalchemy import func
 
 from services.decision_engine import idempotency as idem
 from services.decision_engine import publisher
-from services.decision_engine.decision_service import RULES_VERSION
+from services.decision_engine import catalog
 from services.decision_engine.main import app
 from services.decision_engine.schemas import TransactionRequest
 from services.decision_engine.publisher import MARCA_FALLA, Publicador
@@ -464,7 +464,7 @@ def test_response_carries_rules_version_and_triggered_rules():
     assert [r["rules_triggered"] for r in respuestas] == (
         [[]] * 5 + [["velocity"]]
     )
-    assert {r["rules_version"] for r in respuestas} == {RULES_VERSION}
+    assert {r["rules_version"] for r in respuestas} == {str(catalog.current().version)}
 
 
 def test_every_triggered_rule_is_kept_and_the_most_severe_wins():
@@ -493,7 +493,7 @@ def test_published_event_carries_the_triggered_rules(eventos_publicados):
 
     decision = eventos_publicados[0]["decision"]
     assert decision["rules_triggered"] == ["restricted_list"]
-    assert decision["rules_version"] == RULES_VERSION
+    assert decision["rules_version"] == str(catalog.current().version)
 
 
 def test_decision_stored_before_rules_fields_is_still_replayed():
@@ -617,6 +617,7 @@ def test_restricted_list_precheck_covers_all_parties_before_velocity(monkeypatch
     from types import SimpleNamespace
 
     from services.decision_engine import decision_service
+    from services.decision_engine.rules import velocity
     from services.decision_engine.schemas import TransactionRequest
     from shared.models import ListaRestrictiva
 
@@ -675,7 +676,7 @@ def test_restricted_list_precheck_covers_all_parties_before_velocity(monkeypatch
         events.append("velocity_rule_evaluated")
         return 0
 
-    monkeypatch.setattr(decision_service.velocity, "count", count_velocity)
+    monkeypatch.setattr(velocity, "count", count_velocity)
 
     payload = TransactionRequest(
         id=uuid4(),
@@ -694,7 +695,7 @@ def test_restricted_list_precheck_covers_all_parties_before_velocity(monkeypatch
         transaction_date=datetime.now(timezone.utc),
     )
 
-    result = decision_service._decide(FakeSession(), payload)
+    result = decision_service._decide(FakeSession(), payload, catalog.current())
 
     assert set(queried_documents) == {source_document, destination_document}
     assert result["decision"] == "REJECT"

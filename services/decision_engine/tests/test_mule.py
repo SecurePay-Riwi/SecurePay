@@ -13,7 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func
 
-from services.decision_engine import mule
+from services.decision_engine.rules import mule
 from services.decision_engine.history import Incoming
 from services.decision_engine.main import app
 from shared.cache import get_cache
@@ -213,20 +213,21 @@ def _incoming(*pairs):
 
 
 def test_senders_counts_different_accounts_inside_the_window():
-    t = mule.WINDOW_MS * 2
+    window_ms = 30 * 60 * 1000
+    t = window_ms * 2
     incoming = _incoming(
-        ("a", t - mule.WINDOW_MS),      # exactly 30 min before: out
-        ("b", t - mule.WINDOW_MS + 1),  # just inside
+        ("a", t - window_ms),      # exactly 30 min before: out
+        ("b", t - window_ms + 1),  # just inside
         ("b", t - 1000),
         ("c", t),
         ("d", t + 1),                   # after the withdrawal: out
     )
 
-    assert mule.senders(incoming, t) == 2
+    assert mule.senders(incoming, t, 30) == 2
 
 
 def test_withdraws_enough_compares_with_the_balance_before():
-    assert mule.withdraws_enough(Decimal("80"), Decimal("100"))
-    assert not mule.withdraws_enough(Decimal("79.99"), Decimal("100"))
+    assert mule.withdraws_enough(Decimal("80"), Decimal("100"), Decimal("80"))
+    assert not mule.withdraws_enough(Decimal("79.99"), Decimal("100"), Decimal("80"))
     assert mule.withdrawn_pct(Decimal("90"), Decimal("100")) == Decimal("90.0")
     assert mule.withdrawn_pct(Decimal("5"), Decimal("0")) == Decimal("100")
