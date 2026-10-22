@@ -29,7 +29,8 @@ SecurePay/                  ← this repo: the product (engine, consumers, infra
 │   ├── config.py           ← DATABASE_URL, FECHA_REFERENCIA, CANALES, MONEDA_DECIMALES
 │   ├── aws.py              ← boto3 client factory (LocalStack-aware via AWS_ENDPOINT_URL)
 │   ├── cache.py            ← Valkey client (used only by services/)
-│   └── events.py           ← transaction.decided event format (used only by services/)
+│   ├── events.py           ← transaction.decided event format (used only by services/)
+│   └── rule_catalog.py     ← rule catalog models and defaults (used only by services/)
 ├── services/
 │   ├── decision_engine/    ← FastAPI antifraud engine (HU-05, HU-06, HU-07)
 │   └── consumers/          ← SNS/SQS consumers and analytics
@@ -66,7 +67,7 @@ files, never imports: each one finds the others' output in `../securepay-<repo>/
 dependencies = ["securepay-shared>=0.1.0"]
 ```
 
-`cache.py` and `events.py` are **not** part of the published package — they are only
+`cache.py`, `events.py` and `rule_catalog.py` are **not** part of the published package — they are only
 used by `services/` and stay in this repo.
 
 ---
@@ -164,13 +165,27 @@ stop and ask instead of working around it.
 
 Read this before adding or changing a rule in `services/decision_engine/`.
 
-- **Each rule adds a `TriggeredRule`** (rule name, decision, reason) to the
-  `triggered` list in `_decide()` (`decision_service.py`). Do not decide
-  inside the rule: `choose_decision()` picks the most severe one (`REJECT`,
-  then `HOLD`, else `APPROVE`). Every rule is evaluated, and the decision
-  records all of them in `rules_triggered` plus `rules_version`.
-  Raise `RULES_VERSION` when a rule changes. Add a case to
+- **Rules are configured by the catalog, not by code or variables**
+  (RF-03, RN-08, CA-06). `shared/rule_catalog.py` holds the models
+  (`RuleEntry`, `CatalogSnapshot`, one `*Params` model per rule type) and
+  `DEFAULT_RULES`; the engine and the rules API share it. It is not part of
+  the published `securepay-shared` package.
+- **Each rule is a module in `services/decision_engine/rules/`** with
+  `TYPE` (a `RuleType`) and `evaluate(ctx, rule) -> TriggeredRule | None`,
+  registered with one line in `rules/__init__.py` (`REGISTRY`). It reads
+  its thresholds from `rule.typed_params()` (never `os.getenv` or module
+  constants) and returns `hit(rule, reason)`: decision, `opens_case` and
+  `score` come from the catalog entry. If it needs a new piece of data,
+  add one field or lazy property to `RuleContext` (`rules/base.py`).
+  `evaluate_rules()` runs every enabled entry in catalog order;
+  `choose_decision()` picks the most severe one (`REJECT`, then `HOLD`,
+  else `APPROVE`). Add `tests/test_rule_<type>.py` with unit tests that
+  build `RuleContext` and `RuleEntry` by hand, and a case in
   `tests/test_decision_outcomes.py` for a new decision combination.
+- **`catalog.current()`** is read once per decision; the rules, the
+  default decision and `rules_version` (the catalog version, `"0"` for the
+  code defaults) all use that snapshot. HU-20 replaces its body with the
+  Valkey reader; its signature stays and it never raises.
 - **Account history lives in Valkey and is shared by every rule**
   (`history.py`). Do not create another per-rule key:
   - `out:{account}`: what leaves the account (`P2P`, `QR`, `RETIRO`),
@@ -182,27 +197,27 @@ Read this before adding or changing a rule in `services/decision_engine/`.
   - Recharges are not recorded. Attempts count whatever the decision: the
     history is written before deciding (team decision, 2026-10-21).
   - One key per Lua script: ElastiCache Serverless may put two keys on
-    different nodes.
-- **Amounts in the history are in the account's currency, not USD.** The
-  engine does not convert to USD yet. Reading the exchange-rates table
-  (`pagoseguro-exchange-rates`, one row per day) at task start and
-  computing `amount_usd` once per transaction belongs to the **default
-  decision on timeout story (HU-18, Habith)**, the first rule that needs USD
-  (USD 50 threshold). Takeover (USD 200) and splitting (daily limit) reuse it.
+    different nodes. Write every history key through `history.record()`.
+- **Amounts in the history are in the account's currency, not USD.**
+  `RuleContext.amount_usd` is the transaction in USD, computed once per
+  decision with `currency.to_usd()` (fixed 2026-10-01 rates until HU-42
+  reads the `pagoseguro-exchange-rates` table). Convert history amounts
+  with `currency.to_usd()` too.
 - Rule names in `rules_triggered` are English snake_case (`restricted_list`,
   `velocity`); they are part of the `transaction.decided` event, so keep
   them stable. New code in this folder is in English.
 - Velocity counts only `P2P` (QR payments to merchants and withdrawals do
   not count: the rule says "outgoing transfers").
-- Mule account (`mule.py`, HU-13) runs only on a `RETIRO`: 3 or more
+- Mule account (`rules/mule.py`, HU-13) runs only on a `RETIRO`: 3 or more
   different senders in `in:{account}` in the 30 min before it, and the
   withdrawal is 80 % or more of `source_balance_before` (the core's
-  balance; the engine keeps none). Thresholds: `MULE_*` variables.
+  balance; the engine keeps none). Thresholds: the catalog's `mule` entry.
 - **A decision says whether it opens a case** (`opens_case`): true when a
-  rule in `CASE_RULES` (`decision_service.py`) fired, today
+  rule whose catalog entry has `opens_case` fired, by default
   `restricted_list` and `mule` (team decision 2026-10-13; splitting joins
   it). The engine does not create cases: the cases consumer (HU-25)
-  reads the flag from the `transaction.decided` event.
+  reads the flag from the `transaction.decided` event. `risk_score` is the
+  sum of the fired rules' `score`, at most 100.
 
 ---
 

@@ -38,8 +38,9 @@ SecurePay-Riwi/
 [`securepay-shared`](https://pypi.org/project/securepay-shared/) y los repos
 de las fuentes lo instalan como dependencia (`import securepay_shared`).
 Trae `models` (SQLAlchemy), `db` (conexión a PostgreSQL), `config` (variables
-y constantes) y `aws` (clientes de boto3). `shared/cache.py` y
-`shared/events.py` no van en el paquete: solo los usa `services/`.
+y constantes) y `aws` (clientes de boto3). `shared/cache.py`,
+`shared/events.py` y `shared/rule_catalog.py` no van en el paquete: solo los
+usa `services/`.
 
 ## Descripción
 
