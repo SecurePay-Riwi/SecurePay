@@ -1,0 +1,13 @@
+terraform {
+  required_version = ">= 1.9.0, < 2.0.0"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "5.80.0"
+    }
+  }
+
+  # Local state for now (it is in .gitignore). A remote S3 state bucket
+  # (securepay-tfstate in infrastructure.mdx) is decided separately.
+}

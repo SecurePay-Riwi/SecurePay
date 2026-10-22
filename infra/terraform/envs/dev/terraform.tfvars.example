@@ -1,0 +1,11 @@
+# Copy to terraform.tfvars (ignored by git) and fill in. No credentials here:
+# Terraform takes them from your AWS profile or environment variables.
+owner         = "jorge"
+budget_emails = ["you@example.com"]
+
+# Optional (defaults shown):
+# region           = "us-east-2"
+# environment      = "dev"
+# engine_port      = 8000
+# budget_limit_usd = 5
+# budget_alert_percentages = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]

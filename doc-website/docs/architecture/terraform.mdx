@@ -1,0 +1,140 @@
+---
+sidebar_position: 4.5
+title: Terraform
+description: How the AWS infrastructure is written in Terraform, the names it uses in AWS, how to create and destroy the development environment, and what it outputs.
+---
+
+# Terraform
+
+The design in [AWS infrastructure](./infrastructure.mdx) and [Security](./security.mdx) is written as Terraform code in `infra/terraform/`. This page explains how that code is organized and how to create and destroy an environment. The code implements the design and does not change it; the only deliberate differences are the English names (next section) and the development settings that keep a test cheap and easy to destroy.
+
+**Status.** Network, security groups and IAM exist in code; S3 and RDS come in the next change. They pass `terraform fmt -check` and `terraform validate`, and a full `apply` and `destroy` against a simulated AWS ([moto](https://github.com/getmoto/moto)). They have not been created in a real AWS account yet. The services that come in later sprints (load balancer, ECS, Lambdas, cache, queues) are not in the code yet.
+
+## Names in AWS
+
+Every resource is named `securepay-<environment>-<resource>` and is in English, like the repositories. The design pages still use the earlier Spanish names; this is how they map:
+
+| Design name | Name in AWS (dev) |
+| :--- | :--- |
+| `pagoseguro-prod-vpc` | `securepay-dev-vpc` |
+| `publica-a/b`, `app-a/b`, `datos-a/b` | `securepay-dev-public-a/b`, `securepay-dev-app-a/b`, `securepay-dev-data-a/b` |
+| `sg-alb`, `sg-motor`, `sg-lambda`, `sg-admin`, `sg-rds`, `sg-cache` | `securepay-dev-sg-alb`, `-sg-engine`, `-sg-lambda`, `-sg-admin`, `-sg-rds`, `-sg-cache` |
+| `rol-motor`, `rol-consumidor-casos`, ... | `securepay-dev-engine`, `securepay-dev-cases-consumer`, ... (one per component, see the IAM table below) |
+| `pagoseguro-prod-datalake`, `-evidencia`, `-proveedor-listas`, `-artefactos` | `securepay-dev-datalake-<account>`, `-evidence-<account>`, `-list-provider-<account>`, `-artifacts-<account>` |
+| `pagoseguro-prod-db` | `securepay-dev-db` |
+| `/pagoseguro/prod/rds/...` | `/securepay/dev/rds/...` |
+
+Bucket names end with the AWS account number because S3 names are global: `securepay-dev-datalake` alone could already belong to someone else. The data paths inside the buckets (`raw/decisiones/`, `raw/extractos/`, `curated/conciliacion/`) stay as the code writes them today.
+
+**Tags.** Every resource carries `project`, `environment`, `owner` and `managed_by`, through the provider's `default_tags`. They are the project, environment and owner tags the assignment asks for (CT-03), in English.
+
+## Structure
+
+```
+infra/terraform/
+├── terraform-user-policy.json  IAM permissions the person running Terraform needs (besides PowerUserAccess)
+├── modules/
+│   ├── network/            VPC, 6 subnets, Internet Gateway, 2 NAT Gateways, route tables, S3 and DynamoDB endpoints
+│   ├── security_groups/    the 6 security groups and their rules
+│   └── iam/                one role per component, the GitHub deploy role and the Power BI user
+└── envs/
+    └── dev/                the development environment: uses the modules, budget alert
+        ├── main.tf
+        ├── variables.tf
+        ├── outputs.tf
+        ├── versions.tf     Terraform >= 1.9 and AWS provider 5.80.0, fixed
+        ├── .terraform.lock.hcl
+        └── terraform.tfvars.example
+```
+
+A module is the reusable piece. An environment folder chooses its values and calls the modules. Only `dev` exists in sprint 3.
+
+| What | How |
+| :--- | :--- |
+| Region and zones | `us-east-2` by default; the zones are the first two that `aws_availability_zones` returns |
+| State | Local (`terraform.tfstate`), ignored by git. Always run `apply` and `destroy` from the same computer: another computer has no state and does not know what exists |
+| Credentials | Never in files. Terraform takes them from your AWS profile (`aws configure`) |
+| Variable values | `terraform.tfvars`, ignored by git; `terraform.tfvars.example` shows what to fill in |
+
+## What it creates
+
+The first `plan` must say `102 to add, 0 to change, 0 to destroy`.
+
+| Module | Resources | Detail |
+| :--- | :--- | :--- |
+| `network` | 1 VPC | `10.0.0.0/16`, DNS enabled |
+| | 6 subnets | `public-a/b` (10.0.0.0/24, 10.0.1.0/24), `app-a/b` (10.0.10.0/24, 10.0.11.0/24), `data-a/b` (10.0.20.0/24, 10.0.21.0/24) |
+| | Internet Gateway, 2 NAT Gateways with their Elastic IPs | One NAT per zone, in its public subnet ([ADR-08](./decisions.mdx#adr-08)) |
+| | 4 route tables | Public to the Internet Gateway; each application table to the NAT in its own zone; data with no default route |
+| | 2 gateway endpoints | S3 and DynamoDB, on the two application tables and the data table |
+| `security_groups` | 6 groups and their rules | Exactly the ports in [Security groups](./security.mdx#security-groups). The rules point at other groups, not at address ranges. `sg-rds` and `sg-cache` have no outbound rule, so no outbound access |
+| `iam` | 21 roles, GitHub OIDC provider, Power BI user | The permissions of [Identity and access](./security.mdx#iam). The roles are scoped to the ARNs of resources that later sprints create, built from the naming convention, so they do not depend on those resources existing |
+| `envs/dev` | 1 budget | See below |
+
+**The 21 roles.** `engine-execution`, `engine`, `cases-consumer`, `history-consumer`, `analytics-consumer`, `firehose-raw`, `rules-api`, `cases-api`, `rules-cache-refresh`, `alerts`, `exchange-rates`, `list-loader`, `list-service`, `statement-reader`, `difference-writer`, `reconciliation`, `emr-jobs`, `scheduler`, `admin-execution`, `admin` and `deploy`, each `securepay-dev-<name>`. The deploy role only trusts GitHub tokens from the `main` branch of `SecurePay-Riwi/SecurePay`. The EMR Serverless application id does not exist yet, so the roles that start Spark jobs are scoped to the applications of the account until it does.
+
+**Engine port.** [Security](./security.mdx#security-groups) says 8080, and the current engine image listens on 8000. The port is the variable `engine_port`, 8000 by default, until the team decides which one stays.
+
+### What is different in dev, and why
+
+| Setting | Prod (design) | Dev | Why |
+| :--- | :--- | :--- | :--- |
+| Budget | 80 % and 100 % of the USD 200 credit | USD 5 a month, an email at every 10 % | Dev only lives during a test |
+
+**Budget.** It measures usage before credits are subtracted (`include_credit = false`). Credits appear on the bill as a negative amount, so a budget that includes them sees USD 0 while the credit lasts and never alerts. AWS refreshes costs about three times a day, so an email can arrive hours after the spend: the real protection is destroying the environment right after each test. Budget alerts are free.
+
+## Outputs
+
+| Output | Content |
+| :--- | :--- |
+| `vpc_id` | The VPC |
+| `public_subnet_ids`, `app_subnet_ids`, `data_subnet_ids` | Two subnet ids each, zone a first |
+| `nat_public_ips` | The addresses the private subnets go out with |
+| `security_group_ids` | Group id by function: `alb`, `engine`, `lambda`, `admin`, `rds`, `cache` |
+| `role_arns` | Role ARN by component |
+| `bucket_names` | The names the buckets will have, which the roles already use: `datalake`, `evidence`, `list-provider`, `artifacts` |
+
+## Create and destroy the development environment
+
+**What you need.**
+- Terraform 1.9 or later (`winget install Hashicorp.Terraform`) and the AWS CLI (`winget install Amazon.AWSCLI`).
+- An IAM user, never the root account, with the managed policy `PowerUserAccess` plus the policy in `infra/terraform/terraform-user-policy.json`. `PowerUserAccess` covers everything except IAM; the extra policy only lets it manage roles and users whose name starts with `securepay-`, the GitHub OIDC provider and the one managed policy the Lambdas use.
+- `aws configure` with that user's access key and region `us-east-2`. `aws sts get-caller-identity` must show the user.
+
+All commands run in `infra/terraform/envs/dev`.
+
+1. The first time, copy the variables file and fill in your name and email:
+
+   ```bash
+   cp terraform.tfvars.example terraform.tfvars
+   ```
+
+2. Download the provider:
+
+   ```bash
+   terraform init
+   ```
+
+3. Check what will be created (`102 to add` the first time):
+
+   ```bash
+   terraform plan
+   ```
+
+4. Create it:
+
+   ```bash
+   terraform apply
+   ```
+
+5. **Destroy it when you finish testing.** While it exists, the two NAT Gateways cost about USD 0.10 an hour together:
+
+   ```bash
+   terraform destroy
+   ```
+
+**If something fails.** `apply` stops at the first error and prints the resource and the AWS message. What it created before the error stays in the state, so either fix the error and run `apply` again (it only creates what is missing) or run `destroy`.
+
+**Recreate.** After a `destroy`, `terraform apply` creates the same resources with the same names and ranges (only the ids and the NAT public addresses change). Right after an `apply`, `terraform plan` must say `No changes`. To find anything left alive after a `destroy`, run `terraform state list` (must be empty) and search the console's **Resource Groups → Tag Editor** in Ohio for `project = securepay`.
+
+**Before every pull request:** `terraform fmt -check -recursive` in `infra/terraform/` and `terraform validate` in `envs/dev`.
