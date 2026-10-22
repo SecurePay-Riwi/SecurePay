@@ -15,6 +15,7 @@ The engine receives every transaction from the wallet core and answers `APPROVE`
 | Method | Path | What it does |
 | :--- | :--- | :--- |
 | `POST` | `/transactions` | Evaluates a transaction and returns the decision. |
+| `POST` | `/security-events` | Stores a device or password change for the account takeover rule. See [Security events](#security-events). |
 | `GET` | `/health` | Always `"ok"` while the process runs, plus the publisher counters. |
 
 ```json
@@ -251,6 +252,7 @@ The window and the limit are the catalog's `window_minutes` and `limit` (held wh
 | :--- | ---: | :--- |
 | `HISTORY_OUT_HOURS` | 24 | Outgoing history kept per account. An event later than this is evaluated with incomplete history. At least 24. |
 | `HISTORY_IN_MINUTES` | 60 | Incoming history kept per account. At least 60, the longest mule window. |
+| `HISTORY_SECURITY_MINUTES` | 60 | Security events kept per account (`sec:{account}`), for the account takeover rule (1 hour). |
 
 ## Mule account
 
@@ -283,6 +285,37 @@ def withdraws_enough(amount, balance_before, pct) -> bool:
 
 `tests/test_mule.py` covers the generator's pattern (3 senders, 90 % at minute 20) and its control (2 senders), the same sender three times, the 80 % limit, a transfer outside the window, one recorded after the withdrawal, a `P2P` instead of a withdrawal, and that velocity does not open a case. Replaying a 3,000-transaction generator run through the engine, the 9 labeled mule withdrawals were held and none of the 9 control withdrawals or any other transaction was flagged as mule.
 
+## Security events
+
+`services/decision_engine/security_events.py`. The wallet core sends device and password changes apart from the transactions (the generator already does). The account takeover rule reads them: a device change, a password change and a transaction above USD 200 from the same account within an hour put it on `HOLD`. The rule itself arrives in the next change; today the endpoint only stores the events.
+
+```json
+POST /security-events
+{
+  "id": "0b6f2c1e-4d3a-5b8c-9e7f-1a2b3c4d5e6f",
+  "type": "DEVICE_CHANGE",
+  "user_id": "5d2c9b0a-7e4f-5a1b-8c3d-6e9f0a1b2c3d",
+  "account_id": "a8d456b7-ae6a-5481-9a4b-64deb0d295f7",
+  "device_id": "f8692d53-a16a-595f-b796-dfde37f5f4b0",
+  "event_date": "2026-10-01T08:00:00+00:00"
+}
+
+202 {"recorded": true}
+```
+
+- `type` is `DEVICE_CHANGE` or `PASSWORD_CHANGE`. `event_date` needs a time zone.
+- Each event goes to the sorted set `sec:{account}`, member `id|type|device_id`, score `event_date` in ms, with the same Lua script as the account history. Events older than `HISTORY_SECURITY_MINUTES` (60) before the newest one are trimmed.
+- The account is not checked against PostgreSQL: the event can arrive before or after its transactions, and the endpoint stays fast.
+- A resend of the same `id` is stored once (the id is part of the member).
+
+| Code | When |
+| :--- | :--- |
+| `202` | Stored, or a resend of an id already stored. |
+| `400` | Invalid body: missing fields, an unknown type, an id that is not a UUID or a date without time zone. Includes the validator's `errors`. |
+| `503` | Valkey is not available. |
+
+`tests/test_security_events.py` covers storing an event, a resend, events that arrive out of order, the retention, other accounts, invalid bodies and Valkey down.
+
 ## Publishing the decision
 
 Each new decision is published to SNS by a background thread without making the core wait. See [Messaging](./messaging.mdx).
@@ -293,11 +326,12 @@ Each new decision is published to SNS by a background thread without making the 
 | :--- | :--- |
 | `main.py` | FastAPI app, endpoints, error-to-status mapping, graceful shutdown of the publisher. |
 | `schemas.py` | Request and response models, their validation and the field descriptions Swagger shows. |
-| `docs/` | Swagger documentation, one file per group of endpoints (`transactions.py`, `health.py`), plus the API description (`app.py`) and the error bodies (`errors.py`). Keep its examples equal to this page. |
+| `docs/` | Swagger documentation, one file per group of endpoints (`transactions.py`, `security.py`, `health.py`), plus the API description (`app.py`) and the error bodies (`errors.py`). Keep its examples equal to this page. |
 | `decision_service.py` | Idempotency + catalog rules + publish. |
 | `catalog.py` | `current()`: the rule catalog the engine decides with (defaults until HU-20). |
 | `idempotency.py` | `idem:{id}` keys in Valkey. |
 | `history.py` | `out:{account}` and `in:{account}` sorted sets: the account history every rule reads. `record()` writes any history key. |
+| `security_events.py` | `sec:{account}` sorted set: device and password changes for the account takeover rule. |
 | `rules/` | One module per rule type (`restricted_list.py`, `velocity.py`, `mule.py`), `base.py` (`RuleContext`, `TriggeredRule`, `hit`) and `REGISTRY` in `__init__.py`. |
 | `currency.py` | Amounts in USD for the dollar thresholds (fixed 2026-10-01 rates until HU-42). |
 | `publisher.py` | Background SNS publisher. |

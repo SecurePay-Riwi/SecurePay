@@ -194,6 +194,10 @@ Read this before adding or changing a rule in `services/decision_engine/`.
   - `in:{account}`: `P2P` received, member `id|sender_account|amount`, kept 60 min
     (`HISTORY_IN_MINUTES`). `record_incoming()` writes it; `incoming()`
     reads it. **The mule rule (HU-13) reads incoming transfers from here.**
+  - `sec:{account}`: device and password changes from
+    `POST /security-events` (`security_events.py`), member
+    `id|type|device_id`, scored by `event_date`, kept 60 min
+    (`HISTORY_SECURITY_MINUTES`). Read by the account takeover rule.
   - Recharges are not recorded. Attempts count whatever the decision: the
     history is written before deciding (team decision, 2026-10-21).
   - One key per Lua script: ElastiCache Serverless may put two keys on
