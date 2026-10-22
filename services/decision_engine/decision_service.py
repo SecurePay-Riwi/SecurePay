@@ -4,45 +4,30 @@ import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as DecisionTimeout
-from dataclasses import dataclass
 from datetime import datetime, timezone
-from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from shared.events import evento_decision
-from shared.models import Comercio, Cuenta, ListaRestrictiva, Usuario
-from services.decision_engine import currency
-from services.decision_engine import history
+from services.decision_engine import catalog, currency, history, publisher, rules
 from services.decision_engine import idempotency as idem
-from services.decision_engine import mule
-from services.decision_engine import publisher
-from services.decision_engine import velocity
+from services.decision_engine.rules.base import RuleContext, TriggeredRule
 from services.decision_engine.schemas import (
     Decision,
     TransactionRequest,
     TransactionType,
 )
+from shared.events import evento_decision
+from shared.models import Comercio, Cuenta, Usuario
+from shared.rule_catalog import CatalogSnapshot, DefaultTimeoutParams
 
 # What leaves the source account goes into its outgoing history.
 # A top-up has no source account.
 OUTGOING_TYPES = {TransactionType.P2P, TransactionType.QR, TransactionType.RETIRO}
 
-# Version of the rules a decision was made with (the project brief asks
-# to store it with every decision). While the rules live in the code,
-# the version is the code's: raise it when a rule changes. Once rules
-# administration exists, it comes from PostgreSQL.
-RULES_VERSION = "2026.10.2"
-
 # When several rules fire, the most severe wins.
 SEVERITY = {Decision.APPROVE: 0, Decision.HOLD: 1, Decision.REJECT: 2}
 
 NO_RULES_REASON = "The transaction did not trigger any configured rule."
-
-# Rules whose decision opens a case in the analyst's inbox (team
-# decision of 2026-10-13). The others only hold and show on the
-# dashboard. Splitting joins when it exists.
-CASE_RULES = {"restricted_list", "mule"}
 
 log = logging.getLogger(__name__)
 
@@ -50,33 +35,26 @@ log = logging.getLogger(__name__)
 # waiting for the rules well before that, so the default decision and
 # the network still fit in the budget.
 TIMEOUT_MS = int(os.getenv("DECISION_TIMEOUT_MS", "120"))
-# RN-01 default when the rules do not answer in time: approve below this
-# amount, hold from it up.
-DEFAULT_LIMIT_USD = Decimal(os.getenv("DEFAULT_DECISION_LIMIT_USD", "50"))
 # Threads that evaluate the rules. A decision that times out keeps its
 # thread until it ends, so this matches the requests FastAPI serves at
 # once (40 by default).
 WORKERS = int(os.getenv("DECISION_WORKERS", "40"))
 
-if TIMEOUT_MS <= 0 or DEFAULT_LIMIT_USD <= 0 or WORKERS <= 0:
-    raise ValueError("Timeout, default limit and workers must be positive.")
+if TIMEOUT_MS <= 0 or WORKERS <= 0:
+    raise ValueError("Timeout and workers must be positive.")
 
+# Catalog entry of RN-01's default decision. It is never evaluated as a
+# rule: default_decision() reads its limit.
 DEFAULT_RULE = "default_timeout"
+
+# Highest risk score a decision reports.
+MAX_RISK_SCORE = 100
 
 # Set on the session when a decision outlives its request: the late
 # thread closes the session, not the request (see main.get_db).
 LATE_SESSION = "closed_by_late_decision"
 
 _workers = ThreadPoolExecutor(max_workers=WORKERS, thread_name_prefix="decision")
-
-
-@dataclass(frozen=True)
-class TriggeredRule:
-    """What a rule that fired says."""
-
-    rule: str
-    decision: Decision
-    reason: str
 
 
 def choose_decision(triggered: list[TriggeredRule]) -> tuple[Decision, str]:
@@ -111,8 +89,30 @@ def _load_account(session: Session, account_id) -> Cuenta:
     return account
 
 
-def _decide(session: Session, payload: TransactionRequest) -> dict:
-    """Apply the rules and return the decision, without storing it."""
+def evaluate_rules(ctx: RuleContext, snapshot: CatalogSnapshot) -> list[TriggeredRule]:
+    """Every enabled rule of the catalog, in its order, even if one
+    already rejects: the decision records all the rules that fired."""
+    triggered = []
+    for entry in snapshot.rules:
+        if not entry.enabled or entry.type == DEFAULT_RULE:
+            continue
+        impl = rules.REGISTRY.get(entry.type)
+        if impl is None:
+            # A type the catalog knows but this engine has no code for yet.
+            continue
+        result = impl.evaluate(ctx, entry)
+        if result:
+            triggered.append(result)
+    return triggered
+
+
+def _decide(
+    session: Session,
+    payload: TransactionRequest,
+    snapshot: CatalogSnapshot,
+) -> dict:
+    """Apply the catalog's rules and return the decision, without
+    storing it."""
     accounts = {
         account_id: _load_account(session, account_id)
         for account_id in (
@@ -138,8 +138,8 @@ def _decide(session: Session, payload: TransactionRequest) -> dict:
             "The transaction currency is not the account currency."
         )
 
-    # Pre-check: consult the restricted list for every account owner
-    # involved in the transaction before evaluating business rules.
+    # Documents of every account owner involved, for the restricted list
+    # rule (first in the catalog, so it is checked before the others).
     owners = [
         session.get(Usuario, account.user_id)
         for account in accounts.values()
@@ -149,15 +149,9 @@ def _decide(session: Session, payload: TransactionRequest) -> dict:
         for owner in owners
     }
 
-    # Rule: restricted list.
-    on_list = (
-        session.query(ListaRestrictiva.id)
-        .filter(ListaRestrictiva.documento.in_(documents))
-        .first()
-    )
-
-    # Account history: written before deciding, whatever the decision,
-    # because the attempt counts too (see history.py).
+    # Account history: written before deciding, whatever the decision
+    # and whichever rules are enabled, because the attempt counts too
+    # (see history.py).
     outgoing = []
     if payload.type in OUTGOING_TYPES:
         outgoing = history.record_outgoing(
@@ -176,75 +170,42 @@ def _decide(session: Session, payload: TransactionRequest) -> dict:
             payload.transaction_date,
         )
 
-    # Rule: velocity, only when the transaction is a transfer.
-    transfers = 0
-    if payload.type.value in velocity.TYPES:
-        transfers = velocity.count(
-            outgoing, history.to_ms(payload.transaction_date)
-        )
+    ctx = RuleContext(
+        payload=payload,
+        session=session,
+        t_ms=history.to_ms(payload.transaction_date),
+        amount_usd=currency.to_usd(payload.amount, payload.currency),
+        outgoing=outgoing,
+        documents=documents,
+    )
 
-    # Rule: mule account, only when the money leaves as a withdrawal.
-    mule_senders = 0
-    if payload.type.value in mule.TYPES:
-        mule_senders = mule.senders(
-            history.incoming(payload.source_account_id),
-            history.to_ms(payload.transaction_date),
-        )
-
-    # Every rule is evaluated even if one already rejects: the decision
-    # records all the rules that fired.
-    triggered = []
-
-    if on_list:
-        triggered.append(TriggeredRule(
-            "restricted_list",
-            Decision.REJECT,
-            "Account owner is on a restricted list.",
-        ))
-
-    if transfers > velocity.LIMIT:
-        triggered.append(TriggeredRule(
-            "velocity",
-            Decision.HOLD,
-            f"Velocity: {transfers} outgoing transfers in "
-            f"{velocity.WINDOW_MIN} minutes from the same account.",
-        ))
-
-    if mule_senders >= mule.MIN_SENDERS and mule.withdraws_enough(
-        payload.amount, payload.source_balance_before
-    ):
-        pct = mule.withdrawn_pct(payload.amount, payload.source_balance_before)
-        triggered.append(TriggeredRule(
-            "mule",
-            Decision.HOLD,
-            f"Mule account: received transfers from {mule_senders} accounts "
-            f"and withdrew {pct}% of the balance in less than "
-            f"{mule.WINDOW_MIN} minutes.",
-        ))
-
+    triggered = evaluate_rules(ctx, snapshot)
     decision, reason = choose_decision(triggered)
 
     return {
         "transaction_id": str(payload.id),
         "decision": decision.value,
         "decision_reason": reason,
-        "rules_version": RULES_VERSION,
+        "rules_version": str(snapshot.version),
         "rules_triggered": [r.rule for r in triggered],
-        "opens_case": any(r.rule in CASE_RULES for r in triggered),
+        "opens_case": any(r.opens_case for r in triggered),
+        "risk_score": min(MAX_RISK_SCORE, sum(r.score for r in triggered)),
         "by_default": False,
         "processed_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
-def default_decision(payload: TransactionRequest) -> dict:
+def default_decision(payload: TransactionRequest, snapshot: CatalogSnapshot) -> dict:
     """RN-01: the decision when the rules do not answer in time.
 
-    Approve below USD 50, hold from USD 50 up. Never reject: being slow
-    is not a reason to turn a customer down.
+    Approve below the catalog's limit (USD 50), hold from it up. Never
+    reject: being slow is not a reason to turn a customer down.
     """
+    entry = snapshot.get(DEFAULT_RULE)
+    params = entry.typed_params() if entry else DefaultTimeoutParams()
     amount_usd = currency.to_usd(payload.amount, payload.currency)
 
-    if amount_usd < DEFAULT_LIMIT_USD:
+    if amount_usd < params.limit_usd:
         decision = Decision.APPROVE
     else:
         decision = Decision.HOLD
@@ -254,11 +215,12 @@ def default_decision(payload: TransactionRequest) -> dict:
         "decision": decision.value,
         "decision_reason": (
             f"Default decision: the rules did not answer in {TIMEOUT_MS} ms "
-            f"(USD {amount_usd}, limit USD {DEFAULT_LIMIT_USD})."
+            f"(USD {amount_usd}, limit USD {params.limit_usd})."
         ),
-        "rules_version": RULES_VERSION,
+        "rules_version": str(snapshot.version),
         "rules_triggered": [DEFAULT_RULE],
         "opens_case": False,
+        "risk_score": 0,
         "by_default": True,
         "processed_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -268,11 +230,15 @@ def _decide_in_time(session: Session, payload: TransactionRequest) -> dict:
     """Run the rules, or answer with the default decision if they take
     longer than TIMEOUT_MS.
 
+    The catalog is read once, before starting: the rules and the default
+    decision use the same version.
+
     A Python thread cannot be stopped, so the late evaluation finishes in
     the background and its result is dropped: the stored and published
     decision is the default one. It keeps the session, so it closes it.
     """
-    future = _workers.submit(_decide, session, payload)
+    snapshot = catalog.current()
+    future = _workers.submit(_decide, session, payload, snapshot)
 
     try:
         return future.result(timeout=TIMEOUT_MS / 1000)
@@ -280,7 +246,7 @@ def _decide_in_time(session: Session, payload: TransactionRequest) -> dict:
         session.info[LATE_SESSION] = True
         future.add_done_callback(lambda _: _close_late(session, payload.id))
         log.warning("Transaction %s: rules timed out, default decision", payload.id)
-        return default_decision(payload)
+        return default_decision(payload, snapshot)
 
 
 def _close_late(session: Session, tx_id) -> None:

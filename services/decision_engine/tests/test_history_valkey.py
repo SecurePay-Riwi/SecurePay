@@ -1,5 +1,5 @@
 """Per-account history (history.py) and the velocity rule that counts
-over it (velocity.py)."""
+over it (rules/velocity.py)."""
 
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
@@ -7,7 +7,8 @@ from uuid import uuid4
 import pytest
 import valkey
 
-from services.decision_engine import history, velocity
+from services.decision_engine import history
+from services.decision_engine.rules import velocity
 from services.decision_engine.history import (
     to_ms,
     incoming_key,
@@ -16,8 +17,14 @@ from services.decision_engine.history import (
     record_incoming,
     record_outgoing,
 )
-from services.decision_engine.velocity import max_in_window
+from services.decision_engine.rules.velocity import max_in_window
 from shared.cache import get_cache
+from shared.rule_catalog import VelocityParams
+
+# The catalog defaults: 5 transfers in 10 minutes.
+WINDOW = VelocityParams().window_minutes
+WINDOW_MS = WINDOW * 60 * 1000
+LIMIT = VelocityParams().limit
 
 
 BASE = datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc)
@@ -49,7 +56,7 @@ def transferir(cuenta_id, minutos, tipo="P2P"):
         tx_id = str(uuid4())
         ids.append(tx_id)
         salidas = record_outgoing(cuenta_id, tx_id, tipo, "1.00", minuto(m))
-        conteos.append(velocity.count(salidas, to_ms(minuto(m))))
+        conteos.append(velocity.count(salidas, to_ms(minuto(m)), WINDOW))
     return ids, conteos
 
 
@@ -63,18 +70,18 @@ def ids_salidas(cuenta_id):
 def test_window_counts_only_events_within_ten_minutes():
     horas = [to_ms(minuto(m)) for m in (0, 5, 10, 11)]
     # Para el minuto 10, la ventana [0, 10] tiene 3 y [5, 15] también 3.
-    assert max_in_window(horas, to_ms(minuto(10))) == 3
+    assert max_in_window(horas, to_ms(minuto(10)), WINDOW_MS) == 3
 
 
 def test_window_includes_later_events_for_a_late_one():
     horas = [to_ms(minuto(m)) for m in (0, 1, 2, 3, 4, 5)]
     # El del minuto 2 está en la ventana [0, 10] con los otros cinco.
-    assert max_in_window(horas, to_ms(minuto(2))) == 6
+    assert max_in_window(horas, to_ms(minuto(2)), WINDOW_MS) == 6
 
 
 def test_window_edge_is_inclusive():
     horas = [to_ms(minuto(0)), to_ms(minuto(10))]
-    assert max_in_window(horas, to_ms(minuto(10))) == 2
+    assert max_in_window(horas, to_ms(minuto(10)), WINDOW_MS) == 2
 
 
 def test_velocity_counts_only_p2p_outgoing():
@@ -83,7 +90,7 @@ def test_velocity_counts_only_p2p_outgoing():
         history.Outgoing(str(i), tipo, "1.00", to_ms(minuto(i)))
         for i, tipo in enumerate(["P2P", "QR", "RETIRO", "QR", "P2P", "P2P"])
     ]
-    assert velocity.count(salidas, t) == 3
+    assert velocity.count(salidas, t, WINDOW) == 3
 
 
 # Velocity with Valkey.
@@ -93,13 +100,13 @@ def test_six_transfers_in_eight_minutes_pass_the_limit(cuenta):
     _, conteos = transferir(cuenta, [0, 1.6, 3.2, 4.8, 6.4, 8])
 
     assert conteos == [1, 2, 3, 4, 5, 6]
-    assert conteos[-1] > velocity.LIMIT
+    assert conteos[-1] > LIMIT
 
 
 def test_five_transfers_stay_within_the_limit(cuenta):
     _, conteos = transferir(cuenta, [0, 2, 4, 6, 8])
 
-    assert max(conteos) == velocity.LIMIT
+    assert max(conteos) == LIMIT
 
 
 def test_transfers_more_than_ten_minutes_apart_do_not_add_up(cuenta):

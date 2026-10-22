@@ -88,7 +88,11 @@ def to_ms(date) -> int:
     return int(date.timestamp() * 1000)
 
 
-def _record(key, member, date, retention_ms, return_history):
+def record(key, member, date, retention_ms, return_history):
+    """Add one member to a sorted set of the history and trim what is
+    older than the retention, counted from the newest event. Returns the
+    retained history when asked. Every history key is written through
+    here."""
     global _script
     if _script is None:
         _script = get_cache().register_script(_RECORD)
@@ -109,7 +113,7 @@ def record_outgoing(account_id, tx_id, tx_type, amount, date) -> list[Outgoing]:
     """Store what leaves the account and return all its retained outgoing
     movements, in real chronological order."""
     member = f"{tx_id}|{tx_type}|{amount}"
-    raw = _record(outgoing_key(account_id), member, date, OUT_MS,
+    raw = record(outgoing_key(account_id), member, date, OUT_MS,
                   return_history=True)
 
     result = []
@@ -122,7 +126,7 @@ def record_outgoing(account_id, tx_id, tx_type, amount, date) -> list[Outgoing]:
 def record_incoming(account_id, tx_id, sender_id, amount, date) -> None:
     """Store a transfer coming into the account. Returns nothing: rules
     are evaluated on the account that moves the money."""
-    _record(
+    record(
         incoming_key(account_id),
         f"{tx_id}|{sender_id}|{amount}",
         date,

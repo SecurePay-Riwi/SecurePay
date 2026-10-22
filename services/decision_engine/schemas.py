@@ -149,16 +149,22 @@ class TransactionResponse(BaseModel):
     # existieran estos campos se puede seguir repitiendo.
     rules_version: str | None = Field(
         default=None,
-        description="Version of the rules used. null in decisions stored before it existed.",
+        description="Version of the rule catalog used: \"0\" is the code defaults, N a version published by the rules API. null in decisions stored before it existed.",
     )
     rules_triggered: list[str] = Field(
         default=[],
         description="Every rule that fired, not only the one that decided.",
     )
-    # True when a rule that opens a case fired (decision_service.CASE_RULES).
+    # True when a rule whose catalog entry says opens_case fired.
     opens_case: bool = Field(
         default=False,
-        description="True when a rule that opens a case for an analyst fired (mule account, restricted list).",
+        description="True when a rule that opens a case for an analyst fired (by default: mule account, restricted list).",
+    )
+    risk_score: int = Field(
+        default=0,
+        ge=0,
+        le=100,
+        description="Sum of the scores of the rules that fired, at most 100. 0 when no rule with a score fired.",
     )
     # True when the rules did not answer in time and RN-01's default
     # decision was applied.
