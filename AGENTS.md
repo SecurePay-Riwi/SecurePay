@@ -216,6 +216,10 @@ Read this before adding or changing a rule in `services/decision_engine/`.
   different senders in `in:{account}` in the 30 min before it, and the
   withdrawal is 80 % or more of `source_balance_before` (the core's
   balance; the engine keeps none). Thresholds: the catalog's `mule` entry.
+- Account takeover (`rules/account_takeover.py`, HU-17) runs on `P2P`, `QR`
+  and `RETIRO` above USD 200: a `DEVICE_CHANGE` and a `PASSWORD_CHANGE` in
+  `sec:{account}` in the 60 minutes before the transaction. Events dated
+  after the transaction do not count.
 - **A decision says whether it opens a case** (`opens_case`): true when a
   rule whose catalog entry has `opens_case` fired, by default
   `restricted_list` and `mule` (team decision 2026-10-13; splitting joins

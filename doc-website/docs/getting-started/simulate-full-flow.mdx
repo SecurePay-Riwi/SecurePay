@@ -54,12 +54,13 @@ You can also leave `GEN_OUTPUT=http` in your `.env`. At 50 events per second (`G
 
 | Check | Expected |
 | :--- | :--- |
-| Generator output | `Respuestas del motor: {'200': 1023, '404': 12}` |
-| The 12 `404` | Security events (device and password changes). Their endpoint arrives with the account takeover rule. |
+| Generator output | `Respuestas del motor: {'200': 1024, '202': 12}` |
+| The 12 `202` | Security events (device and password changes), stored for the account takeover rule. |
+| `ACCOUNT_TAKEOVER` fraud | 3 withdrawals in `HOLD` by `account_takeover`. Their control cases stay `APPROVE`. |
 | `RESTRICTED_LIST` transactions | 3, all `REJECT`. |
 | `VELOCITY` fraud | 4 transfers in `HOLD`, exactly the one that completes each window. Their control cases stay `APPROVE`. |
 | Everything else | `APPROVE`: the other rules do not exist yet. |
-| `GET /health` | `"publicados": 1000` (1,023 answers minus 23 resends, which are not published again). |
+| `GET /health` | `"publicados": 1000` (1,024 answers minus 24 resends, which are not published again). |
 | S3 `raw/decisiones/` | 1,000 lines in total, one per transaction. |
 | Queues and their `-dlq` | Empty. |
 
