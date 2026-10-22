@@ -74,3 +74,26 @@ module "iam" {
   create_github_oidc_provider = var.create_github_oidc_provider
 }
 
+module "storage" {
+  source = "../../modules/storage"
+
+  name_prefix   = local.name_prefix
+  force_destroy = true
+
+  # Object Lock does not accept less than 1 day of default retention. In dev
+  # there is none, and each test object carries its own retain-until date
+  # (1 hour), so destroy works once that hour has passed.
+  evidence_default_retention_years = 0
+}
+
+module "database" {
+  source = "../../modules/database"
+
+  name_prefix           = local.name_prefix
+  environment           = var.environment
+  data_subnet_ids       = module.network.data_subnet_ids
+  security_group_id     = module.security_groups.ids["rds"]
+  multi_az              = var.database_multi_az
+  backup_retention_days = var.database_backup_retention_days
+  disposable            = true
+}

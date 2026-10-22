@@ -9,3 +9,5 @@ budget_emails = ["you@example.com"]
 # engine_port      = 8000
 # budget_limit_usd = 5
 # budget_alert_percentages = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+# database_multi_az              = true
+# database_backup_retention_days = 1   # the AWS free plan accepts at most 1
