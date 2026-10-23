@@ -35,35 +35,53 @@ Grouped by service, so a service that solves several things is counted once.
 
 | Service | Used for | 24/7 | Development |
 | :--- | :--- | ---: | ---: |
-| Application Load Balancer | High-volume entry to the decision engine | $25.19 | $0.65 |
+| Application Load Balancer | High-volume entry to the decision engine | $18.53 | $0.65 |
 | AWS Fargate | Decision engine | $72.08 | $2.47 |
 | Amazon SQS | 3 queues (cases, history, analytics) + 1 DLQ each | $31.10 | $0.50 |
-| AWS Lambda | Consumers, rules and cases APIs, list service, partner ingestion, exchange rates, case escalation | $40.60 | $0.60 |
+| AWS Lambda | Consumers, rules and cases APIs, list service, partner ingestion, exchange rates, case escalation | $35.55 | $0.60 |
 | ElastiCache Serverless (Valkey) | Idempotency, windows, 24 h sums, active rules, list cache | ~$22.87 | ~$0.23 |
-| Amazon SNS (events) | Decision fan-out + active rule invalidation | $6.08 | $0.10 |
-| Amazon SNS (emails) | Notices to compliance, supervisor, treasury and the tech team | ~$0.15 | $0.00 |
+| Amazon SNS | Decision fan-out, active rule invalidation, and emails to compliance, supervisor, treasury and the tech team | $6.13 | $0.10 |
 | Amazon API Gateway | Rules, cases and list service endpoints (HTTP API) | $1.10 | $0.10 |
 | Amazon EventBridge Scheduler | Reconciliation, exchange rates, 5-minute alerts | $0.00 | $0.00 |
 | AWS Step Functions | Reconciliation orchestration | $0.00 | $0.00 |
-| Amazon DynamoDB | Durable device–account pairs (30 days) + exchange rates table | ~$1.00 | $0.10 |
-| AWS EMR Serverless | 5 Spark jobs | $7.50 | $0.50 |
+| Amazon DynamoDB | Durable device–account pairs (30 days) + exchange rates table | $0.90 | $0.10 |
+| AWS EMR Serverless | 5 Spark jobs | $7.27 | $0.50 |
 | AWS Systems Manager | Session Manager + Parameter Store | $0.00 | $0.00 |
-| Amazon RDS PostgreSQL | Multi-AZ instance + storage: users, rules, cases | $30.88 | $5.50 |
-| NAT Gateway (×2) | Outbound traffic from private subnets to AWS services | $72.51 | $2.28 |
+| Amazon RDS PostgreSQL | Multi-AZ instance + storage + backups: users, rules, cases | $31.35 | $5.50 |
+| NAT Gateway (×2) | Outbound traffic from private subnets to AWS services | $72.52 | $2.28 |
 | Data transfer | Cross-AZ + internet egress | ~$2.60 | ~$0.20 |
-| Amazon CloudWatch | Logs, metrics, alarms | $9.45 | $1.50 |
-| AWS X-Ray | Transaction tracing | $4.00 | $0.50 |
-| Amazon S3 | Data Lake + immutable evidence for 10 years | $2.60 | $0.50 |
-| Amazon Athena | SQL over S3 | $1.50 | $0.15 |
-| AWS Glue Data Catalog | Table catalog for Athena | $0.00 | $0.00 |
+| Amazon CloudWatch | Logs, metrics, alarms | $10.07 | $1.50 |
+| AWS X-Ray | Transaction tracing | $9.00 | $0.50 |
+| Amazon S3 | Data Lake + immutable evidence for 10 years (storage and writes) | $5.26 | $0.50 |
+| Amazon Athena | SQL over S3 | $1.43 | $0.15 |
+| AWS Glue Data Catalog | Table catalog for Athena | $0.01 | $0.00 |
 | Amazon ECR | Docker image registry | $0.50 | $0.50 |
-| CloudWatch alarms | ~10 alarms at $0.10 each | $1.00 | $0.30 |
-| RDS extra backups | Retention beyond the database size | $0.50 | $0.50 |
+| Public IPv4 addresses | 4 addresses (2 NAT + 2 ALB) at $0.005 an hour | $14.60 | — |
+| Amazon Data Firehose | Batches the Data Lake raw layer (one record per batch of 10 decisions) | $3.58 | — |
 | IAM, KMS (AWS keys), VPC, Budgets, CloudTrail | Roles, encryption at rest, network, credit alerts, audit | $0.00 | $0.00 |
 | Power BI Desktop, GitHub Actions, Frankfurter API | Dashboard, CI/CD, exchange rates | $0.00 | $0.00 |
-| **Total** | | **≈ $333.21** | **≈ $17.18** |
+| **Total** | | **$346.45** | **≈ $17.18** |
 
-The total assumes 300 MB of cache memory. At 150 MB it drops to ~$290; at 1 GB it rises to ~$343. See [Open questions](./open-questions.mdx).
+The total assumes 300 MB of cache memory. At 150 MB it would be about $43 less; at 1 GB, about $10 more. See [Open questions](./open-questions.mdx).
+
+## AWS Pricing Calculator {/* #pricing-calculator */}
+
+The production column is the result of the public [AWS Pricing Calculator](https://calculator.aws), loaded service by service in US East (Ohio) on October 23, 2026, with the rates checked against the official AWS price list for `us-east-2`. The development column was not recalculated. **Shared estimate:** [PagoSeguro Antifraude - Production (us-east-2)](https://calculator.aws/#/estimate?id=a4604e0b2867f1670ede8821269789ab832b8b3d), $346.45 a month and $4,157.44 for 12 months ([PDF export](pathname:///files/aws-pricing-estimate.pdf)). CloudWatch alarms and RDS backups are now inside their service.
+
+What changed against the earlier estimate of $333.21:
+
+| Line | Before | Now | Why |
+| :--- | ---: | ---: | :--- |
+| Public IPv4 addresses | missing | $14.60 | AWS charges every public IPv4 address since 2024; it was not in the table |
+| AWS X-Ray | $4.00 | $9.00 | The free tier is 100,000 traces, not 1 million (the calculator does not subtract it; the real bill would be ~$8.50) |
+| Amazon S3 | $2.60 | $5.26 | Now counts the writes (PUT) of the evidence in Glacier Instant Retrieval and of the raw layer |
+| Amazon Data Firehose | missing | $3.58 | Each record is rounded up to 5 KB, so 10 decisions go in one record; one record per decision would be ~$18.79 |
+| Application Load Balancer | $25.19 | $18.53 | The calculator counts load balancer capacity units by the largest dimension: ~0.36, not 1.5 |
+| AWS Lambda | $40.60 | $35.55 | The admin and scheduled functions were a guess; at 1.2 million calls of 200 ms they cost $2.24 |
+| CloudWatch + alarms | $10.45 | $10.07 | The calculator archives 15 % of the ingested logs |
+| Rest | | ±$0.50 | Rounding (RDS, EMR, DynamoDB, Athena, Glue, NAT) |
+
+**Evaluated and not applied:** moving to ARM (Graviton) would save ~$24 a month (Fargate, Lambda, RDS `db.t4g.micro`, EMR), but needs `arm64` images. A regional NAT Gateway was also evaluated and rejected; one zonal NAT per zone stays ([ADR-08](./decisions.mdx#adr-08)).
 
 **One-off costs**, outside the monthly table: the load test at 50, 150 and 300 tx/s (USD 5 to 10 per full run) and running the full-mode seed against RDS (a couple of dollars).
 
