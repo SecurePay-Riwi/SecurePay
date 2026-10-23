@@ -201,6 +201,11 @@ Read this before adding or changing a rule in `services/decision_engine/`.
   - `in:{account}`: `P2P` received, member `id|sender_account|amount`, kept 60 min
     (`HISTORY_IN_MINUTES`). `record_incoming()` writes it; `incoming()`
     reads it. **The mule rule (HU-13) reads incoming transfers from here.**
+  - `dev:{device}`: the accounts that used a device, member `account_id`
+    scored by the last time it was seen, kept 30 days
+    (`HISTORY_DEVICE_DAYS`). `record_device()` writes the main account
+    (source; in a top-up, destination) on every transaction and returns
+    the set, which reaches the rules as `RuleContext.device_accounts`.
   - `sec:{account}`: device and password changes from
     `POST /security-events` (`security_events.py`), member
     `id|type|device_id`, scored by `event_date`, kept 60 min
@@ -223,6 +228,11 @@ Read this before adding or changing a rule in `services/decision_engine/`.
   different senders in `in:{account}` in the 30 min before it, and the
   withdrawal is 80 % or more of `source_balance_before` (the core's
   balance; the engine keeps none). Thresholds: the catalog's `mule` entry.
+- Shared device (`rules/shared_device.py`, HU-14) runs on every
+  transaction: more than 3 different accounts in `dev:{device}` in the
+  last 30 days. By default `APPROVE` with score 30: it raises
+  `risk_score`, it does not hold. Thresholds: the catalog's
+  `shared_device` entry.
 - Account takeover (`rules/account_takeover.py`, HU-17) runs on `P2P`, `QR`
   and `RETIRO` above USD 200: a `DEVICE_CHANGE` and a `PASSWORD_CHANGE` in
   `sec:{account}` in the 60 minutes before the transaction. Events dated

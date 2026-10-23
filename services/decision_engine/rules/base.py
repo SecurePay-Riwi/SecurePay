@@ -62,6 +62,9 @@ class RuleContext:
     outgoing: list[history.Outgoing] = field(default_factory=list)
     # Documents of every account owner involved, digits only.
     documents: set[str] = field(default_factory=set)
+    # Every account that used the transaction's device, after recording
+    # the main account (dev:{device}).
+    device_accounts: list[history.DeviceUse] = field(default_factory=list)
 
     @cached_property
     def on_restricted_list(self) -> bool:

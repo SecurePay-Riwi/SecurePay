@@ -169,6 +169,11 @@ def _decide(
             payload.amount,
             payload.transaction_date,
         )
+    device_accounts = history.record_device(
+        payload.device_id,
+        main_account.id,
+        payload.transaction_date,
+    )
 
     ctx = RuleContext(
         payload=payload,
@@ -177,6 +182,7 @@ def _decide(
         amount_usd=currency.to_usd(payload.amount, payload.currency),
         outgoing=outgoing,
         documents=documents,
+        device_accounts=device_accounts,
     )
 
     triggered = evaluate_rules(ctx, snapshot)
