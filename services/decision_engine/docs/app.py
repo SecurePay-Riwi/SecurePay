@@ -27,6 +27,10 @@ APP = {
             "description": "Evaluate a wallet transaction against the anti-fraud rules.",
         },
         {
+            "name": "Security events",
+            "description": "Device and password changes, read by the account takeover rule.",
+        },
+        {
             "name": "Health",
             "description": "Liveness check for the load balancer and Docker Compose.",
         },

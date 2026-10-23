@@ -14,6 +14,7 @@ from functools import cached_property
 from sqlalchemy.orm import Session
 
 from services.decision_engine import history
+from services.decision_engine import security_events as security
 from services.decision_engine.schemas import Decision, TransactionRequest
 from shared.models import ListaRestrictiva
 from shared.rule_catalog import RuleEntry
@@ -80,3 +81,10 @@ class RuleContext:
         if self.payload.source_account_id is None:
             return []
         return history.incoming(self.payload.source_account_id)
+
+    @cached_property
+    def security_events(self) -> list[security.SecurityEvent]:
+        """Device and password changes of the source account (sec:)."""
+        if self.payload.source_account_id is None:
+            return []
+        return security.recent(self.payload.source_account_id)

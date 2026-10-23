@@ -59,6 +59,20 @@ def test_mule_and_restricted_list_is_rejected():
     )
 
 
+TAKEOVER = TriggeredRule("account_takeover", Decision.HOLD, "takeover reason")
+
+
+def test_account_takeover_is_held():
+    assert choose_decision([TAKEOVER]) == (Decision.HOLD, "takeover reason")
+
+
+def test_account_takeover_and_restricted_list_is_rejected():
+    assert choose_decision([TAKEOVER, RESTRICTED]) == (
+        Decision.REJECT,
+        "restricted list reason",
+    )
+
+
 def test_shared_device_alone_is_approved_with_its_reason():
     assert choose_decision([SHARED_DEVICE]) == (Decision.APPROVE, "shared device reason")
 

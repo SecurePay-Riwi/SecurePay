@@ -53,6 +53,7 @@ See [Seed](../components/seed.mdx).
 | `HISTORY_OUT_HOURS` | `24` | Outgoing history kept per account (`out:{account}`). At least 24: the longest velocity and splitting windows the catalog accepts. |
 | `HISTORY_IN_MINUTES` | `60` | Incoming history kept per account (`in:{account}`), for the mule rule. At least 60, the longest mule window the catalog accepts. |
 | `HISTORY_DEVICE_DAYS` | `30` | How long an account stays on a device's history (`dev:{device}`), for the shared device rule. At least 30, the longest window the catalog accepts. |
+| `HISTORY_SECURITY_MINUTES` | `60` | Security events kept per account (`sec:{account}`), for the account takeover rule (1 hour). |
 | `DECISION_TIMEOUT_MS` | `120` | How long the engine waits for the rules before applying the default decision (RN-01). Below 200 ms so the answer and the network still fit. |
 | `DECISION_WORKERS` | `40` | Threads that evaluate the rules. A timed-out evaluation keeps its thread until it ends. |
 
