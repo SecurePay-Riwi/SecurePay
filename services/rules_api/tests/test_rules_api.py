@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from shared.rule_catalog import CATALOG_KEY, VERSION_KEY
@@ -29,7 +30,8 @@ cache = FakeValkey()
 client = TestClient(main.app)
 
 
-def setup_function(monkeypatch):
+@pytest.fixture(autouse=True)
+def isolate_store(monkeypatch):
     cache.values.clear()
     cache.lists.clear()
     monkeypatch.setattr(store, "get_cache", lambda: cache)
