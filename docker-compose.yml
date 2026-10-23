@@ -1,5 +1,5 @@
 # Full local ecosystem (MAG-32): infrastructure, seed, decision engine,
-# restricted-list API, consumers, generator and partner statements.
+# rules API, restricted-list API, consumers, generator and partner statements.
 # The satellite repositories must be cloned beside this one.
 #
 #   docker compose up --build -d   build and start everything

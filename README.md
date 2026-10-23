@@ -371,6 +371,12 @@ PostgreSQL: el proyecto instala **Psycopg 3** (`psycopg[binary]`) y
 uv run uvicorn services.decision_engine.main:app --reload
 ```
 
+In another terminal, start the rules management API (Valkey must be running):
+
+```bash
+uv run uvicorn services.rules_api.main:app --reload --port 8002
+```
+
 La API queda en http://localhost:8000 y la documentación interactiva
 en http://localhost:8000/docs.
 

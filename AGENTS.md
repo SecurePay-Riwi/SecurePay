@@ -192,11 +192,15 @@ Read this before adding or changing a rule in `services/decision_engine/`.
   `tests/test_decision_outcomes.py` for a new decision combination.
 - **`catalog.current()`** is read once per decision; the rules, the
   default decision and `rules_version` (the catalog version, `"0"` for the
-  code defaults) all use that snapshot. HU-20 replaces its body with the
-  Valkey reader; its signature stays and it never raises.
-- **The rules API stores the live snapshot in `{rules}:catalog`, its version in `{rules}:version`, and immutable snapshots in `{rules}:history`; it publishes `{rules}:changed` after each catalog update.
-- `services/rules_api/` owns catalog writes; `services/decision_engine/` only reads the shared contract and must never import the API service.
-- Account history lives in Valkey and is shared by every rule**
+  code defaults) all use that snapshot. It reads `{rules}:catalog` from
+  Valkey on each decision and never raises; if Valkey or the stored catalog
+  is unavailable, it falls back to the code defaults.
+- The rules API stores the live snapshot in `{rules}:catalog`, its version in
+  `{rules}:version`, and immutable snapshots in `{rules}:history`; it publishes
+  `{rules}:changed` after each catalog update.
+- `services/rules_api/` owns catalog writes; `services/decision_engine/` only
+  reads the shared contract and must never import the API service.
+- **Account history lives in Valkey and is shared by every rule**
   (`history.py`). Do not create another per-rule key:
   - `out:{account}`: what leaves the account (`P2P`, `QR`, `RETIRO`),
     member `id|type|amount`, kept 24 h (`HISTORY_OUT_HOURS`).
