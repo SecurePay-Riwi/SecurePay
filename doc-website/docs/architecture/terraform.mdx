@@ -63,6 +63,10 @@ A module is the reusable piece. An environment folder chooses its values and cal
 
 The first `plan` must say `139 to add, 0 to change, 0 to destroy`.
 
+![SecurePay network on AWS](/img/network-diagram.png)
+
+*Network, subnets, routes and security groups as created in dev. Dashed cards (load balancer, Fargate, Lambdas, cache and the other services of later sprints) are planned.* <a href={require('@site/static/img/network-diagram.png').default} target="_blank">Open full size</a>.
+
 | Module | Resources | Detail |
 | :--- | :--- | :--- |
 | `network` | 1 VPC | `10.0.0.0/16`, DNS enabled |

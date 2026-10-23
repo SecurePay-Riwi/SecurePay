@@ -58,6 +58,10 @@ This is the inventory of what Terraform must create, not of what exists today. D
 
 ### Network
 
+![SecurePay network on AWS: VPC, two zones, subnets, NAT Gateways, load balancer and cache at VPC level, gateway endpoints and the services outside the VPC](/img/network-diagram.png)
+
+*The network that Terraform creates in `infra/terraform/envs/dev`, with the English names it uses in AWS (see [Terraform](./terraform.mdx#names-in-aws)). Dashed cards are planned for later sprints.* <a href={require('@site/static/img/network-diagram.png').default} target="_blank">Open full size</a>.
+
 | Resource | Name | Qty. | Configuration | Status |
 | :--- | :--- | :--- | :--- | :--- |
 | VPC | `pagoseguro-prod-vpc` | 1 | `10.0.0.0/16`, DNS enabled | Decided |
