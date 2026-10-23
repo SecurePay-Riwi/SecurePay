@@ -1,0 +1,37 @@
+---
+sidebar_position: 4
+title: Rules API
+description: Create and modify antifraud rules, toggle them and inspect immutable catalog versions.
+---
+
+# Rules API
+
+**Folder:** `services/rules_api/` · **Run:** `uv run uvicorn services.rules_api.main:app --reload --port 8002`
+
+The Rules API owns writes to the shared catalog in Valkey. The decision engine reads that catalog for every decision, so configuration changes take effect without redeploying the engine. Swagger is available at http://localhost:8002/docs.
+
+## Endpoints
+
+| Method | Path | Purpose |
+| :--- | :--- | :--- |
+| `GET` | `/health` | Checks that the catalog store is reachable. |
+| `GET` | `/rules` | Returns the active catalog snapshot. |
+| `POST` | `/rules` | Creates a rule and publishes a new catalog version. |
+| `PATCH` | `/rules/{code}` | Modifies rule metadata, action, score or parameters. |
+| `PATCH` | `/rules/{code}/enabled` | Enables or disables a rule. |
+| `GET` | `/rules/versions` | Lists versions, timestamps, authors and rule counts. |
+| `GET` | `/rules/versions/{version}` | Returns a historical snapshot. |
+
+Set the optional `X-Rule-Author` header to record the person responsible for the change; it defaults to `api`.
+
+## Version history and safety
+
+The live catalog is stored at `{rules}:catalog`, its current version at `{rules}:version`, and append-only snapshots at `{rules}:history`. The API publishes a `{rules}:changed` notification after each update. The `default_timeout` rule is mandatory and cannot be disabled. If Valkey is unavailable, the API returns `503`; the decision engine keeps running with its version-0 defaults.
+
+## Run locally
+
+```bash
+uv run uvicorn services.rules_api.main:app --reload --port 8002
+```
+
+Or use Docker Compose with `docker compose up --build -d rules-api`. The service shares Valkey; it does not need PostgreSQL or the seed.

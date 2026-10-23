@@ -1,14 +1,9 @@
-"""The rule catalog the engine decides with.
-
-For now it is always the code defaults (version 0). HU-20 replaces the
-body of current() with the reader of the catalog the rules API publishes
-in Valkey; the signature stays, and so do its promises: it answers in a
-few milliseconds and never raises.
-"""
-
+"""The live rule catalog used for each decision."""
+import json
 from functools import cache
 
-from shared.rule_catalog import CatalogSnapshot, default_catalog
+from shared.cache import get_cache
+from shared.rule_catalog import CATALOG_KEY, CatalogSnapshot, default_catalog
 
 
 @cache
@@ -17,6 +12,13 @@ def _defaults() -> CatalogSnapshot:
 
 
 def current() -> CatalogSnapshot:
-    """The active catalog. Read once per decision: every rule, the
-    default decision and rules_version use the same snapshot."""
-    return _defaults()
+    """Read the latest catalog for each decision; cache failure must not break decisions."""
+    try:
+        raw = get_cache().get(CATALOG_KEY)
+        if raw is None:
+            return _defaults()
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8")
+        return CatalogSnapshot.model_validate(json.loads(raw))
+    except Exception:
+        return _defaults()
