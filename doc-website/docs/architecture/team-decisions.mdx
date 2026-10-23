@@ -66,11 +66,12 @@ A resent transaction gets the same decision for 1 hour (`IDEMPOTENCY_TTL_SECONDS
 
 **Decided on 2026-10-21 (story HU-11, Jorge).**
 
-- One history per account that every rule reads, instead of one key per rule: `out:{account}` (what leaves: P2P, QR, withdrawal; 24 h, for velocity and later splitting) and `in:{account}` (P2P received with the sender and the amount; 60 min, for the mule rule).
+- One history per account that every rule reads, instead of one key per rule: `out:{account}` (what leaves: P2P, QR, withdrawal; 24 h, for velocity and splitting) and `in:{account}` (P2P received with the sender and the amount; 60 min, for the mule rule).
 - **Attempts count, whatever the decision.** The history is written before deciding, in a single call; the statement does not say, and an attempt is already the signal. Every decision still records its triggered rules.
 - Amounts are kept in the account's currency; USD arrives when the engine reads the exchange rates (default-decision story).
 - Memory, measured in Valkey with realistic members (~70 bytes per entry): ~3.7 M outgoing entries alive at 50 tx/s, ~260 MB plus ~100 MB of keys. It replaces the 100–200 MB of "24 h sums" already in the 300 MB estimate and the ~100 MB velocity history noted above, so the cache would be ~400–450 MB (~$8/month more). To confirm in the load test.
 - **Device history (HU-14, Habith, 2026-10-22).** The first design had the history consumer keep the device-account pairs in DynamoDB. The engine writes them itself in Valkey instead, like the rest of the history: `dev:{device}`, one member per account scored by the last time it was seen, kept 30 days, written before deciding. Reading DynamoDB inside the 200 ms is not needed; DynamoDB stays for the durable copy and the device network analysis.
+- **Splitting counts every way out (HU-15, Habith, 2026-10-22).** RN-05 says "transactions", so `P2P`, `QR` and `RETIRO` all count, read from `out:{account}`. A transaction at or above the daily limit is not part of a split. By default the rule approves and opens a compliance case (score 40), the literal text of RN-05; holding it is a catalog change.
 
 ## Data for the seed and the generator
 

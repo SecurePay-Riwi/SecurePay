@@ -10,10 +10,12 @@ from services.decision_engine.rules import (
     mule,
     restricted_list,
     shared_device,
+    splitting,
     velocity,
 )
 
 REGISTRY = {
     m.TYPE: m
-    for m in (restricted_list, velocity, mule, shared_device, account_takeover)
+    for m in (restricted_list, velocity, mule, shared_device, splitting,
+              account_takeover)
 }

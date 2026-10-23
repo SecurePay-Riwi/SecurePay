@@ -233,14 +233,19 @@ Read this before adding or changing a rule in `services/decision_engine/`.
   last 30 days. By default `APPROVE` with score 30: it raises
   `risk_score`, it does not hold. Thresholds: the catalog's
   `shared_device` entry.
+- Splitting (`rules/splitting.py`, HU-15) reads `out:{account}`: 3 or
+  more outgoing transactions (`P2P`, `QR`, `RETIRO`) in 24 h, each below
+  USD 10000 (converted with `currency.to_usd()`), adding up to more than
+  it, and the one being decided is one of them. By default `APPROVE`
+  with `opens_case` (score 40). Thresholds: the catalog's `splitting`
+  entry.
 - Account takeover (`rules/account_takeover.py`, HU-17) runs on `P2P`, `QR`
   and `RETIRO` above USD 200: a `DEVICE_CHANGE` and a `PASSWORD_CHANGE` in
   `sec:{account}` in the 60 minutes before the transaction. Events dated
   after the transaction do not count.
 - **A decision says whether it opens a case** (`opens_case`): true when a
   rule whose catalog entry has `opens_case` fired, by default
-  `restricted_list` and `mule` (team decision 2026-10-13; splitting joins
-  it). The engine does not create cases: the cases consumer (HU-25)
+  `restricted_list`, `mule` and `splitting` (team decision 2026-10-13). The engine does not create cases: the cases consumer (HU-25)
   reads the flag from the `transaction.decided` event. `risk_score` is the
   sum of the fired rules' `score`, at most 100.
 

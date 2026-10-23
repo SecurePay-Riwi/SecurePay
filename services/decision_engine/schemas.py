@@ -158,7 +158,7 @@ class TransactionResponse(BaseModel):
     # True when a rule whose catalog entry says opens_case fired.
     opens_case: bool = Field(
         default=False,
-        description="True when a rule that opens a case for an analyst fired (by default: mule account, restricted list).",
+        description="True when a rule that opens a case for an analyst fired (by default: mule account, splitting, restricted list).",
     )
     risk_score: int = Field(
         default=0,
