@@ -116,7 +116,35 @@ def set_enabled(code: str, change: EnabledUpdate, x_rule_author: str = Header(de
 
 @app.get("/rules/versions")
 def list_versions():
-    return {"versions": [{"version": item.version, "created_at": item.created_at, "author": item.author, "rules_count": len(item.rules)} for item in store.catalog_versions()]}
+    snapshots = store.catalog_versions()
+    versions = []
+    previous = None
+    for snapshot in snapshots:
+        changes = []
+        if previous is None:
+            changes.append({"operation": "initial_catalog", "rule_codes": [rule.code for rule in snapshot.rules]})
+        else:
+            old_rules = {rule.code: rule for rule in previous.rules}
+            new_rules = {rule.code: rule for rule in snapshot.rules}
+            for code in sorted(new_rules.keys() - old_rules.keys()):
+                changes.append({"operation": "created", "rule": code})
+            for code in sorted(old_rules.keys() - new_rules.keys()):
+                changes.append({"operation": "removed", "rule": code})
+            for code in sorted(old_rules.keys() & new_rules.keys()):
+                old_rule, new_rule = old_rules[code], new_rules[code]
+                changed_fields = [field for field in ("rn", "description", "enabled", "action", "opens_case", "score", "params")
+                                  if getattr(old_rule, field) != getattr(new_rule, field)]
+                if changed_fields:
+                    changes.append({"operation": "updated", "rule": code, "fields": changed_fields})
+        versions.append({
+            "version": snapshot.version,
+            "created_at": snapshot.created_at,
+            "author": snapshot.author,
+            "rules_count": len(snapshot.rules),
+            "changes": changes,
+        })
+        previous = snapshot
+    return {"versions": versions}
 
 
 @app.get("/rules/versions/{version}", response_model=CatalogSnapshot)
