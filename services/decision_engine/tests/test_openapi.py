@@ -6,7 +6,11 @@ No database or Valkey needed: it only reads /openapi.json.
 from fastapi.testclient import TestClient
 
 from services.decision_engine.main import app
-from services.decision_engine.schemas import TransactionRequest, TransactionResponse
+from services.decision_engine.schemas import (
+    SecurityEventRequest,
+    TransactionRequest,
+    TransactionResponse,
+)
 
 client = TestClient(app)
 
@@ -38,3 +42,20 @@ def test_response_examples_are_valid_responses():
 
     for example in examples.values():
         TransactionResponse.model_validate(example["value"])
+
+
+def _post_security_events() -> dict:
+    return client.get("/openapi.json").json()["paths"]["/security-events"]["post"]
+
+
+def test_security_events_status_codes_are_documented():
+    assert sorted(_post_security_events()["responses"]) == ["202", "400", "503"]
+
+
+def test_security_event_examples_are_valid_requests():
+    examples = _post_security_events()["requestBody"]["content"][
+        "application/json"
+    ]["examples"]
+
+    for example in examples.values():
+        SecurityEventRequest.model_validate(example["value"])
