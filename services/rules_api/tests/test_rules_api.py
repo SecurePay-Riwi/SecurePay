@@ -26,13 +26,13 @@ class FakeValkey:
 
 
 cache = FakeValkey()
-store.get_cache = lambda: cache
 client = TestClient(main.app)
 
 
-def setup_function():
+def setup_function(monkeypatch):
     cache.values.clear()
     cache.lists.clear()
+    monkeypatch.setattr(store, "get_cache", lambda: cache)
 
 
 def test_create_rule_versions_catalog_and_records_author():
