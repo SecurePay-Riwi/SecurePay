@@ -6,6 +6,7 @@ code. A new rule type adds one line here.
 """
 
 from services.decision_engine.rules import (
+    account_takeover,
     mule,
     restricted_list,
     shared_device,
@@ -15,5 +16,6 @@ from services.decision_engine.rules import (
 
 REGISTRY = {
     m.TYPE: m
-    for m in (restricted_list, velocity, mule, shared_device, splitting)
+    for m in (restricted_list, velocity, mule, shared_device, splitting,
+              account_takeover)
 }

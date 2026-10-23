@@ -186,3 +186,37 @@ class HealthResponse(BaseModel):
     messaging: dict[str, int] = Field(
         description="SNS publisher counters: pending, published and failed decisions."
     )
+
+
+class SecurityEventType(str, Enum):
+    DEVICE_CHANGE = "DEVICE_CHANGE"
+    PASSWORD_CHANGE = "PASSWORD_CHANGE"
+
+
+class SecurityEventRequest(BaseModel):
+    """A device or password change, as the wallet core sends it."""
+
+    id: UUID = Field(
+        description="Chosen by the core. A resend of the same id is stored once."
+    )
+    type: SecurityEventType = Field(
+        description="DEVICE_CHANGE or PASSWORD_CHANGE."
+    )
+    user_id: UUID = Field(description="Owner of the account.")
+    account_id: UUID = Field(
+        description="Account the change applies to. It is not checked against "
+        "the database: the event may arrive before or after its transactions."
+    )
+    device_id: UUID = Field(
+        description="Device used for the change (the new one in a DEVICE_CHANGE)."
+    )
+    event_date: AwareDatetime = Field(
+        description="When the change happened, with time zone. The account "
+        "takeover rule compares it with the transaction date."
+    )
+
+
+class SecurityEventResponse(BaseModel):
+    recorded: Literal[True] = Field(
+        description="Always true: the event is stored for the account takeover rule."
+    )

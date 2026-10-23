@@ -376,6 +376,10 @@ en http://localhost:8000/docs.
 Necesita PostgreSQL y Valkey encendidos. Sin Valkey, `POST /transactions`
 responde 503 ("El servicio de idempotencia no está disponible").
 
+`POST /security-events` stores device and password changes for the
+account takeover rule (only Valkey needed; 503 without it). Events are
+kept for `HISTORY_SECURITY_MINUTES` (60).
+
 Cada decisión nueva se publica en SNS sin hacer esperar al core: la
 petición la deja en una cola en memoria y un hilo de fondo la publica en
 lotes de hasta 10. Un reenvío (mismo id) no se vuelve a publicar. Si

@@ -11,9 +11,15 @@ from sqlalchemy.orm import Session
 from shared.db import get_session
 from services.decision_engine.docs.app import APP
 from services.decision_engine.docs.health import HEALTH
+from services.decision_engine.docs.security import (
+    RECORD_SECURITY_EVENT,
+    SECURITY_REQUEST_EXAMPLES,
+)
 from services.decision_engine.docs.transactions import EVALUATE, REQUEST_EXAMPLES
 from services.decision_engine.schemas import (
     HealthResponse,
+    SecurityEventRequest,
+    SecurityEventResponse,
     TransactionRequest,
     TransactionResponse,
 )
@@ -22,7 +28,7 @@ from services.decision_engine.decision_service import (
     InvalidReference,
     process_transaction,
 )
-from services.decision_engine import publisher
+from services.decision_engine import publisher, security_events
 from services.decision_engine.idempotency import EnProceso, IdReutilizado
 from fastapi import Request
 from fastapi.encoders import jsonable_encoder
@@ -43,6 +49,19 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(**APP, lifespan=lifespan)
+_default_openapi = app.openapi
+
+
+def openapi() -> dict:
+    """FastAPI documents a 422 for every endpoint with a body, but an
+    invalid body gets 400 here (validation_exception_handler). Drop it
+    where the endpoint never answers 422."""
+    schema = _default_openapi()
+    schema["paths"]["/security-events"]["post"]["responses"].pop("422", None)
+    return schema
+
+
+app.openapi = openapi
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(
@@ -117,3 +136,22 @@ def evaluate_transaction(
             status_code=500,
             detail="Error interno al procesar la transacción.",
         ) from exc
+
+
+@app.post(
+    "/security-events",
+    response_model=SecurityEventResponse,
+    **RECORD_SECURITY_EVENT,
+)
+def record_security_event(
+    payload: SecurityEventRequest = Body(openapi_examples=SECURITY_REQUEST_EXAMPLES),
+):
+    try:
+        security_events.record(payload)
+    except valkey.exceptions.ConnectionError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="The security event store is not available.",
+        ) from exc
+
+    return SecurityEventResponse(recorded=True)

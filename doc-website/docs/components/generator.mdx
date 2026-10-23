@@ -50,7 +50,7 @@ Transactions go to `POST /transactions`. The format is described in [Decision en
 
 Normal amounts are USD 1 to 150 (top-ups USD 10 to 300), converted to each account's currency with the Frankfurter rate of **the transaction's own date**, saved per day in `src/securepay_generator/data/tasas_2026-10.json` (a day without a rate, or not published yet, uses the last earlier one, as the engine does with the DynamoDB table). Transfers only happen between accounts in the same currency.
 
-Security events (`DEVICE_CHANGE`, `PASSWORD_CHANGE`) go to `POST /security-events`, which the engine does not have yet: they answer `404` until the account takeover rule arrives.
+Security events (`DEVICE_CHANGE`, `PASSWORD_CHANGE`) go to `POST /security-events`, which stores them for the account takeover rule and answers `202`.
 
 ## Fraud patterns
 

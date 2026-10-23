@@ -206,6 +206,10 @@ Read this before adding or changing a rule in `services/decision_engine/`.
     (`HISTORY_DEVICE_DAYS`). `record_device()` writes the main account
     (source; in a top-up, destination) on every transaction and returns
     the set, which reaches the rules as `RuleContext.device_accounts`.
+  - `sec:{account}`: device and password changes from
+    `POST /security-events` (`security_events.py`), member
+    `id|type|device_id`, scored by `event_date`, kept 60 min
+    (`HISTORY_SECURITY_MINUTES`). Read by the account takeover rule.
   - Recharges are not recorded. Attempts count whatever the decision: the
     history is written before deciding (team decision, 2026-10-21).
   - One key per Lua script: ElastiCache Serverless may put two keys on
@@ -235,6 +239,10 @@ Read this before adding or changing a rule in `services/decision_engine/`.
   it, and the one being decided is one of them. By default `APPROVE`
   with `opens_case` (score 40). Thresholds: the catalog's `splitting`
   entry.
+- Account takeover (`rules/account_takeover.py`, HU-17) runs on `P2P`, `QR`
+  and `RETIRO` above USD 200: a `DEVICE_CHANGE` and a `PASSWORD_CHANGE` in
+  `sec:{account}` in the 60 minutes before the transaction. Events dated
+  after the transaction do not count.
 - **A decision says whether it opens a case** (`opens_case`): true when a
   rule whose catalog entry has `opens_case` fired, by default
   `restricted_list`, `mule` and `splitting` (team decision 2026-10-13). The engine does not create cases: the cases consumer (HU-25)
