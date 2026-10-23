@@ -85,3 +85,17 @@ def test_update_increments_catalog_and_rule_versions():
 
 def test_missing_version_returns_404():
     assert client.get("/rules/versions/999").status_code == 404
+
+
+def test_version_history_describes_changed_fields():
+    response = client.patch("/rules/velocity/enabled", json={"enabled": False})
+    assert response.status_code == 200
+    versions = client.get("/rules/versions").json()["versions"]
+    assert versions[-1]["author"] == "api"
+    assert {"operation": "updated", "rule": "velocity", "fields": ["enabled", "rule_version"]} in versions[-1]["changes"]
+
+
+def test_invalid_rule_update_returns_400():
+    response = client.patch("/rules/velocity", json={"params": {"window_minutes": 0, "limit": 5}})
+    assert response.status_code == 400
+    assert "Invalid rule update" in response.json()["detail"]

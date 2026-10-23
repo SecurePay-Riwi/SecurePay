@@ -132,7 +132,7 @@ def list_versions():
                 changes.append({"operation": "removed", "rule": code})
             for code in sorted(old_rules.keys() & new_rules.keys()):
                 old_rule, new_rule = old_rules[code], new_rules[code]
-                changed_fields = [field for field in ("rn", "description", "enabled", "action", "opens_case", "score", "params")
+                changed_fields = [field for field in ("rn", "description", "enabled", "action", "opens_case", "score", "params", "rule_version")
                                   if getattr(old_rule, field) != getattr(new_rule, field)]
                 if changed_fields:
                     changes.append({"operation": "updated", "rule": code, "fields": changed_fields})
