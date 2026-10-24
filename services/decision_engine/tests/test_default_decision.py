@@ -151,3 +151,19 @@ def test_to_usd():
     assert currency.to_usd(Decimal("3317.65"), "COP") == Decimal("1.00")
     with pytest.raises(ValueError):
         currency.to_usd(Decimal("1"), "GBP")
+
+
+def test_default_decision_records_the_version_of_its_rule():
+    # RN-08: the default decision says which default_timeout entry set
+    # its limit, like any rule that fires.
+    base = catalog.current()
+    rules = [
+        r.model_copy(update={"rule_version": 3}) if r.code == ds.DEFAULT_RULE else r
+        for r in base.rules
+    ]
+    snapshot = base.model_copy(update={"version": 7, "rules": rules})
+
+    result = ds.default_decision(_payload("80.00"), snapshot)
+
+    assert result["rules_version"] == "7"
+    assert result["rule_versions"] == {ds.DEFAULT_RULE: 3}

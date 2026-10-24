@@ -50,6 +50,7 @@ def _decision(decision, reason, rules, by_default=False) -> dict:
         "decision_reason": reason,
         "rules_version": "0",
         "rules_triggered": rules,
+        "rule_versions": {rule: 1 for rule in rules},
         "opens_case": False,
         "risk_score": 0,
         "by_default": by_default,
