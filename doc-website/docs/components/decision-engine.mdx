@@ -135,7 +135,7 @@ The project brief asks that rules can be created, versioned, enabled and disable
 
 - **The catalog** (`shared/rule_catalog.py`) is data: for each rule its `code` (the name in `rules_triggered`), its `type` (which code runs it), `params` (thresholds), `action` (`APPROVE`, `HOLD` or `REJECT`), `opens_case`, `score`, `enabled` and `rule_version`. A `CatalogSnapshot` is the whole catalog at one `version`. The engine and the rules API share these models.
 - **The rules** live in `services/decision_engine/rules/`, one module per type with `TYPE` and `evaluate(ctx, rule)`. A rule reads its thresholds from `rule.typed_params()`, never from environment variables, and returns `hit(rule, reason)` when it fires: decision, case and score come from the catalog. `rules/__init__.py` maps each type to its module (`REGISTRY`).
-- **`catalog.current()`** returns the catalog the engine decides with. It reads the current snapshot from Valkey for every decision, so changes published by the [Rules API](./rules-api.mdx) take effect without restarting the engine. If Valkey is unavailable or the stored snapshot is invalid, it falls back to the code defaults (version 0).
+- **`catalog.current()`** returns the catalog the engine decides with. It keeps the last valid snapshot in memory and, at most every `RULES_REFRESH_SECONDS` (1 second), checks `{rules}:version` in Valkey; when the [Rules API](./rules-api.mdx) published a new version, it reads and validates `{rules}:catalog`. A change reaches the decisions in about a second, without a restart. If Valkey fails or the new catalog is invalid, the engine keeps deciding with the last valid one; until one was ever published, with the code defaults (version 0).
 
 ```python
 # services/decision_engine/rules/velocity.py
@@ -420,7 +420,7 @@ Each new decision is published to SNS by a background thread without making the 
 | `schemas.py` | Request and response models, their validation and the field descriptions Swagger shows. |
 | `docs/` | Swagger documentation, one file per group of endpoints (`transactions.py`, `security.py`, `health.py`), plus the API description (`app.py`) and the error bodies (`errors.py`). Keep its examples equal to this page. |
 | `decision_service.py` | Idempotency + catalog rules + publish. |
-| `catalog.py` | `current()`: the rule catalog the engine decides with (defaults until HU-20). |
+| `catalog.py` | `current()`: the rule catalog the engine decides with, refreshed from Valkey. |
 | `idempotency.py` | `idem:{id}` keys in Valkey. |
 | `history.py` | `out:{account}`, `in:{account}` and `dev:{device}` sorted sets: the history every rule reads. `record()` writes any history key. |
 | `security_events.py` | `sec:{account}` sorted set: device and password changes for the account takeover rule. |

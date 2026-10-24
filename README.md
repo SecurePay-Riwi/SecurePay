@@ -371,7 +371,8 @@ PostgreSQL: el proyecto instala **Psycopg 3** (`psycopg[binary]`) y
 uv run uvicorn services.decision_engine.main:app --reload
 ```
 
-In another terminal, start the rules management API (Valkey must be running):
+En otra terminal, la API de reglas (necesita PostgreSQL y Valkey; crea
+sus tablas al arrancar y publica el catálogo en Valkey):
 
 ```bash
 uv run uvicorn services.rules_api.main:app --reload --port 8002
