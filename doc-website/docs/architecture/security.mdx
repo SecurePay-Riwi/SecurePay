@@ -83,7 +83,7 @@ One group per function, and the rules are written between groups instead of betw
 | `sg-cache` | 6379 and 6380/TCP from `sg-motor` and `sg-lambda` | None |
 
 **Changes from version 1.0:**
-- **The engine no longer reaches the database.** The engine never queries PostgreSQL: it reads the active rules and the restricted list from the cache, and the day's exchange rate from DynamoDB. The components that read the database to fill the cache are Lambdas (rule refresh, list load). The 5432 rule was removed from `sg-motor`, and so was the inbound rule from `sg-motor` in `sg-rds`. Today the engine code still queries the restricted list in PostgreSQL; this is temporary until the sprint 2 story for rejection by restricted list, which moves it to the cache.
+- **The engine no longer reaches the database.** The engine never queries PostgreSQL: it reads the active rules and the restricted list from the cache, and the day's exchange rate from DynamoDB. The components that read the database to fill the cache are Lambdas (rule refresh, list load). The 5432 rule was removed from `sg-motor`, and so was the inbound rule from `sg-motor` in `sg-rds`. Today the engine code still reads accounts, owners and the restricted list from PostgreSQL (the rules already come from the cache); this is temporary until the list and the account data are loaded into the cache.
 - **Port 6380 on the cache.** ElastiCache Serverless uses 6379 (writes and consistent reads) and 6380 (reads from a replica), and many clients open both even if they do not use the second one. With only 6379 the connection could fail.
 - **`sg-admin`**, for the Fargate task that runs the schema migrations and the seed against the database. It had no group before.
 

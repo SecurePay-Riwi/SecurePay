@@ -71,7 +71,7 @@ It runs on AWS (Ohio, `us-east-2`, two Availability Zones), managed services fir
 | Batch processing | **PySpark** on EMR Serverless (planned) |
 | Local environment | **Docker Compose** and **LocalStack**, which emulates AWS on a laptop |
 | AWS | ALB, ECS Fargate, Lambda, ElastiCache Serverless, RDS, DynamoDB, S3, Step Functions, EventBridge Scheduler, Glue, Athena |
-| Infrastructure and CI/CD | **Terraform** (planned) and **GitHub Actions** (Docker images validated on every pull request; tests in CI planned) |
+| Infrastructure and CI/CD | **Terraform** (network, IAM, S3 and RDS so far) and **GitHub Actions** (Docker images validated on every pull request; tests in CI planned) |
 | Dashboard | **Power BI** |
 | Documentation | **Docusaurus**, deployed to GitHub Pages |
 
@@ -109,6 +109,7 @@ SecurePay/
 │   ├── events.py               # transaction.decided event (services/ only)
 │   └── rule_catalog.py         # rule catalog models and defaults (services/ only)
 ├── infra/localstack/           # creates SNS, SQS, S3 and DynamoDB in LocalStack
+├── infra/terraform/            # AWS infrastructure (network, IAM, S3, RDS)
 ├── doc-website/                # this site
 ├── docker-compose.yml          # PostgreSQL, Valkey and LocalStack
 └── db/, generators/, sources/  # backup from before the split; do not edit
@@ -126,7 +127,7 @@ SecurePay/
 | [Kaggle datasets](./components/kaggle-datasets.mdx) | `securepay-csv`: `src/securepay_csv/kaggle_datasets/`; `securepay-seed`: `src/securepay_seed/kaggle_etl/` | Done: PaySim and Sparkov (`fraudTest.csv`) downloaded, validated and loaded untouched into `raw/kaggle/` with a manifest; an ETL loads a sample of both into PostgreSQL. |
 | [Restricted list service](./components/restricted-list.mdx) | `securepay-apis`: `src/securepay_apis/restricted_list/` | Done: simulated external provider with full-list and per-document endpoints, random latency and outages; reads the list the seed exports. |
 | Exchange rates | `securepay-apis`: `src/securepay_apis/exchange_rates/` | Done locally: daily rates from Frankfurter to a file or to the DynamoDB table in LocalStack, with a Lambda handler for AWS. |
-| AWS infrastructure (Terraform) | `SecurePay`: `infra/` | Designed, not built yet. |
+| [AWS infrastructure (Terraform)](./architecture/terraform.mdx) | `SecurePay`: `infra/terraform/` | Network, security groups, IAM, S3 and RDS written in Terraform; created in the team's AWS account on 2026-10-23, checked and destroyed. Load balancer, ECS, Lambdas, cache and queues come in later sprints. |
 
 ## 7. Links
 

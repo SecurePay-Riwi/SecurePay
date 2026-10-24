@@ -381,3 +381,26 @@ There is no order yet; we have a list of what the client wants:
 **Description:**  
 - PR #49 merged ("step 0"): the rules read their thresholds, decision, case flag and score from a rule catalog (`shared/rule_catalog.py`); one module per rule in `services/decision_engine/rules/`; `rules_version` is the catalog version (`"0"` for the defaults in the code) and decisions carry `risk_score`. `VELOCITY_*`, `MULE_*` and `DEFAULT_DECISION_LIMIT_USD` are no longer environment variables. Decisions did not change (Habith).
 - PR #50 merged: this site brought up to date with PRs #47 to #49, the Git conventions on the Contributing page and the Sprint 2 and 3 backlogs.
+- PR #51 merged: security events endpoint (device and password changes) and the account takeover rule: a device change, a password change and a transaction above USD 200 within one hour is held (HU-17, Jorge).
+- PR #52 merged: shared device rule; a device used by more than 3 accounts in 30 days raises the risk score of every account that uses it (HU-14, Habith).
+- PR #53 merged: splitting rule; 3 or more transactions in 24 hours, each below the daily limit, whose sum exceeds it, open a compliance case and raise the risk score; the transaction itself is not held (HU-15, Habith).
+
+---
+
+**10/24/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Sprint 3 stories merged  
+
+**Description:**  
+- PR #54 merged: the AWS network, security groups and IAM roles in Terraform, with the network diagram (HU-55, Jorge).
+- PR #55 merged: S3 buckets (with Object Lock on the evidence bucket) and RDS in Terraform, and the AWS Pricing Calculator estimate (HU-56, Jorge). On October 23 the whole configuration was created in the team's AWS account (139 resources), checked and destroyed.
+- PR #56 merged: the rules API; rules are created, changed, enabled, disabled and versioned in PostgreSQL, and the engine reads the live catalog from Valkey, keeping the last valid one if Valkey fails (HU-19 to HU-22, Yulianis; storage in PostgreSQL, Habith).
+- PR #57 merged: each decision records the version of every rule that decided it (`rule_versions`), with an end-to-end test from the rules API to the engine (HU-23, Habith).
+- Sprint 3 closed with nine of ten stories done. HU-15 (splitting) moves to Sprint 4: the rule is merged, but the compliance case it must open is created by the cases consumer (HU-25). See the [Sprint 3 backlog](./product-backlog/sprint-backlog-3.mdx).

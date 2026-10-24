@@ -73,7 +73,7 @@ The wait uses `asyncio.sleep`, so one slow request does not block the others: 20
 2. The engine checks **only the cache**. A document that is not in the full cached list is not listed; the provider is not asked again.
 3. Only if the cache is not available, the engine calls `GET /lista/{documento}`, behind an automatic circuit breaker and with the default decision if it does not answer in time.
 
-Steps 1 to 3 belong to the Sprint 2 story "rejection by restricted list". Today the [decision engine](./decision-engine.mdx) still looks the document up in PostgreSQL.
+Steps 1 to 3 are not built yet. Today the [decision engine](./decision-engine.mdx) checks every party of the transaction (HU-16, HU-33) by looking the documents up in PostgreSQL.
 
 Size in full mode: 50,000 records are about 4 MB of JSON on `GET /lista`, under Lambda's 6 MB response limit.
 

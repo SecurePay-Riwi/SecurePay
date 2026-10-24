@@ -28,7 +28,7 @@ The engine checks, in order:
 **Fallback.** If something takes too long, the engine falls back to a default decision: under USD 50 it approves, from USD 50 up it holds. It exists in two layers, one inside the engine with an internal time budget and one in the core in case the whole engine does not answer. The amount is converted to USD first, with the rate of the transaction's date (the last earlier day on weekends and holidays). Every fallback decision is flagged. See [Team decisions](./team-decisions.mdx).
 
 :::info[Built so far]
-Steps 1 and 3 (velocity only) and 6 run today, plus the restricted list read straight from PostgreSQL. The rest arrives in Sprint 2. See [Decision engine](../components/decision-engine.mdx).
+Steps 1 to 4 and 6 run today in Valkey: idempotency, the rule catalog, the account and device history (velocity, mule account, splitting, shared device, account takeover) and the decision with every rule version. Step 5 still reads the restricted list straight from PostgreSQL, and the fallback converts to USD with fixed 2026-10-01 rates until HU-42. See [Decision engine](../components/decision-engine.mdx).
 :::
 
 ## 3. What happens afterwards, without the core waiting {/* #after-the-decision */}

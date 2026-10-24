@@ -141,7 +141,7 @@ stop and ask instead of working around it.
 
 ---
 
-## Sprint state (as of 2026-10-22)
+## Sprint state (as of 2026-10-24)
 
 ### Sprint 1 — Done ✅
 - Seed + generator + Kaggle ETL + partner statements + exchange rates + restricted list API
@@ -160,17 +160,16 @@ stop and ask instead of working around it.
 | HU-33 | Restricted list checked for every party | Yulianis | #42 |
 | HU-63, HU-64 | Docker images, full stack with one command | Yulianis | #43 |
 
-### Sprint 3 — In progress
-Split by module so the three work in parallel. "Step 0" (PR #49, rule
-catalog in code) is merged; the only wait between people is HU-23 after HU-22.
+### Sprint 3 — Closed ✅ (9/10; HU-15 moved to Sprint 4 for its case, with HU-25)
+"Step 0" (PR #49) put the rule catalog in the code first.
 
-| HU | Jira | Description | Owner |
-|----|------|-------------|-------|
-| HU-19 → HU-22 | MAG-133..136 | Rules API, change without redeploy, enable/disable, versioning | Yulianis |
-| HU-55 → HU-56 | MAG-138, MAG-139 | AWS with Terraform: network, IAM, SGs; S3, RDS, costs v1 | Jorge |
-| HU-17 | MAG-132 | Account takeover (RN-07) | Jorge |
-| HU-14, HU-15 | MAG-129, MAG-131 | Shared device (RN-04), splitting (RN-05) | Habith |
-| HU-23 | MAG-137 | Rule version per decision (after HU-22) | Habith |
+| HU | Jira | Description | Owner | PR |
+|----|------|-------------|-------|----|
+| HU-19 → HU-22 | MAG-133..136 | Rules API, change without redeploy, enable/disable, versioning | Yulianis | #56 |
+| HU-55 → HU-56 | MAG-138, MAG-139 | AWS with Terraform: network, IAM, SGs; S3, RDS, costs v1 | Jorge | #54, #55 |
+| HU-17 | MAG-132 | Account takeover (RN-07) | Jorge | #51 |
+| HU-14, HU-15 | MAG-129, MAG-131 | Shared device (RN-04), splitting (RN-05) | Habith | #52, #53 |
+| HU-23 | MAG-137 | Rule version per decision | Habith | #57 |
 
 ---
 
