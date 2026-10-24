@@ -471,7 +471,10 @@ semilla 42, las 3 transacciones de `RESTRICTED_LIST` salen REJECT, 4
 transferencias de `VELOCITY` salen HOLD (la que completa la ventana en
 cada caso) y todo lo demás sale APPROVE, porque las otras reglas todavía
 no existen. Cada respuesta trae además `rules_triggered` (todas las reglas
-que se activaron, aunque decida la más severa) y `rules_version`.
+que se activaron, aunque decida la más severa), `rules_version` (la
+versión del catálogo) y `rule_versions` (la versión de cada regla que se
+activó; con las dos, `GET /rules/versions/{n}` de la API de reglas muestra
+los umbrales que decidieron).
 
 Para revisar la mensajería (el `awslocal` del contenedor de LocalStack es
 el comando `aws` ya apuntado a LocalStack):

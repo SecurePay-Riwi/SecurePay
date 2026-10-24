@@ -14,7 +14,7 @@ The project brief asks that rules can be created, versioned, enabled and disable
 
 1. The API changes the rule in PostgreSQL and, in the same transaction, stores the whole new catalog as version N in `rule_catalog_versions`.
 2. After the commit it publishes the catalog in Valkey (`{rules}:catalog` and `{rules}:version`).
-3. The engine checks `{rules}:version` at most every `RULES_REFRESH_SECONDS` (1 second). When it changed, it loads the new catalog, and the following decisions use it and record `rules_version: "N"`. No restart.
+3. The engine checks `{rules}:version` at most every `RULES_REFRESH_SECONDS` (1 second). When it changed, it loads the new catalog, and the following decisions use it and record `rules_version: "N"` and, in `rule_versions`, the `rule_version` of each rule that fired. No restart.
 
 **PostgreSQL is the truth; Valkey is a copy.** Valkey has no persistence in Compose, so the API publishes the latest version again at startup, and `POST /rules/publish` does it on demand. If publishing fails, the change is kept and goes out with the next write, the next start or `POST /rules/publish`. A publish never replaces a newer version, so two changes at the same time cannot leave the engine on the older one.
 
@@ -27,6 +27,19 @@ If Valkey fails or a published catalog is invalid, the engine keeps deciding wit
 - `rule_catalog_versions` is append-only: a trigger rejects `UPDATE`, `DELETE` and `TRUNCATE`. Each row keeps who made the change (`X-User` header, `anonymous` when missing), the rule before and after, and the whole catalog.
 - Each rule also has its own `rule_version`, raised on every change of that rule.
 - Going back is a new version: `POST /rules/versions/{version}/activate` copies the rules of an old version and disables the rules created after it.
+
+## Auditing a decision
+
+Every decision (the engine's response, the stored decision a resend gets and the `transaction.decided` event the consumers keep) records `rules_version` (the catalog version) and `rule_versions` (the `rule_version` of each rule that fired). To explain a past decision:
+
+```bash
+# The decision said: "rules_version": "2", "rule_versions": {"velocity": 2}
+curl localhost:8002/rules/versions/2
+# {"version": 2, "author": "Habith", "rules": [..., {"code": "velocity", "rule_version": 2,
+#   "params": {"window_minutes": 10, "limit": 2}, ...}, ...]}
+```
+
+The versions are immutable, so the answer is the same years later. `GET /rules/versions` also shows who made each change and the rule before and after.
 
 ## Endpoints
 
@@ -57,7 +70,7 @@ curl localhost:8002/rules/versions?limit=1
 
 ## Tests
 
-`services/rules_api/tests/` runs against PostgreSQL in an empty schema of its own (`rules_api_test`, dropped afterwards) and the local Valkey; `test_openapi.py` needs nothing. The engine side is in `services/decision_engine/tests/test_catalog_live.py`. See [Testing](../getting-started/testing.mdx).
+`services/rules_api/tests/` runs against PostgreSQL in an empty schema of its own (`rules_api_test`, dropped afterwards) and the local Valkey; `test_openapi.py` needs nothing. The engine side is in `services/decision_engine/tests/test_catalog_live.py`. `tests/test_rule_catalog_e2e.py` runs both services against the same PostgreSQL and Valkey (CA-06): a change through the API decides the next transaction without restarting the engine, the decision records the new versions, and `GET /rules/versions/{n}` shows the thresholds that decided. See [Testing](../getting-started/testing.mdx).
 
 ## Run locally
 
