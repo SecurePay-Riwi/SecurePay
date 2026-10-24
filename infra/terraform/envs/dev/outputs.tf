@@ -29,6 +29,13 @@ output "role_arns" {
 }
 
 output "bucket_names" {
-  description = "Names the buckets will have (created with the storage module)."
-  value       = module.iam.bucket_names
+  value = module.storage.bucket_names
+}
+
+output "database_endpoint" {
+  value = module.database.endpoint
+}
+
+output "database_master_password_parameter" {
+  value = module.database.master_password_parameter
 }

@@ -48,3 +48,15 @@ variable "create_github_oidc_provider" {
   type        = bool
   default     = true
 }
+
+variable "database_backup_retention_days" {
+  description = "Days of automated RDS backups. The design says 7; an AWS account on the free plan accepts at most 1."
+  type        = number
+  default     = 1
+}
+
+variable "database_multi_az" {
+  description = "RDS standby in the second zone, as in the design. Creating and deleting it takes 10 to 15 minutes each."
+  type        = bool
+  default     = true
+}

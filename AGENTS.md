@@ -38,7 +38,7 @@ SecurePay/                  ← this repo: the product (engine, consumers, infra
 │                             messaging, S3 buckets and the exchange-rates DynamoDB
 │                             table; add the service to SERVICES in Compose), Docker Compose
 │   └── terraform/          ← AWS infrastructure: modules/ (network, security_groups,
-│                             iam) and envs/dev; local state,
+│                             iam, storage, database) and envs/dev; local state,
 │                             never committed
 ├── doc-website/            ← Docusaurus documentation site
 ├── db/                     ← BACKUP only: now in securepay-seed
@@ -334,8 +334,9 @@ Read these before changing the design, not to work on the code:
 ## AWS infrastructure (Terraform, MAG-138)
 
 - `infra/terraform/` implements `doc-website/docs/architecture/infrastructure.mdx` and `security.mdx`; it does not redesign them. AWS names are English, `securepay-<env>-<resource>` (the design pages still show the old Spanish names; the mapping is in `terraform.mdx`); bucket names end with the account id. Tags `project`, `environment`, `owner`, `managed_by` through `default_tags`, region `us-east-2`.
-- Run everything from `infra/terraform/envs/dev`: `terraform init`, `plan`, `apply`, and `destroy` after every test (the NAT Gateways cost money even idle). Dev has a USD 5 budget that counts usage paid with credits.
-- State and `terraform.tfvars` are local and ignored by git; apply/destroy always run from the same computer. Credentials come from the AWS profile, never from files; the IAM user needs `PowerUserAccess` plus `infra/terraform/terraform-user-policy.json`. Commit `.terraform.lock.hcl`.
+- Run everything from `infra/terraform/envs/dev`: `terraform init`, `plan`, `apply`, and `destroy` after every test (the NAT Gateways and RDS cost money even idle). Dev is disposable on purpose: `force_destroy` buckets, RDS without deletion protection or final snapshot, no default Object Lock retention (test objects are uploaded with a 5-minute retain-until date), USD 5 budget that counts usage paid with credits.
+- State and `terraform.tfvars` are local and ignored by git; the state holds the RDS passwords, so it is never shared, and apply/destroy always run from the same computer. Credentials come from the AWS profile, never from files; the IAM user needs `PowerUserAccess` plus `infra/terraform/terraform-user-policy.json`. Commit `.terraform.lock.hcl`.
+- Step by step (IAM user, access key, create, check, destroy): `doc-website/docs/getting-started/deploy-aws-terraform.mdx`.
 - Before a PR: `terraform fmt -check -recursive` in `infra/terraform/` and `terraform validate` in `envs/dev`. The page `doc-website/docs/architecture/terraform.mdx` changes with the code.
 
 ## Docker images and local ecosystem (MAG-31 / MAG-32)
