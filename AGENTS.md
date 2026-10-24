@@ -37,6 +37,9 @@ SecurePay/                  ← this repo: the product (engine, consumers, infra
 ├── infra/                  ← LocalStack setup (init scripts create the SNS/SQS
 │                             messaging, S3 buckets and the exchange-rates DynamoDB
 │                             table; add the service to SERVICES in Compose), Docker Compose
+│   └── terraform/          ← AWS infrastructure: modules/ (network, security_groups,
+│                             iam) and envs/dev; local state,
+│                             never committed
 ├── doc-website/            ← Docusaurus documentation site
 ├── db/                     ← BACKUP only: now in securepay-seed
 ├── generators/             ← BACKUP only: now in securepay-generator
@@ -327,6 +330,13 @@ Read these before changing the design, not to work on the code:
 - Data flow: https://securepay-riwi.github.io/SecurePay/docs/architecture/data-flow
 - Logbook: https://securepay-riwi.github.io/SecurePay/docs/logbook
 - Run the data sources: https://securepay-riwi.github.io/SecurePay/docs/getting-started/run-data-sources
+
+## AWS infrastructure (Terraform, MAG-138)
+
+- `infra/terraform/` implements `doc-website/docs/architecture/infrastructure.mdx` and `security.mdx`; it does not redesign them. AWS names are English, `securepay-<env>-<resource>` (the design pages still show the old Spanish names; the mapping is in `terraform.mdx`); bucket names end with the account id. Tags `project`, `environment`, `owner`, `managed_by` through `default_tags`, region `us-east-2`.
+- Run everything from `infra/terraform/envs/dev`: `terraform init`, `plan`, `apply`, and `destroy` after every test (the NAT Gateways cost money even idle). Dev has a USD 5 budget that counts usage paid with credits.
+- State and `terraform.tfvars` are local and ignored by git; apply/destroy always run from the same computer. Credentials come from the AWS profile, never from files; the IAM user needs `PowerUserAccess` plus `infra/terraform/terraform-user-policy.json`. Commit `.terraform.lock.hcl`.
+- Before a PR: `terraform fmt -check -recursive` in `infra/terraform/` and `terraform validate` in `envs/dev`. The page `doc-website/docs/architecture/terraform.mdx` changes with the code.
 
 ## Docker images and local ecosystem (MAG-31 / MAG-32)
 
