@@ -18,3 +18,11 @@ RESUMEN.md
 
 # Valkey/Redis snapshot written by a local server started in the repo
 dump.rdb
+
+# Terraform: local state, plugins and real variable values
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log

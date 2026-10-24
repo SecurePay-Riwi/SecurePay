@@ -41,7 +41,7 @@ Each record follows the same format: context, decision, alternatives considered 
 
 **Decision.** The engine runs on Fargate with autoscaling. The rest runs on Lambda.
 
-**Alternatives.** Everything on Lambda: about $235/month for the engine's volume against $72.08, plus the cold-start risk against the 200 ms limit. Everything on Fargate: the six small components would need 12 tasks to survive a zone loss, about $108/month against $40.60.
+**Alternatives.** Everything on Lambda: about $235/month for the engine's volume against $72.08, plus the cold-start risk against the 200 ms limit. Everything on Fargate: the six small components would need 12 tasks to survive a zone loss, about $108/month against $35.55.
 
 **Consequences.** Two compute models to maintain and package. The rule is explicit: constant, latency-sensitive load goes to Fargate; sporadic load goes to Lambda.
 

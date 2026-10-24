@@ -564,3 +564,17 @@ Para borrar también los volúmenes persistentes usa docker compose down -v. La 
     docker compose run --rm --no-deps partner-statements python -m securepay_csv.kaggle_datasets
 
 En el workflow de GitHub Actions, la validación de arranque y health checks de Docker se ejecuta cuando está configurado el secreto de repositorio `LOCALSTACK_AUTH_TOKEN` (Settings → Secrets and variables → Actions). El token no debe guardarse en archivos versionados ni compartirse en mensajes.
+
+## Infraestructura en AWS (Terraform)
+
+`infra/terraform/` crea en AWS la red, los security groups, los roles IAM, los buckets S3 y RDS del diseño. Los nombres van en inglés con el prefijo `securepay-<ambiente>-`. Qué crea y por qué está en `doc-website/docs/architecture/terraform.mdx`; el paso a paso (instalar la CLI de AWS y Terraform, crear el usuario IAM y su llave, crear, revisar y destruir) está en `doc-website/docs/getting-started/deploy-aws-terraform.mdx`.
+
+Necesitas Terraform 1.9 o más reciente, la CLI de AWS y un usuario IAM (nunca root) con `PowerUserAccess` más la política `infra/terraform/terraform-user-policy.json`. No se guardan credenciales en archivos. Desde `infra/terraform/envs/dev`:
+
+    cp terraform.tfvars.example terraform.tfvars   # tu nombre y tu correo
+    terraform init
+    terraform plan       # la primera vez: 139 to add
+    terraform apply
+    terraform destroy    # siempre al terminar de probar: los NAT y RDS cobran aunque no haya tráfico
+
+El estado (`terraform.tfstate`) y `terraform.tfvars` quedan en tu equipo y git los ignora. El estado guarda las contraseñas de RDS, así que no se comparte. Corre `apply` y `destroy` siempre desde el mismo equipo.

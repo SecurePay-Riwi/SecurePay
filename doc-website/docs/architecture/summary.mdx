@@ -52,14 +52,14 @@ Network, security groups and IAM roles are in [Security](./security.mdx); the fu
 
 ## What the solution costs {/* #cost */}
 
-**Production: ≈ $333 a month. Development: ≈ $17 a month**, because the development environment is destroyed between work sessions. Figures use AWS published prices for Ohio and a load of 50 tx/s sustained (129.6 million transactions a month).
+**Production: ≈ $346 a month. Development: ≈ $17 a month**, because the development environment is destroyed between work sessions. Figures come from the AWS Pricing Calculator for Ohio and a load of 50 tx/s sustained (129.6 million transactions a month).
 
 **Why this is the lowest-cost option:**
 
 | Alternative | Monthly cost | Why not |
 | :--- | :--- | :--- |
-| **Our design** | **≈ $333** | |
-| Everything on Fargate containers | ≈ $401 | Pays for idle containers for the low-volume components |
+| **Our design** | **≈ $346** | |
+| Everything on Fargate containers | ≈ $419 | Pays for idle containers for the low-volume components |
 | The assignment's stack: RabbitMQ, Airflow, own Spark, EKS | ≈ $320 without high availability | Adding broker and Airflow replicas to survive a zone outage makes it more expensive, and the team would run four systems |
 
 Some figures, such as requests per task, cache memory and Spark job duration, are confirmed by the load test and the first real runs; they are parameters adjusted without changing services or flow. Full breakdown in [AWS services and costs](./aws-services-and-costs.mdx), and how each estimate was calculated in [AWS infrastructure](./infrastructure.mdx#estimates).
