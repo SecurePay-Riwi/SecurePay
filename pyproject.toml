@@ -22,7 +22,7 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
-testpaths = ["services", "generators", "sources", "db", "shared"]
+testpaths = ["services", "tests", "generators", "sources", "db", "shared"]
 markers = [
     "integracion: necesita LocalStack levantado (se salta sola si no está)",
 ]

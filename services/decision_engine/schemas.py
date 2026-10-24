@@ -155,6 +155,10 @@ class TransactionResponse(BaseModel):
         default=[],
         description="Every rule that fired, not only the one that decided.",
     )
+    rule_versions: dict[str, int] = Field(
+        default={},
+        description="rule_version of each rule in rules_triggered, by code. With rules_version, GET /rules/versions/{rules_version} of the rules API shows the exact thresholds that decided. {} in decisions stored before it existed.",
+    )
     # True when a rule whose catalog entry says opens_case fired.
     opens_case: bool = Field(
         default=False,

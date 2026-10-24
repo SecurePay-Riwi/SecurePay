@@ -194,6 +194,9 @@ def _decide(
         "decision_reason": reason,
         "rules_version": str(snapshot.version),
         "rules_triggered": [r.rule for r in triggered],
+        # RN-08: the version of each rule that fired, so an auditor can
+        # tell which thresholds decided without reading the whole catalog.
+        "rule_versions": {r.rule: r.rule_version for r in triggered},
         "opens_case": any(r.opens_case for r in triggered),
         "risk_score": min(MAX_RISK_SCORE, sum(r.score for r in triggered)),
         "by_default": False,
@@ -225,6 +228,7 @@ def default_decision(payload: TransactionRequest, snapshot: CatalogSnapshot) -> 
         ),
         "rules_version": str(snapshot.version),
         "rules_triggered": [DEFAULT_RULE],
+        "rule_versions": {DEFAULT_RULE: entry.rule_version if entry else 1},
         "opens_case": False,
         "risk_score": 0,
         "by_default": True,

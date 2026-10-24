@@ -47,6 +47,7 @@ Defined once in `shared/events.py`, because the engine and the consumers are dep
     "decision_reason": "…",
     "rules_version": "0",
     "rules_triggered": ["velocity"],
+    "rule_versions": {"velocity": 1},
     "opens_case": false,
     "risk_score": 0,
     "processed_at": "2026-10-14T00:10:03.512+00:00"
@@ -54,7 +55,7 @@ Defined once in `shared/events.py`, because the engine and the consumers are dep
 }
 ```
 
-If the format ever changes in an incompatible way, `event_version` goes up so an old consumer rejects the message (it ends in the DLQ) instead of misreading it. `leer_evento()` validates type, version and the required decision fields.
+`rule_versions` (the version of each rule that fired, HU-23) was added without raising `event_version`: a new field is compatible, and consumers read the decision as a whole. If the format ever changes in an incompatible way, `event_version` goes up so an old consumer rejects the message (it ends in the DLQ) instead of misreading it. `leer_evento()` validates type, version and the required decision fields.
 
 ## How the engine publishes
 

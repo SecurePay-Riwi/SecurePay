@@ -35,6 +35,8 @@ SecurePay/                  ← this repo: the product (engine, consumers, infra
 │   ├── decision_engine/    ← FastAPI antifraud engine (rules in rules/, catalog in catalog.py)
 │   ├── rules_api/           ← FastAPI rules management and catalog versioning
 │   └── consumers/          ← SNS/SQS consumers and analytics
+├── tests/                  ← end-to-end tests that run more than one service
+│                             (test_rule_catalog_e2e.py: rules API + engine)
 ├── infra/                  ← LocalStack setup (init scripts create the SNS/SQS
 │                             messaging, S3 buckets and the exchange-rates DynamoDB
 │                             table; add the service to SERVICES in Compose), Docker Compose
@@ -258,6 +260,14 @@ Read this before adding or changing a rule in `services/decision_engine/`.
   and `RETIRO` above USD 200: a `DEVICE_CHANGE` and a `PASSWORD_CHANGE` in
   `sec:{account}` in the 60 minutes before the transaction. Events dated
   after the transaction do not count.
+- **A decision records the versions that decided it** (RN-08, HU-23):
+  `rules_version` (the catalog version) and `rule_versions` (code →
+  `rule_version` of each rule in `rules_triggered`; the default decision
+  records `default_timeout`'s). `TriggeredRule.rule_version` comes from
+  `hit()`. The stored decision and the `transaction.decided` event carry
+  both, and `GET /rules/versions/{n}` of the rules API shows the catalog
+  that decided. Adding a decision field: optional, with a default in
+  `TransactionResponse`, without raising `EVENT_VERSION`.
 - **A decision says whether it opens a case** (`opens_case`): true when a
   rule whose catalog entry has `opens_case` fired, by default
   `restricted_list`, `mule` and `splitting` (team decision 2026-10-13). The engine does not create cases: the cases consumer (HU-25)

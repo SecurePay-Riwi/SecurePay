@@ -465,6 +465,10 @@ def test_response_carries_rules_version_and_triggered_rules():
         [[]] * 5 + [["velocity"]]
     )
     assert {r["rules_version"] for r in respuestas} == {str(catalog.current().version)}
+    # RN-08: the version of each rule that fired.
+    assert [r["rule_versions"] for r in respuestas] == (
+        [{}] * 5 + [{"velocity": catalog.current().get("velocity").rule_version}]
+    )
 
 
 def test_every_triggered_rule_is_kept_and_the_most_severe_wins():
@@ -494,6 +498,9 @@ def test_published_event_carries_the_triggered_rules(eventos_publicados):
     decision = eventos_publicados[0]["decision"]
     assert decision["rules_triggered"] == ["restricted_list"]
     assert decision["rules_version"] == str(catalog.current().version)
+    assert decision["rule_versions"] == {
+        "restricted_list": catalog.current().get("restricted_list").rule_version,
+    }
 
 
 def test_decision_stored_before_rules_fields_is_still_replayed():
@@ -514,6 +521,7 @@ def test_decision_stored_before_rules_fields_is_still_replayed():
     assert response.json()["idempotent_replay"] is True
     assert response.json()["rules_triggered"] == []
     assert response.json()["rules_version"] is None
+    assert response.json()["rule_versions"] == {}
 
 
 # Historial por cuenta (out:{cuenta} e in:{cuenta}).
