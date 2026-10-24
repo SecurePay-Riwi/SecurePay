@@ -5,7 +5,7 @@ sidebar_position: 6
 # Sprint backlog 4
 ## Case Management + Compliance + ECS/Fargate
 
-**Sprint Goal:** 
+**Sprint Goal:** Turn the engine's decisions into cases an analyst works from start to finish: a mule account, splitting or restricted list decision opens a case by itself, the case shows up in an inbox, someone takes it, it is escalated after 4 hours without a resolution, it is resolved as fraud or legitimate, and its evidence is kept for 10 years without anyone being able to change it. Also send the compliance reports (restricted list and suspicious transactions) and run the engine in AWS on ECS/Fargate.
 **Sprint Period:**
 **Scrum Master / Leader:** Habith  
 **Team Members:** Yulianis, Jorge (Kerlys left the project on October 13, 2026)  
@@ -14,14 +14,34 @@ sidebar_position: 6
 
 ## User Stories & Tasks Table
 
-| **User Story** | **Epic** | **Description** | **MoSCoW** |
-|---|---|---|---|
-| HU-25 | EP-05 | Generate a case from a suspicious transaction | Must |
-| HU-26 | EP-05 | Case management queue | Should |
-| HU-27 | EP-05 | Assign a case to a responsible person | Should |
-| HU-28 | EP-05 | View the user's transaction history | Must |
-| HU-29 | EP-05 | Identify accounts related through shared devices | Should |
-| HU-30 | EP-05 | Resolve a case by recording the outcome | Must |
-| HU-31 | EP-05 | Escalate unresolved cases after 4 hours | Must |
-| HU-32 | EP-05 | Retain evidence for 10 years (immutable) | Must |
-| HU-34 | EP-06 | Generate a report when a document appears on a restricted list | Must |
+| User Story | Jira | Epic | Description | MoSCoW | Owner | Status |
+|---|---|---|---|---|---|---|
+| HU-25 | MAG-181 | EP-05 | Generate a case from a suspicious transaction | Must | Habith | To do |
+| HU-26 | MAG-182 | EP-05 | Case management queue | Should | Yulianis | To do |
+| HU-27 | MAG-183 | EP-05 | Assign a case to a responsible person | Should | Yulianis | To do |
+| HU-28 | MAG-184 | EP-05 | View the user's transaction history | Must | Habith | To do |
+| HU-29 | MAG-185 | EP-05 | Identify accounts related through shared devices | Should | Habith | To do |
+| HU-30 | MAG-186 | EP-05 | Resolve a case by recording the outcome | Must | Yulianis | To do |
+| HU-31 | MAG-187 | EP-05 | Escalate unresolved cases after 4 hours | Must | Jorge | To do |
+| HU-32 | MAG-188 | EP-05 | Retain evidence for 10 years (immutable) | Must | Jorge | To do |
+| HU-34 | MAG-189 | EP-06 | Generate a report when a document appears on a restricted list | Must | Habith | To do |
+| HU-35 | MAG-190 | EP-06 | Suspicious transaction report | — | Yulianis | To do |
+| HU-57 | MAG-191 | EP-11 | Deploy the engine with ECR and ECS/Fargate | — | Jorge | To do |
+| HU-15 | MAG-131 | EP-03 | Detect transaction splitting (carried over from Sprint 3) | Should | Habith | Closes with HU-25 |
+
+## How the work is split
+
+A case has one shape (a table, its states and an event history) and three parts of the system write it: the **consumers** create the case when the decision arrives, the **cases API** (new, port 8003) shows, assigns and resolves it, and the **alerts task** (every 5 minutes) escalates it when it is overdue. Habith first puts that shared shape in `main` ("step 0": tables, states, an empty API and the functions the three call, without logic yet). From there each person works on their own files in parallel:
+
+- **Habith:** step 0 → HU-25 (which also closes HU-15 from Sprint 3) → HU-34 → HU-28 → HU-29 → integration.
+- **Yulianis:** HU-26 → HU-27 → HU-30, and HU-35. The four are the cases API, with the same shape as the rules API she built in Sprint 3.
+- **Jorge:** HU-57 (waits for nobody) → HU-31 → HU-32. The three that touch AWS the most: Fargate and the load balancer, the alerts Lambda and the evidence bucket with Object Lock.
+
+The only wait is step 0. At the end the team runs the whole life of a case (create, assign, escalate, resolve and archive the evidence) and the generator against the full Docker stack.
+
+## Decisions already made
+
+- **Only mule account, splitting and restricted list open a case** (decided on October 13). If every `HOLD` opened one, there would be about 43,000 a day. See [Team decisions](../architecture/team-decisions.mdx).
+- **Escalation is done by the alerts task every 5 minutes**, not by one timer per case.
+- **The 30-day account history lives in PostgreSQL.**
+- **Resolving a case stores the final decision:** `APPROVE` if legitimate, `REJECT` if fraud.
