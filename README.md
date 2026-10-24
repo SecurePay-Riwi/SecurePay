@@ -55,6 +55,7 @@ socios de pago.
 El repositorio reúne los componentes trabajados hasta el momento:
 
 - Motor antifraude con API FastAPI y reglas de decisión.
+- API independiente para crear, modificar, activar/desactivar y consultar versiones de reglas antifraude (`services/rules_api/`, puerto 8002).
 - Seed de datos maestros para PostgreSQL y generador de transacciones de prueba.
 - Pruebas automatizadas para los componentes del proyecto.
 - Simulación local de mensajería con SNS/SQS y almacenamiento en S3 mediante LocalStack.
@@ -370,6 +371,13 @@ PostgreSQL: el proyecto instala **Psycopg 3** (`psycopg[binary]`) y
 uv run uvicorn services.decision_engine.main:app --reload
 ```
 
+En otra terminal, la API de reglas (necesita PostgreSQL y Valkey; crea
+sus tablas al arrancar y publica el catálogo en Valkey):
+
+```bash
+uv run uvicorn services.rules_api.main:app --reload --port 8002
+```
+
 La API queda en http://localhost:8000 y la documentación interactiva
 en http://localhost:8000/docs.
 
@@ -541,6 +549,7 @@ Valida la configuración y levanta el stack:
 Compose coordina PostgreSQL, Valkey, LocalStack, el seed, el motor antifraude, la API de listas restrictivas, los consumidores, el generador y los extractos. El seed y el generador son tareas de una sola ejecución. El seed usa SEED_RESET=true para regenerar los datos de desarrollo al iniciar; no uses este stack contra una base de datos con datos que quieras conservar.
 
 - Motor antifraude: http://localhost:8000/health y http://localhost:8000/docs
+- API de reglas: http://localhost:8002/health y http://localhost:8002/docs
 - API de listas restrictivas: http://localhost:8001/health
 - PostgreSQL: puerto 5433; Valkey: 6379; LocalStack: 4566.
 

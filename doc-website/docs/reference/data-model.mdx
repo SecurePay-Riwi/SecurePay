@@ -100,6 +100,15 @@ Many-to-many: a device used on an account since a date. This is what the shared 
 
 Whether this history moves to S3 in production is an [open question](../architecture/open-questions.mdx).
 
+### `rules` and `rule_catalog_versions`
+
+Written only by the [rules API](../components/rules-api.mdx), which creates them at startup; their own models in `services/rules_api/models.py`, not in `shared/models.py`. The engine never reads them: it reads the copy published in Valkey.
+
+| Table | Content |
+| :--- | :--- |
+| `rules` | The current state, one row per rule: `code` (PK), `type`, `rn`, `description`, `enabled`, `action`, `opens_case`, `score`, `params` (JSONB), `rule_version`, `created_at`, `updated_at`, `updated_by`. |
+| `rule_catalog_versions` | The history, one row per change: `version` (PK, max + 1 under an advisory lock), `created_at`, `author`, `change` (JSONB: operation, code, the rule before and after) and `snapshot` (JSONB: the whole catalog of that version). A trigger rejects `UPDATE`, `DELETE` and `TRUNCATE`. |
+
 ## Valkey
 
 | Key | Type | TTL | Content |
@@ -108,6 +117,8 @@ Whether this history moves to S3 in production is an [open question](../architec
 | `out:{account_id}` | sorted set | 24 h after the last outgoing movement (`HISTORY_OUT_HOURS`) | What leaves the account (`P2P`, `QR`, `RETIRO`). Member: `id\|type\|amount`. Score: `transaction_date` in ms. |
 | `in:{account_id}` | sorted set | 60 min after the last incoming transfer (`HISTORY_IN_MINUTES`) | `P2P` transfers received. Member: `id\|sender_account\|amount` (the mule rule compares what came in with what is withdrawn). Score: `transaction_date` in ms. |
 | `sec:{account_id}` | sorted set | 60 min after the last security event (`HISTORY_SECURITY_MINUTES`) | Device and password changes (`POST /security-events`). Member: `id\|type\|device_id`. Score: `event_date` in ms. Read by the account takeover rule. |
+| `{rules}:catalog` | string (JSON) | None | The latest `CatalogSnapshot`, published by the rules API. |
+| `{rules}:version` | string | None | Its version. The engine checks it every `RULES_REFRESH_SECONDS` and reads the catalog only when it changed. |
 
 ## DynamoDB
 

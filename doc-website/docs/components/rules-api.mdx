@@ -1,0 +1,64 @@
+---
+sidebar_position: 4
+title: Rules API
+description: Create, change, enable and disable antifraud rules; every change is an immutable catalog version that reaches the engine without a redeploy.
+---
+
+# Rules API
+
+**Folder:** `services/rules_api/` · **Run:** `uv run uvicorn services.rules_api.main:app --reload --port 8002` · **Swagger:** http://localhost:8002/docs
+
+The project brief asks that rules can be created, versioned, enabled and disabled through an API without redeploying the engine, and that every decision records the rule version it used (RF-03, RN-08, CA-06). This service owns the [rule catalog](./decision-engine.mdx#rule-catalog); the decision engine only reads it.
+
+## How a change reaches the engine
+
+1. The API changes the rule in PostgreSQL and, in the same transaction, stores the whole new catalog as version N in `rule_catalog_versions`.
+2. After the commit it publishes the catalog in Valkey (`{rules}:catalog` and `{rules}:version`).
+3. The engine checks `{rules}:version` at most every `RULES_REFRESH_SECONDS` (1 second). When it changed, it loads the new catalog, and the following decisions use it and record `rules_version: "N"`. No restart.
+
+**PostgreSQL is the truth; Valkey is a copy.** Valkey has no persistence in Compose, so the API publishes the latest version again at startup, and `POST /rules/publish` does it on demand. If publishing fails, the change is kept and goes out with the next write, the next start or `POST /rules/publish`. A publish never replaces a newer version, so two changes at the same time cannot leave the engine on the older one.
+
+If Valkey fails or a published catalog is invalid, the engine keeps deciding with the last valid catalog it had (the code defaults, version 0, until one was ever published).
+
+## Versions
+
+- Every change that modifies something is a new catalog version, `max + 1`, assigned under a PostgreSQL advisory lock: simultaneous changes wait for each other, versions never repeat and no change is lost.
+- A request that changes nothing (enable an enabled rule, a `PUT` equal to the rule) creates no version.
+- `rule_catalog_versions` is append-only: a trigger rejects `UPDATE`, `DELETE` and `TRUNCATE`. Each row keeps who made the change (`X-User` header, `anonymous` when missing), the rule before and after, and the whole catalog.
+- Each rule also has its own `rule_version`, raised on every change of that rule.
+- Going back is a new version: `POST /rules/versions/{version}/activate` copies the rules of an old version and disables the rules created after it.
+
+## Endpoints
+
+| Method | Path | What it does | Answers |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/rules` | The active catalog, disabled rules included | `200` |
+| `GET` | `/rules/{code}` | One rule | `200`, `404` |
+| `POST` | `/rules` | Creates a rule with an existing `type` and its own `params` | `201`, `400`, `409` |
+| `PUT` | `/rules/{code}` | Replaces `description`, `action`, `opens_case`, `score` and `params`; not `code` or `type` | `200`, `400`, `404` |
+| `POST` | `/rules/{code}/enable` | Enables a rule | `200`, `404` |
+| `POST` | `/rules/{code}/disable` | Disables a rule; `default_timeout` cannot be disabled | `200`, `404`, `409` |
+| `GET` | `/rules/versions` | Versions, newest first, `limit` (1–100, 20) and `offset` | `200`, `400` |
+| `GET` | `/rules/versions/{version}` | The whole catalog of one version | `200`, `404` |
+| `POST` | `/rules/versions/{version}/activate` | A new version with the rules of an old one | `200`, `404` |
+| `POST` | `/rules/publish` | Publishes the latest version to Valkey again | `200`, `503` |
+| `GET` | `/health` | Up, with its database | `200`, `503` |
+
+Every endpoint answers `503` when PostgreSQL is down, and `400` with `{"detail", "errors"}` for invalid input (the same format as the engine). `params` are validated against the rule `type` in `shared/rule_catalog.py`; `versions` and `publish` are not valid codes.
+
+```bash
+# Hold the third transfer in 10 minutes instead of the sixth
+curl -X PUT localhost:8002/rules/velocity -H 'X-User: Habith' -H 'Content-Type: application/json' \
+  -d '{"action": "HOLD", "params": {"window_minutes": 10, "limit": 2}}'
+# {"rule": {"code": "velocity", ..., "rule_version": 2}, "catalog_version": 2}
+
+curl localhost:8002/rules/versions?limit=1
+```
+
+## Tests
+
+`services/rules_api/tests/` runs against PostgreSQL in an empty schema of its own (`rules_api_test`, dropped afterwards) and the local Valkey; `test_openapi.py` needs nothing. The engine side is in `services/decision_engine/tests/test_catalog_live.py`. See [Testing](../getting-started/testing.mdx).
+
+## Run locally
+
+Needs PostgreSQL and Valkey. With Docker Compose: `docker compose up --build -d rules-api`.

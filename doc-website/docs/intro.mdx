@@ -98,6 +98,7 @@ PyPI
 SecurePay/
 ├── services/
 │   ├── decision_engine/        # decision engine (FastAPI)
+│   ├── rules_api/              # versioned rules management API (FastAPI)
 │   └── consumers/              # SQS consumers written as Lambda handlers
 ├── shared/                     # published to PyPI as securepay-shared
 │   ├── models.py               # SQLAlchemy ORM
@@ -117,7 +118,8 @@ SecurePay/
 | :--- | :--- | :--- |
 | [Seed](./components/seed.mdx) | `securepay-seed`: `src/securepay_seed/` | Done: users, accounts, devices, device–account pairs, merchants and restricted lists in PostgreSQL. |
 | [Transaction generator](./components/generator.mdx) | `securepay-generator`: `src/securepay_generator/` | Done: plays the wallet core, with labeled fraud patterns and data defects. |
-| [Decision engine](./components/decision-engine.mdx) | `SecurePay`: `services/decision_engine/` | Running with five rules (restricted list, velocity, mule account, shared device and splitting), the default decision when the rules time out, idempotency and a per-account and per-device history in Valkey. The rules read their thresholds from a rule catalog (defaults in the code for now). Account takeover and the API that manages the catalog come in Sprint 3. |
+| [Decision engine](./components/decision-engine.mdx) | `SecurePay`: `services/decision_engine/` | Evaluates transactions using the current versioned rule catalog in Valkey, with a safe fallback to code defaults if Valkey is unavailable. |
+| [Rules API](./components/rules-api.mdx) | `SecurePay`: `services/rules_api/` | Creates and updates rules, enables/disables them, and exposes historical catalog versions without redeploying the decision engine. |
 | [Messaging](./components/messaging.mdx) | `SecurePay`: `services/decision_engine/publisher.py`, `infra/localstack/` | Done locally: SNS topic, three SQS queues with dead-letter queues, on LocalStack. |
 | [Consumers](./components/consumers.mdx) | `SecurePay`: `services/consumers/` | Analytics writes to S3; cases and history are skeletons. |
 | [Partner statements](./components/partner-statements.mdx) | `securepay-csv`: `src/securepay_csv/partner_statements/` | Done: daily files of the four payment partners, with their defects, locally and in LocalStack. |
