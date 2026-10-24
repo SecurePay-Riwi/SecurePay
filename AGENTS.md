@@ -160,7 +160,7 @@ stop and ask instead of working around it.
 | HU-33 | Restricted list checked for every party | Yulianis | #42 |
 | HU-63, HU-64 | Docker images, full stack with one command | Yulianis | #43 |
 
-### Sprint 3 — Done ✅
+### Sprint 3 — Closed ✅ (9/10; HU-15 moved to Sprint 4 for its case, with HU-25)
 "Step 0" (PR #49) put the rule catalog in the code first.
 
 | HU | Jira | Description | Owner | PR |

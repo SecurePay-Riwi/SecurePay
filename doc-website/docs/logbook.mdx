@@ -403,4 +403,4 @@ There is no order yet; we have a list of what the client wants:
 - PR #55 merged: S3 buckets (with Object Lock on the evidence bucket) and RDS in Terraform, and the AWS Pricing Calculator estimate (HU-56, Jorge). On October 23 the whole configuration was created in the team's AWS account (139 resources), checked and destroyed.
 - PR #56 merged: the rules API; rules are created, changed, enabled, disabled and versioned in PostgreSQL, and the engine reads the live catalog from Valkey, keeping the last valid one if Valkey fails (HU-19 to HU-22, Yulianis; storage in PostgreSQL, Habith).
 - PR #57 merged: each decision records the version of every rule that decided it (`rule_versions`), with an end-to-end test from the rules API to the engine (HU-23, Habith).
-- All Sprint 3 stories merged. See the [Sprint 3 backlog](./product-backlog/sprint-backlog-3.mdx).
+- Sprint 3 closed with nine of ten stories done. HU-15 (splitting) moves to Sprint 4: the rule is merged, but the compliance case it must open is created by the cases consumer (HU-25). See the [Sprint 3 backlog](./product-backlog/sprint-backlog-3.mdx).

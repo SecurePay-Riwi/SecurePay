@@ -18,7 +18,7 @@ sidebar_position: 5
 | User Story | Jira | Epic | Description | MoSCoW | Owner | Status |
 |---|---|---|---|---|---|---|
 | HU-14 | MAG-129 | EP-03 | Risk associated with shared devices | Should | Habith | Done (PR #52) |
-| HU-15 | MAG-131 | EP-03 | Detect transaction splitting | Should | Habith | Done (PR #53) |
+| HU-15 | MAG-131 | EP-03 | Detect transaction splitting | Should | Habith | Rule done (PR #53); moved to Sprint 4 for the case |
 | HU-17 | MAG-132 | EP-03 | Detect account takeover | Should | Jorge | Done (PR #51) |
 | HU-19 | MAG-133 | EP-04 | Create anti-fraud rules through an API | Must | Yulianis | Done (PR #56) |
 | HU-20 | MAG-134 | EP-04 | Modify rules without redeployment | Must | Yulianis | Done (PR #56) |
@@ -30,7 +30,7 @@ sidebar_position: 5
 
 ## Sprint result
 
-All ten stories were merged into `main` by October 24, 2026. The engine now runs seven rules from a versioned catalog (restricted list, velocity, mule account, shared device, splitting, account takeover and the default decision on timeout). The rules API changes, enables, disables and versions them in PostgreSQL, the engine picks up the new catalog from Valkey without a restart, and every decision records the version of each rule that decided it. The AWS network, IAM, security groups, S3 and RDS are written in Terraform; they were created in the team's AWS account on October 23, checked and destroyed, and the cost analysis v1 is on the [AWS services and costs](../architecture/aws-services-and-costs.mdx) page.
+Sprint 3 was closed on October 24, 2026 with nine of ten stories done. HU-15 (splitting) has its rule merged, but its criterion "a compliance case is created" needs the cases consumer, so the story moved to Sprint 4 and closes together with HU-25. The engine now runs seven rules from a versioned catalog (restricted list, velocity, mule account, shared device, splitting, account takeover and the default decision on timeout). The rules API changes, enables, disables and versions them in PostgreSQL, the engine picks up the new catalog from Valkey without a restart, and every decision records the version of each rule that decided it. The AWS network, IAM, security groups, S3 and RDS are written in Terraform; they were created in the team's AWS account on October 23, checked and destroyed, and the cost analysis v1 is on the [AWS services and costs](../architecture/aws-services-and-costs.mdx) page.
 
 ## How the work is split
 
