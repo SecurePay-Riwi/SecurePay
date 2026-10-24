@@ -239,7 +239,7 @@ device_accounts = history.record_device(device_id, main_account, date)  # always
 Decisions about what goes in (Jorge, 2026-10-21):
 
 - **Attempts count, whatever the decision.** The history is written before deciding, in one call. Several people trying to send money to an account that withdraws it right away, or an account trying many transfers, is already the signal, even if the engine held one of them. Counting only approved ones would need a second write after deciding, inside the 200 ms. Every decision still reaches the event with its triggered rules.
-- **The amount is in the account's currency.** All the transactions of an account use its currency, so sums add up. The conversion to USD arrives when the engine reads the exchange-rates table (needed first by the default decision on timeout).
+- **The amount is in the account's currency.** All the transactions of an account use its currency, so sums add up. The rules with a dollar threshold convert with `currency.to_usd()` when they compare (see [Default decision on timeout](#default-decision-on-timeout)).
 - A resend never writes twice: idempotency answers it before the rules run, and if a decision fails after writing, the retry writes the same member, which Valkey does not duplicate.
 
 ## Velocity and out-of-order events
