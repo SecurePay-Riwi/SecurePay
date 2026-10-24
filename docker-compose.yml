@@ -94,6 +94,7 @@ services:
       PUBLISH_BATCH_WAIT_MS: ${PUBLISH_BATCH_WAIT_MS:-500}
       PUBLISH_BUFFER_SIZE: ${PUBLISH_BUFFER_SIZE:-10000}
       PUBLISH_RETRIES: ${PUBLISH_RETRIES:-3}
+      RULES_REFRESH_SECONDS: ${RULES_REFRESH_SECONDS:-1}
     ports: ["8000:8000"]
     depends_on:
       postgres: {condition: service_healthy}
@@ -111,10 +112,14 @@ services:
   rules-api:
     build: {context: ., dockerfile: Dockerfile}
     command: ["uvicorn", "services.rules_api.main:app", "--host", "0.0.0.0", "--port", "8002"]
+    # PostgreSQL keeps the rules and every catalog version; Valkey only
+    # holds the copy the engine reads (published again at startup).
     environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pagoseguro}:${POSTGRES_PASSWORD:-pagoseguro}@postgres:5432/${POSTGRES_DB:-pagoseguro}
       VALKEY_URL: redis://valkey:6379/0
     ports: ["8002:8002"]
     depends_on:
+      postgres: {condition: service_healthy}
       valkey: {condition: service_healthy}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health', timeout=3)"]
