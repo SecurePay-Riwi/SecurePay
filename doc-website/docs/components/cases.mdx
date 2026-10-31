@@ -11,7 +11,7 @@ description: The case an analyst works from the engine's decision to its resolut
 Sprint 4 turns the engine's decisions into cases an analyst works from start to end: a decision of mule account, splitting or restricted list **opens a case**, the case waits in an **inbox** ordered by risk and time left, someone **takes** it, it is **escalated** to the supervisor if it is not resolved in **4 hours** (RN-09), the analyst **resolves** it as fraud or legitimate, and its **evidence** is kept 10 years (RN-12).
 
 :::info Status
-Only the shared contract is built: the tables, the states, the cases API with `/health` and the alerts task with jobs that do nothing yet. Each story of Sprint 4 fills in its part.
+Built: the shared contract (the tables, the states, the cases API with `/health` and the alerts task with jobs that do nothing yet) and the cases consumer, which opens the cases (HU-25). Each story of Sprint 4 fills in its part.
 :::
 
 ## Who writes what
@@ -49,6 +49,18 @@ OPEN ──(alerts task, due_at passed)──> ESCALATED ──(analyst)──> 
 | `ESCALATED` | Alerts task, actor `system` | `{"due_at": "…"}` |
 | `RESOLVED` | Cases API | `{"outcome", "final_decision", "note"}` |
 | `EVIDENCE_ARCHIVED` | `evidence.archive()` | `{"bucket", "key", "retain_until"}` |
+
+## Opening a case
+
+The cases consumer (`services/consumers/cases.py`, queue `casos`) reads each `transaction.decided` event:
+
+- **`opens_case: false`:** acknowledged, nothing is written.
+- **`opens_case: true`:** one case `OPEN` with the decision as it came (`decision`, `decision_reason`, `rules_triggered`, `rules_version`, `rule_versions`, `risk_score`, `amount_usd`), the amount and currency of the transaction, its date, the whole transaction as evidence, `account_id` = `main_account()` and `due_at` = now + `CASE_DUE_MINUTES`; and its `CREATED` event, actor `system`. A splitting `APPROVE` opens its compliance case the same way (RN-05).
+- **The same transaction again** (SNS and SQS deliver at least once): `INSERT ... ON CONFLICT (transaction_id) DO NOTHING`, and `CREATED` is written only when the case was inserted. No second case, no second `CREATED`.
+
+One session and one database transaction per batch of up to 10 messages. A message that cannot be a case (not JSON, no amount, an id that is not a UUID, a date without time zone) is checked before writing and fails alone in `batchItemFailures`. If PostgreSQL fails, nothing is committed and every message that opens a case goes back to the queue; after 5 attempts it lands in the DLQ `casos-dlq`. An event without `amount_usd` (older than Sprint 4) still opens a case, with `amount_usd` null.
+
+Each transaction opens its own case: when a split goes on, every later transaction that fires `splitting` opens another one. The analyst sees them together through the account (`account_id`, HU-28 and HU-29).
 
 The columns of the four tables are in [Data model](../reference/data-model.mdx#cases-cases-case_events-compliance_reports-account_transactions).
 

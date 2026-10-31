@@ -10,7 +10,8 @@ whichever way the money goes out. It reads the outgoing history
 A transaction at or above the limit is not part of a split: it is left
 out of the count and the sum, and when it is the one being decided the
 rule does not fire. Every later transaction of the split inside the
-window fires too; the cases consumer (HU-25) groups them by account.
+window fires too, and each one opens its own case (one per transaction,
+HU-25); the analyst sees them together through the account.
 
 Amounts in the history are in the account's currency; each one is
 converted to USD (fixed 2026-10-01 rates until HU-42). By default the

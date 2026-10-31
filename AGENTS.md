@@ -178,7 +178,8 @@ stop and ask instead of working around it.
 ### Sprint 4 — In progress (Cases + Compliance)
 "Step 0" put the case contract in the code first (`shared/cases.py`,
 `services/cases_api/`, `services/alerts/`, `shared/evidence.py`,
-`amount_usd` in the decision). Habith: HU-25 → HU-34 → HU-28 → HU-29;
+`amount_usd` in the decision). HU-25 (cases consumer, closes HU-15's
+case) is in review. Habith: HU-25 → HU-34 → HU-28 → HU-29;
 Yulianis: HU-26 → HU-27 → HU-30, HU-35; Jorge: HU-57 → HU-31 → HU-32.
 
 ---
@@ -201,6 +202,13 @@ Read this before touching `shared/cases.py`, `services/cases_api/`,
 - **Only `opens_case` opens a case** (D1, team decision 2026-10-13), one
   per `transaction_id` (`ON CONFLICT DO NOTHING`), with `due_at =
   created_at + CASE_DUE_MINUTES` on the consumer's clock.
+- **The cases consumer** (`services/consumers/cases.py`, HU-25) checks
+  each event in Python before writing (`case_values()`), so a broken one
+  fails alone in `batchItemFailures`; then one session and one commit per
+  batch, and `CREATED` only when the insert returned an id. If PostgreSQL
+  fails, every message that opens a case goes back to the queue. Its
+  tests point `cases.SessionLocal` at an isolated schema. A split that
+  goes on opens one case per transaction; nothing groups them.
 - **States:** `OPEN` → `ESCALATED` (only the alerts task) → `RESOLVED`,
   or `OPEN` → `RESOLVED`. `RESOLVED` is final (`409`). Resolving sets
   `final_decision`: `FRAUD` → `REJECT`, `LEGITIMATE` → `APPROVE` (D4).
