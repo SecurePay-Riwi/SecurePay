@@ -179,7 +179,8 @@ stop and ask instead of working around it.
 "Step 0" put the case contract in the code first (`shared/cases.py`,
 `services/cases_api/`, `services/alerts/`, `shared/evidence.py`,
 `amount_usd` in the decision). HU-25 (cases consumer, closes HU-15's
-case) is merged; HU-34 (restricted list reports) is in review. Habith: HU-25 → HU-34 → HU-28 → HU-29;
+case) and HU-34 (restricted list reports) are merged; HU-28 (30-day
+account history) is in review. Habith: HU-25 → HU-34 → HU-28 → HU-29;
 Yulianis: HU-26 → HU-27 → HU-30, HU-35; Jorge: HU-57 → HU-31 → HU-32.
 
 ---
@@ -230,7 +231,16 @@ Read this before touching `shared/cases.py`, `services/cases_api/`,
   `account_history.purge` with one `now`, each in its own try. Locally,
   `python -m services.alerts` loops every `ALERTS_INTERVAL_SECONDS`.
 - **The 30-day account history is PostgreSQL `account_transactions`**
-  (D3), not DynamoDB. `device_id` only on the main account's row.
+  (D3), not DynamoDB. The history consumer (`services/consumers/history.py`,
+  HU-28) writes one row per account of every event, whatever the
+  decision: `OUT` for the source, `IN` for the destination (a top-up has
+  only `IN`, a QR payment or withdrawal only `OUT`), `ON CONFLICT
+  (transaction_id, account_id) DO NOTHING`, checked in Python first
+  (`history_rows()`) and one commit per batch, like the cases consumer.
+  `device_id` only on the main account's row (HU-29 reads it).
+  `GET /accounts/{account_id}/transactions?days=` reads it by
+  `transaction_date`, and `account_history.purge()` deletes what is older
+  than `now - ACCOUNT_HISTORY_DAYS`.
 - **`shared/evidence.archive(session, case)`** never raises and is
   idempotent; until HU-32 it returns `None`. The cases API calls it after
   resolving; the alerts task retries it.

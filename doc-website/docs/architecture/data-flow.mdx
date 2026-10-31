@@ -38,7 +38,7 @@ The engine publishes the decision to the `decisiones` SNS topic, which fans it o
 | Queue | Consumer | Writes to |
 | :--- | :--- | :--- |
 | `casos` | Opens a case when a rule that requires one fired. | PostgreSQL |
-| `historial` | Keeps the device–account pairs, writing only new pairs. | DynamoDB and the cache |
+| `historial` | Keeps 30 days of transactions per account, one row per account of each transaction (D3, HU-28). | PostgreSQL (`account_transactions`) |
 | `analitica` | Drops the transaction in the raw layer of the Data Lake. | S3 (through Kinesis Data Firehose in AWS) |
 
 Keeping them separate means that if analytics falls behind, cases are still created. Details in [Messaging](../components/messaging.mdx).

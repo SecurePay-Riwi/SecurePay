@@ -11,7 +11,7 @@ description: The case an analyst works from the engine's decision to its resolut
 Sprint 4 turns the engine's decisions into cases an analyst works from start to end: a decision of mule account, splitting or restricted list **opens a case**, the case waits in an **inbox** ordered by risk and time left, someone **takes** it, it is **escalated** to the supervisor if it is not resolved in **4 hours** (RN-09), the analyst **resolves** it as fraud or legitimate, and its **evidence** is kept 10 years (RN-12).
 
 :::info Status
-Built: the shared contract (the tables, the states, the cases API with `/health` and the alerts task), the cases consumer, which opens the cases (HU-25), and the restricted list reports with their compliance e-mail (HU-34). Each story of Sprint 4 fills in its part.
+Built: the shared contract (the tables, the states, the cases API with `/health` and the alerts task), the cases consumer, which opens the cases (HU-25), the restricted list reports with their compliance e-mail (HU-34) and the 30-day account history (HU-28). Each story of Sprint 4 fills in its part.
 :::
 
 ## Who writes what
@@ -74,6 +74,17 @@ A report belongs to a case. If the catalog turns off `opens_case` for `restricte
 
 `BUSINESS_ALERTS_TOPIC` takes a topic name (LocalStack; the task gets its ARN with `create_topic`, which returns the existing topic) or the topic's ARN, used as is (AWS, so the Lambda needs only `sns:Publish`).
 
+## Account history (HU-28)
+
+The analyst needs the last 30 days of an account to judge a case (D3: in PostgreSQL, not DynamoDB):
+
+1. **The rows.** The history consumer (`services/consumers/history.py`, queue `historial`) writes, for **every** `transaction.decided` event (APPROVE, HOLD or REJECT), one `account_transactions` row per account of the transaction: `OUT` for the source and `IN` for the destination, each with the other as `counterparty_account_id`. A QR payment or a withdrawal has only `OUT`; a top-up only `IN`. Each row keeps the type, channel, merchant, amount and currency, the engine's `amount_usd`, the decision, its reason, `rules_triggered`, `risk_score`, `transaction_date` and `processed_at`. `device_id` is only on the main account's row (`main_account()`: the source; in a top-up, the destination), the same rule as the engine's `dev:{device}`; HU-29 reads it.
+2. **Once.** `ON CONFLICT (transaction_id, account_id) DO NOTHING`: a repeated event writes nothing again. Each event is checked before writing (a broken one fails alone in `batchItemFailures`), one database transaction per batch, and if PostgreSQL fails the whole batch goes back to the queue.
+3. **30 days.** Every run of the alerts task, `account_history.purge()` deletes the rows whose `transaction_date` is older than `now - ACCOUNT_HISTORY_DAYS` (30).
+4. **The query.** `GET /accounts/{account_id}/transactions` on the cases API.
+
+The window counts from today's clock. The generator dates its transactions from `FECHA_REFERENCIA` (2026-10-01): a run whose dates are more than 30 days old is written and then purged, and the API does not list it.
+
 The columns of the four tables are in [Data model](../reference/data-model.mdx#cases-cases-case_events-compliance_reports-account_transactions).
 
 ## Amounts
@@ -91,7 +102,7 @@ def archive(session, case: Case) -> str | None: ...
 # services/alerts/ (until its story, each returns 0)
 def escalate_overdue(session, now: datetime) -> int: ...   # escalation.py, HU-31
 def send_summary(session, now: datetime) -> int: ...       # compliance_summary.py, HU-34 (built)
-def purge(session, now: datetime) -> int: ...              # account_history.py, HU-28
+def purge(session, now: datetime) -> int: ...              # account_history.py, HU-28 (built)
 
 # services/alerts/handler.py
 def handler(event=None, context=None) -> dict: ...
@@ -111,7 +122,7 @@ Built like the [rules API](./rules-api.mdx): FastAPI, tables created at startup,
 | `POST /cases/{case_id}/resolution` | HU-30 |
 | `GET /reports/suspicious` | HU-35 |
 | `GET /compliance/restricted-list-reports` | Built (HU-34) |
-| `GET /accounts/{account_id}/transactions` | HU-28 |
+| `GET /accounts/{account_id}/transactions` | Built (HU-28) |
 | `GET /accounts/{account_id}/related-accounts` | HU-29 |
 
 ### `GET /compliance/restricted-list-reports`
@@ -134,6 +145,44 @@ curl "http://localhost:8003/compliance/restricted-list-reports?from=2026-10-31&t
       "list_type": "PEP",
       "matched_at": "2026-10-31T14:02:11.418000Z",
       "notified_at": "2026-10-31T14:05:00.031000Z"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "size": 50
+}
+```
+
+### `GET /accounts/{account_id}/transactions`
+
+The account's transactions of the last `days` days (1 to 30, default 30), newest first by `transaction_date`, whatever the engine decided. Paginated with `page` (from 1) and `size` (default 50, at most 100). An account without history is `200` with an empty list. `400` for an account id that is not a UUID or `days`, `page` or `size` out of range; `503` without PostgreSQL.
+
+```bash
+curl "http://localhost:8003/accounts/5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42/transactions?days=7"
+```
+
+```json
+{
+  "account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+  "days": 7,
+  "items": [
+    {
+      "transaction_id": "a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21",
+      "direction": "OUT",
+      "counterparty_account_id": "9e1b3d5f-7a9c-4e1b-8d3f-5a7c9e1b3d64",
+      "type": "P2P",
+      "channel": "APP",
+      "merchant_id": null,
+      "amount": "950000.00",
+      "currency": "COP",
+      "amount_usd": "230.05",
+      "device_id": "c7e9a1b3-5d7f-4a9c-9e1b-3d5f7a9c1e86",
+      "decision": "HOLD",
+      "decision_reason": "More than 5 outgoing transfers in 10 minutes.",
+      "rules_triggered": ["velocity"],
+      "risk_score": 40,
+      "transaction_date": "2026-10-31T13:58:40Z",
+      "processed_at": "2026-10-31T13:58:40.112000Z"
     }
   ],
   "total": 1,

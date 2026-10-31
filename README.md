@@ -56,7 +56,7 @@ El repositorio reúne los componentes trabajados hasta el momento:
 
 - Motor antifraude con API FastAPI y reglas de decisión.
 - API independiente para crear, modificar, activar/desactivar y consultar versiones de reglas antifraude (`services/rules_api/`, puerto 8002).
-- Sprint 4 (en curso): tablas de casos (`shared/cases.py`), API de casos (`services/cases_api/`, puerto 8003) y tarea de alertas (`services/alerts/`). Por ahora solo el esqueleto: `/health` y trabajos que no hacen nada.
+- Sprint 4 (en curso): tablas de casos (`shared/cases.py`), API de casos (`services/cases_api/`, puerto 8003) y tarea de alertas (`services/alerts/`). Hechos: crear casos (HU-25), reportes de lista restrictiva (HU-34) e historial de 30 días por cuenta (HU-28, `GET /accounts/{account_id}/transactions`).
 - Seed de datos maestros para PostgreSQL y generador de transacciones de prueba.
 - Pruebas automatizadas para los componentes del proyecto.
 - Simulación local de mensajería con SNS/SQS y almacenamiento en S3 mediante LocalStack.
@@ -423,10 +423,12 @@ haría Lambda. Se puede levantar uno solo:
 
 -   **analítica:** escribe cada lote como un archivo JSON Lines en
     `s3://pagoseguro-datalake/raw/decisiones/fecha=AAAA-MM-DD/`.
--   **casos:** lee y confirma. Crear el caso queda pendiente de decidir en
-    equipo qué transacciones retenidas abren caso.
--   **historial:** lee y confirma. Los pares dispositivo–cuenta llegan con
-    las reglas de historial.
+-   **casos:** abre un caso en PostgreSQL por cada decisión con
+    `opens_case` y reporta a cumplimiento los documentos en lista
+    restrictiva (HU-25, HU-34).
+-   **historial:** escribe en PostgreSQL (`account_transactions`) una fila
+    por cuenta de cada transacción, `OUT` para la origen e `IN` para la
+    destino (HU-28).
 
 Un mensaje que falla vuelve a la cola a los 30 s; a los 5 intentos pasa a
 la cola de errores.
