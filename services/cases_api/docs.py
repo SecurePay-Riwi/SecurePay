@@ -130,3 +130,43 @@ ACCOUNT_TRANSACTIONS = {
         503: DB_DOWN,
     },
 }
+
+
+# --- Accounts (HU-29) --------------------------------------------------------
+
+RELATED_ACCOUNTS = {
+    "summary": "List the accounts that shared a device with an account",
+    "description": (
+        "The devices the account used in the last `days` days (at most 30, "
+        "`ACCOUNT_HISTORY_DAYS`) and the other accounts that used any of "
+        "them in the same window, read from the account history "
+        "(`device_id`, only on the main account's row: the source; in a "
+        "top-up, the destination). It is the network behind the shared "
+        "device rule (RN-04).\n\n"
+        "One item per related account and shared device: an account that "
+        "used two of the devices appears twice. `last_seen` is the related "
+        "account's last transaction on that device; `open_cases` counts its "
+        "cases that are `OPEN` or `ESCALATED`. The latest seen first. An "
+        "account without devices in the window, or without related "
+        "accounts, is an empty list."
+    ),
+    "responses": {
+        200: _ok(
+            "The related accounts, the latest seen first.",
+            {
+                "account_id": _ACCOUNT,
+                "days": 30,
+                "items": [{
+                    "account_id": "9e1b3d5f-7a9c-4e1b-8d3f-5a7c9e1b3d64",
+                    "device_id": "c7e9a1b3-5d7f-4a9c-9e1b-3d5f7a9c1e86",
+                    "last_seen": "2026-10-31T12:20:05Z",
+                    "open_cases": 1,
+                }],
+                "total": 1,
+            },
+        ),
+        400: _error("The account id is not a UUID, or `days` is out of range.",
+                    "The request contains invalid data."),
+        503: DB_DOWN,
+    },
+}
