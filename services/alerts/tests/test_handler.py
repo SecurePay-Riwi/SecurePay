@@ -1,4 +1,4 @@
-"""The alerts handler runs its three jobs in order, each in its own try.
+"""The alerts handler runs its four jobs in order, each in its own try.
 
 No database needed: the jobs and the session are replaced.
 """
@@ -8,6 +8,7 @@ from datetime import datetime
 import pytest
 
 from services.alerts import account_history, compliance_summary, escalation, handler
+from shared import evidence
 
 
 class FakeSession:
@@ -44,33 +45,36 @@ def calls(monkeypatch):
             return result
         return run
 
-    def install(escalated=0, notified=0, purged=0):
+    def install(escalated=0, notified=0, purged=0, archived=0):
         monkeypatch.setattr(escalation, "escalate_overdue", job("escalate", escalated))
         monkeypatch.setattr(compliance_summary, "send_summary", job("summary", notified))
         monkeypatch.setattr(account_history, "purge", job("purge", purged))
+        archive = job("archive", archived)
+        monkeypatch.setattr(evidence, "archive_pending",
+                            lambda session: archive(session, datetime.now().astimezone()))
         return calls
 
     return install
 
 
-def test_runs_the_three_jobs_in_order(session, calls):
-    made = calls(escalated=2, notified=1, purged=7)
+def test_runs_the_four_jobs_in_order(session, calls):
+    made = calls(escalated=2, notified=1, purged=7, archived=3)
 
     result = handler.handler({}, None)
 
-    assert [name for name, _ in made] == ["escalate", "summary", "purge"]
-    # One clock for the three.
-    assert len({now for _, now in made}) == 1
-    assert result == {"escalated": 2, "notified": 1, "purged": 7}
+    assert [name for name, _ in made] == ["escalate", "summary", "purge", "archive"]
+    # One clock for the jobs that take it (archive_pending does not).
+    assert len({now for name, now in made if name != "archive"}) == 1
+    assert result == {"escalated": 2, "notified": 1, "purged": 7, "archived": 3}
 
 
 def test_a_failing_job_does_not_stop_the_others(session, calls):
-    made = calls(escalated=RuntimeError("SNS down"), notified=3, purged=4)
+    made = calls(escalated=RuntimeError("SNS down"), notified=3, purged=4, archived=1)
 
     result = handler.handler()
 
-    assert [name for name, _ in made] == ["escalate", "summary", "purge"]
-    assert result == {"escalated": None, "notified": 3, "purged": 4}
+    assert [name for name, _ in made] == ["escalate", "summary", "purge", "archive"]
+    assert result == {"escalated": None, "notified": 3, "purged": 4, "archived": 1}
     assert session.rollbacks == 1
 
 
@@ -79,4 +83,5 @@ def test_the_skeleton_jobs_do_nothing(session, monkeypatch):
     # test_compliance_summary.py and test_account_history.py cover them.
     monkeypatch.setattr(compliance_summary, "send_summary", lambda session, now: 0)
     monkeypatch.setattr(account_history, "purge", lambda session, now: 0)
-    assert handler.handler() == {"escalated": 0, "notified": 0, "purged": 0}
+    monkeypatch.setattr(evidence, "archive_pending", lambda session: 0)
+    assert handler.handler() == {"escalated": 0, "notified": 0, "purged": 0, "archived": 0}
