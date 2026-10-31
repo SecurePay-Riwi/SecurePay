@@ -7,7 +7,11 @@ endpoints to EXPECTED and checks its examples in test_examples_are_valid.
 from fastapi.testclient import TestClient
 
 from services.cases_api.main import app
-from services.cases_api.schemas import Health, RestrictedListReportPage
+from services.cases_api.schemas import (
+    AccountTransactionPage,
+    Health,
+    RestrictedListReportPage,
+)
 
 # Not `with`: the lifespan (database) does not run.
 client = TestClient(app)
@@ -15,6 +19,7 @@ client = TestClient(app)
 EXPECTED = {
     ("get", "/health"): ["200", "503"],
     ("get", "/compliance/restricted-list-reports"): ["200", "400", "503"],
+    ("get", "/accounts/{account_id}/transactions"): ["200", "400", "503"],
 }
 
 
@@ -46,10 +51,20 @@ def test_examples_are_valid():
     for status in ("400", "503"):
         assert set(_example("get", reports, status)) == {"detail"}
 
+    history = "/accounts/{account_id}/transactions"
+    AccountTransactionPage.model_validate(_example("get", history, "200"))
+    for status in ("400", "503"):
+        assert set(_example("get", history, status)) == {"detail"}
+
 
 def test_the_reports_period_is_from_and_to():
     params = _paths()["/compliance/restricted-list-reports"]["get"]["parameters"]
     assert [p["name"] for p in params] == ["from", "to", "page", "size"]
+
+
+def test_the_account_history_is_paginated_by_days():
+    params = _paths()["/accounts/{account_id}/transactions"]["get"]["parameters"]
+    assert [p["name"] for p in params] == ["account_id", "days", "page", "size"]
 
 
 def test_title():
