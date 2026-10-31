@@ -42,3 +42,41 @@ HEALTH = {
     "tags": ["Health"],
     "responses": {200: _ok("Up.", {"status": "ok"}), 503: DB_DOWN},
 }
+
+
+# --- Compliance (HU-34) ------------------------------------------------------
+
+_REPORT = {
+    "id": "6f1c2b9e-3c1f-4a52-9a77-1e0f4f2d8c10",
+    "case_id": "0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01",
+    "transaction_id": "a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21",
+    "account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+    "document": "1000000070",
+    "list_type": "PEP",
+    "matched_at": "2026-10-31T14:02:11.418000Z",
+    "notified_at": "2026-10-31T14:05:00.031000Z",
+}
+
+RESTRICTED_LIST_REPORTS = {
+    "summary": "List the restricted list reports (RN-06)",
+    "description": (
+        "One report per listed document of a transaction: when the engine "
+        "fires `restricted_list`, the cases consumer opens the case and "
+        "writes a report for every owner of the source or destination "
+        "account who is on the list. The alerts task e-mails the new ones "
+        "to compliance every 5 minutes and sets `notified_at`.\n\n"
+        "Newest first. `from` (inclusive) and `to` (exclusive) filter by "
+        "`matched_at`; a date or time without a time zone is UTC. A period "
+        "without reports is an empty list. Paginated with `page` and "
+        "`size` (at most 100)."
+    ),
+    "responses": {
+        200: _ok(
+            "The reports of the period, newest first.",
+            {"items": [_REPORT], "total": 1, "page": 1, "size": 50},
+        ),
+        400: _error("A date is not valid, `from` is after `to`, or the page is out of range.",
+                    "The request contains invalid data."),
+        503: DB_DOWN,
+    },
+}

@@ -179,7 +179,7 @@ stop and ask instead of working around it.
 "Step 0" put the case contract in the code first (`shared/cases.py`,
 `services/cases_api/`, `services/alerts/`, `shared/evidence.py`,
 `amount_usd` in the decision). HU-25 (cases consumer, closes HU-15's
-case) is in review. Habith: HU-25 → HU-34 → HU-28 → HU-29;
+case) is merged; HU-34 (restricted list reports) is in review. Habith: HU-25 → HU-34 → HU-28 → HU-29;
 Yulianis: HU-26 → HU-27 → HU-30, HU-35; Jorge: HU-57 → HU-31 → HU-32.
 
 ---
@@ -209,6 +209,15 @@ Read this before touching `shared/cases.py`, `services/cases_api/`,
   fails, every message that opens a case goes back to the queue. Its
   tests point `cases.SessionLocal` at an isolated schema. A split that
   goes on opens one case per transaction; nothing groups them.
+- **Restricted list reports (HU-34, RN-06):** when `restricted_list`
+  fired, the cases consumer writes, in the case's transaction, one
+  `compliance_reports` row per listed owner of the source or destination
+  account (`listed_documents()`: only the digits, as the engine), `ON
+  CONFLICT (transaction_id, document) DO NOTHING`. No case, no report.
+  `compliance_summary.send_summary()` sends the ones with `notified_at`
+  null in one SNS message to `BUSINESS_ALERTS_TOPIC` (a name or an ARN)
+  with `audience = "compliance"`, and sets `notified_at`.
+  `GET /compliance/restricted-list-reports` reads them.
 - **States:** `OPEN` → `ESCALATED` (only the alerts task) → `RESOLVED`,
   or `OPEN` → `RESOLVED`. `RESOLVED` is final (`409`). Resolving sets
   `final_decision`: `FRAUD` → `REJECT`, `LEGITIMATE` → `APPROVE` (D4).
