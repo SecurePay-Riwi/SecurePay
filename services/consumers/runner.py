@@ -13,7 +13,11 @@ import logging
 import sys
 import threading
 
+from sqlalchemy.exc import OperationalError
+
+from shared import db
 from shared.aws import cliente
+from shared.cases import create_schema
 from services.consumers import analytics, cases, history
 
 log = logging.getLogger("services.consumers")
@@ -95,6 +99,20 @@ def atender(nombre: str, handler) -> None:
             threading.Event().wait(2)
 
 
+def prepare_database(session_factory=None, wait_s: float = 2) -> None:
+    """Create the case tables (shared/cases.py) before reading any queue.
+    PostgreSQL may still be starting with the rest of the stack: retry."""
+    session_factory = session_factory or db.SessionLocal
+    while True:
+        try:
+            with session_factory() as session:
+                create_schema(session)
+            return
+        except OperationalError:
+            log.warning("PostgreSQL is not available yet; retrying")
+            threading.Event().wait(wait_s)
+
+
 def main(argv: list[str]) -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -105,6 +123,8 @@ def main(argv: list[str]) -> None:
     desconocidos = [n for n in nombres if n not in CONSUMIDORES]
     if desconocidos:
         sys.exit(f"Consumidor desconocido: {desconocidos}. Opciones: {list(CONSUMIDORES)}")
+
+    prepare_database()
 
     hilos = [
         threading.Thread(target=atender, args=(n, CONSUMIDORES[n]), name=n, daemon=True)

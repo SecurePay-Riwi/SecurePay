@@ -10,7 +10,7 @@ All configuration comes from environment variables, loaded from `.env` with `pyt
 
 | Repository | Sections on this page |
 | :--- | :--- |
-| `SecurePay` | Database, Decision engine, Messaging and Data Lake, Docker Compose |
+| `SecurePay` | Database, Decision engine, Rules API, Cases, Messaging and Data Lake, Docker Compose |
 | `securepay-seed` | Database, Seed, Kaggle ETL, AWS variables (to export the restricted list to S3) |
 | `securepay-generator` | Database, Transaction generator |
 | `securepay-csv` | Kaggle datasets, Partner statements, AWS variables |
@@ -65,6 +65,20 @@ See [Decision engine](../components/decision-engine.mdx).
 ## Rules API
 
 In `SecurePay` (`services/rules_api/`). It uses `DATABASE_URL` (its tables `rules` and `rule_catalog_versions`, created at startup) and `VALKEY_URL` (where it publishes the catalog); it has no variables of its own. See [Rules API](../components/rules-api.mdx).
+
+## Cases
+
+In `SecurePay`: the cases API (`services/cases_api/`), the consumers and the alerts task (`services/alerts/`). All three use `DATABASE_URL` and create the case tables at startup. See [Cases](../components/cases.mdx).
+
+| Variable | Default | What it does |
+| :--- | :--- | :--- |
+| `CASES_API_PORT` | `8003` | Port of the cases API outside Compose's network. |
+| `CASE_DUE_MINUTES` | `240` | RN-09: a case not resolved in this many minutes is escalated. Lower it (e.g. `2`) for a demo. |
+| `ACCOUNT_HISTORY_DAYS` | `30` | Days of history per account in `account_transactions` (HU-28). |
+| `ALERTS_INTERVAL_SECONDS` | `60` | Local only: seconds between runs of `python -m services.alerts`. In AWS, EventBridge runs it every 5 minutes. |
+| `BUSINESS_ALERTS_TOPIC` | `business-alerts` | SNS topic of the business alerts (supervisor and compliance). In AWS: `securepay-<env>-business-alerts`. |
+| `EVIDENCE_BUCKET` | `pagoseguro-evidence` | RN-12: bucket with Object Lock where a resolved case's evidence is archived (HU-32). In AWS: the `evidence` bucket of Terraform. |
+| `EVIDENCE_RETENTION_DAYS` | `3650` | RN-12: retention of the evidence, 10 years. |
 
 ## Messaging and Data Lake
 

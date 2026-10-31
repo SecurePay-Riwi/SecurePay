@@ -1,5 +1,6 @@
 # Full local ecosystem (MAG-32): infrastructure, seed, decision engine,
-# rules API, restricted-list API, consumers, generator and partner statements.
+# rules API, cases API, restricted-list API, consumers, alerts task,
+# generator and partner statements.
 # The satellite repositories must be cloned beside this one.
 #
 #   docker compose up --build -d   build and start everything
@@ -129,6 +130,32 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  cases-api:
+    build: {context: ., dockerfile: Dockerfile}
+    command: ["uvicorn", "services.cases_api.main:app", "--host", "0.0.0.0", "--port", "8003"]
+    # Creates the case tables at startup (shared/cases.py), like the
+    # consumers and the alerts task.
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pagoseguro}:${POSTGRES_PASSWORD:-pagoseguro}@postgres:5432/${POSTGRES_DB:-pagoseguro}
+      CASE_DUE_MINUTES: ${CASE_DUE_MINUTES:-240}
+      ACCOUNT_HISTORY_DAYS: ${ACCOUNT_HISTORY_DAYS:-30}
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-2}
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      EVIDENCE_BUCKET: ${EVIDENCE_BUCKET:-pagoseguro-evidence}
+      EVIDENCE_RETENTION_DAYS: ${EVIDENCE_RETENTION_DAYS:-3650}
+    ports: ["${CASES_API_PORT:-8003}:8003"]
+    depends_on:
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
   restricted-list-api:
     build: {context: ../securepay-apis, dockerfile: Dockerfile}
     environment:
@@ -158,12 +185,39 @@ services:
     build: {context: ., dockerfile: Dockerfile}
     command: ["python", "-m", "services.consumers"]
     environment:
+      # Cases and account history (Sprint 4) go to PostgreSQL.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pagoseguro}:${POSTGRES_PASSWORD:-pagoseguro}@postgres:5432/${POSTGRES_DB:-pagoseguro}
+      CASE_DUE_MINUTES: ${CASE_DUE_MINUTES:-240}
       AWS_ENDPOINT_URL: http://localstack:4566
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-2}
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
       DATALAKE_BUCKET: ${DATALAKE_BUCKET:-pagoseguro-datalake}
     depends_on:
+      postgres: {condition: service_healthy}
+      localstack: {condition: service_healthy}
+    restart: unless-stopped
+
+  # In AWS, EventBridge runs this as a Lambda every 5 minutes; here it
+  # loops every ALERTS_INTERVAL_SECONDS: escalates overdue cases (RN-09),
+  # sends the compliance summary and purges the old account history.
+  alerts:
+    build: {context: ., dockerfile: Dockerfile}
+    command: ["python", "-m", "services.alerts"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pagoseguro}:${POSTGRES_PASSWORD:-pagoseguro}@postgres:5432/${POSTGRES_DB:-pagoseguro}
+      ALERTS_INTERVAL_SECONDS: ${ALERTS_INTERVAL_SECONDS:-60}
+      CASE_DUE_MINUTES: ${CASE_DUE_MINUTES:-240}
+      ACCOUNT_HISTORY_DAYS: ${ACCOUNT_HISTORY_DAYS:-30}
+      BUSINESS_ALERTS_TOPIC: ${BUSINESS_ALERTS_TOPIC:-business-alerts}
+      EVIDENCE_BUCKET: ${EVIDENCE_BUCKET:-pagoseguro-evidence}
+      EVIDENCE_RETENTION_DAYS: ${EVIDENCE_RETENTION_DAYS:-3650}
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-2}
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    depends_on:
+      postgres: {condition: service_healthy}
       localstack: {condition: service_healthy}
     restart: unless-stopped
 

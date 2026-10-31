@@ -10,6 +10,9 @@ configuración de la bitácora (sección 3, Mensajería):
 - Un mensaje que falla 5 veces pasa a la cola de errores, que lo guarda
   14 días (el máximo de SQS).
 - Bucket `pagoseguro-datalake`, donde analítica deja la capa `raw/`.
+- SNS topic `business-alerts` (Sprint 4): the alerts task publishes the
+  supervisor escalations and the compliance summary there. No queues: in
+  local the e-mails are only seen in LocalStack's logs.
 
 Va en Python y no en bash porque LocalStack ejecuta los .sh directo:
 un .sh guardado desde Windows (sin permiso de ejecución o con fin de
@@ -26,6 +29,7 @@ ENDPOINT = "http://localhost:4566"
 TEMA = "decisiones"
 COLAS = ["casos", "historial", "analitica"]
 BUCKET = "pagoseguro-datalake"
+BUSINESS_ALERTS_TOPIC = "business-alerts"
 
 REINTENTOS_ANTES_DE_DLQ = 5
 RETENCION_DLQ_S = 14 * 24 * 3600
@@ -93,4 +97,9 @@ s3.create_bucket(
     CreateBucketConfiguration={"LocationConstraint": REGION},
 )
 
-print(f"Mensajería lista: tema {TEMA}, colas {COLAS} y bucket {BUCKET}")
+sns.create_topic(Name=BUSINESS_ALERTS_TOPIC)
+
+print(
+    f"Mensajería lista: tema {TEMA}, colas {COLAS}, bucket {BUCKET} "
+    f"y tema {BUSINESS_ALERTS_TOPIC}"
+)

@@ -30,10 +30,14 @@ SecurePay/                  ← this repo: the product (engine, consumers, infra
 │   ├── aws.py              ← boto3 client factory (LocalStack-aware via AWS_ENDPOINT_URL)
 │   ├── cache.py            ← Valkey client (used only by services/)
 │   ├── events.py           ← transaction.decided event format (used only by services/)
-│   └── rule_catalog.py     ← rule catalog models and defaults (used only by services/)
+│   ├── rule_catalog.py     ← rule catalog models and defaults (used only by services/)
+│   ├── cases.py            ← case tables, states and create_schema() (used only by services/)
+│   └── evidence.py         ← case evidence archive, archive() (used only by services/)
 ├── services/
 │   ├── decision_engine/    ← FastAPI antifraud engine (rules in rules/, catalog in catalog.py)
 │   ├── rules_api/           ← FastAPI rules management and catalog versioning
+│   ├── cases_api/          ← FastAPI cases API for analysts (port 8003, Sprint 4)
+│   ├── alerts/             ← alerts task: escalation, compliance summary, history purge
 │   └── consumers/          ← SNS/SQS consumers and analytics
 ├── tests/                  ← end-to-end tests that run more than one service
 │                             (test_rule_catalog_e2e.py: rules API + engine)
@@ -73,7 +77,7 @@ files, never imports: each one finds the others' output in `../securepay-<repo>/
 dependencies = ["securepay-shared>=0.1.0"]
 ```
 
-`cache.py`, `events.py` and `rule_catalog.py` are **not** part of the published package — they are only
+`cache.py`, `events.py`, `rule_catalog.py`, `cases.py` and `evidence.py` are **not** part of the published package — they are only
 used by `services/` and stay in this repo.
 
 ---
@@ -141,7 +145,7 @@ stop and ask instead of working around it.
 
 ---
 
-## Sprint state (as of 2026-10-24)
+## Sprint state (as of 2026-10-31)
 
 ### Sprint 1 — Done ✅
 - Seed + generator + Kaggle ETL + partner statements + exchange rates + restricted list API
@@ -170,6 +174,58 @@ stop and ask instead of working around it.
 | HU-17 | MAG-132 | Account takeover (RN-07) | Jorge | #51 |
 | HU-14, HU-15 | MAG-129, MAG-131 | Shared device (RN-04), splitting (RN-05) | Habith | #52, #53 |
 | HU-23 | MAG-137 | Rule version per decision | Habith | #57 |
+
+### Sprint 4 — In progress (Cases + Compliance)
+"Step 0" put the case contract in the code first (`shared/cases.py`,
+`services/cases_api/`, `services/alerts/`, `shared/evidence.py`,
+`amount_usd` in the decision). Habith: HU-25 → HU-34 → HU-28 → HU-29;
+Yulianis: HU-26 → HU-27 → HU-30, HU-35; Jorge: HU-57 → HU-31 → HU-32.
+
+---
+
+## Cases (Sprint 4)
+
+Read this before touching `shared/cases.py`, `services/cases_api/`,
+`services/alerts/` or the cases and history consumers. Page:
+`doc-website/docs/components/cases.mdx`.
+
+- **One shape, three writers.** `shared/cases.py` holds the tables
+  (`cases`, `case_events`, `compliance_reports`, `account_transactions`),
+  the enums (`CaseStatus`, `CaseOutcome`, `CaseEventType`), `PENDING`,
+  `SYSTEM_ACTOR`, `CASE_DUE_MINUTES`, `ACCOUNT_HISTORY_DAYS`,
+  `main_account()` and `create_schema(session)`. Nobody else defines
+  columns or states; a new column is its own small PR on this file.
+  The consumers create cases and history, the cases API assigns and
+  resolves, the alerts task escalates and purges. No service imports
+  another, and the consumers never call the API over HTTP.
+- **Only `opens_case` opens a case** (D1, team decision 2026-10-13), one
+  per `transaction_id` (`ON CONFLICT DO NOTHING`), with `due_at =
+  created_at + CASE_DUE_MINUTES` on the consumer's clock.
+- **States:** `OPEN` → `ESCALATED` (only the alerts task) → `RESOLVED`,
+  or `OPEN` → `RESOLVED`. `RESOLVED` is final (`409`). Resolving sets
+  `final_decision`: `FRAUD` → `REJECT`, `LEGITIMATE` → `APPROVE` (D4).
+- **Every transition writes one `CaseEvent`** in the same transaction as
+  the change; `case_events` is append-only (trigger). Actor: `X-User`,
+  or `SYSTEM_ACTOR`.
+- **Escalation is the alerts task every 5 minutes** (D2), not a timer per
+  case. `services/alerts/handler.handler()` runs
+  `escalation.escalate_overdue`, `compliance_summary.send_summary` and
+  `account_history.purge` with one `now`, each in its own try. Locally,
+  `python -m services.alerts` loops every `ALERTS_INTERVAL_SECONDS`.
+- **The 30-day account history is PostgreSQL `account_transactions`**
+  (D3), not DynamoDB. `device_id` only on the main account's row.
+- **`shared/evidence.archive(session, case)`** never raises and is
+  idempotent; until HU-32 it returns `None`. The cases API calls it after
+  resolving; the alerts task retries it.
+- **The cases API** works like the rules API: routes in
+  `routes_cases.py`, `routes_reports.py`, `routes_accounts.py`,
+  `routes_compliance.py` (one owner each), session and `X-User` from
+  `deps.py`, models in `schemas.py`, Swagger in `docs.py`, checked by
+  `tests/test_openapi.py`. Tests run in their own schema
+  (`shared/tests/isolated_db.py`, `deps.bind()`).
+- Amounts are `Numeric` (decimal strings in JSON) and the case keeps the
+  engine's `amount_usd`; no service outside the engine imports
+  `currency.py`.
 
 ---
 
@@ -272,6 +328,10 @@ Read this before adding or changing a rule in `services/decision_engine/`.
   `restricted_list`, `mule` and `splitting` (team decision 2026-10-13). The engine does not create cases: the cases consumer (HU-25)
   reads the flag from the `transaction.decided` event. `risk_score` is the
   sum of the fired rules' `score`, at most 100.
+- **A decision carries `amount_usd`** (RN-11, Sprint 4 step 0): the
+  transaction in USD, the same `currency.to_usd()` value the rules use,
+  as a decimal string. The cases and the account history read it from
+  the event.
 
 ---
 
@@ -365,6 +425,7 @@ Read these before changing the design, not to work on the code:
 - Dockerfile builds the product image with Python 3.12 and uv; the same image runs the decision engine and consumers with different commands.
 - docker-compose.yml orchestrates the local stack. Satellite repositories must be cloned beside this repository because Compose builds from sibling directories.
 - Use service hostnames inside containers (postgres, valkey, localstack, decision-engine); localhost inside a container is not another service.
+- The cases API (`cases-api`, port 8003), the `consumers` and the `alerts` task create the case tables at startup; all three need `DATABASE_URL`.
 - Never commit .env, tokens, generated files or downloaded Kaggle datasets.
 - The seed service uses SEED_RESET=true; do not run the stack against data that must be preserved.
 - Valkey has no persistence in Compose on purpose: every run starts with empty idempotency keys and account history.

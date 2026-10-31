@@ -109,6 +109,17 @@ Written only by the [rules API](../components/rules-api.mdx), which creates them
 | `rules` | The current state, one row per rule: `code` (PK), `type`, `rn`, `description`, `enabled`, `action`, `opens_case`, `score`, `params` (JSONB), `rule_version`, `created_at`, `updated_at`, `updated_by`. |
 | `rule_catalog_versions` | The history, one row per change: `version` (PK, max + 1 under an advisory lock), `created_at`, `author`, `change` (JSONB: operation, code, the rule before and after) and `snapshot` (JSONB: the whole catalog of that version). A trigger rejects `UPDATE`, `DELETE` and `TRUNCATE`. |
 
+### Cases: `cases`, `case_events`, `compliance_reports`, `account_transactions`
+
+Sprint 4. Models in `shared/cases.py` (their own metadata, not `shared/models.py`), created at startup by the cases API, the consumers and the alerts task (`create_schema()`, idempotent, under an advisory lock). See [Cases](../components/cases.mdx) for who writes what.
+
+| Table | Content |
+| :--- | :--- |
+| `cases` | One case per transaction whose decision has `opens_case` (`transaction_id` unique). The engine's decision (`decision`, `decision_reason`, `rules_triggered`, `rules_version`, `rule_versions`, `risk_score`), the amount (`amount`, `currency`, `amount_usd`), `transaction_date`, the event's `transaction` (JSONB, evidence), `account_id` (the main account), `status` (`OPEN`, `ESCALATED`, `RESOLVED`), `assignee`, `created_at`, `due_at` (created + `CASE_DUE_MINUTES`), `escalated_at`, `resolved_at`, `resolved_by`, `outcome` (`FRAUD`, `LEGITIMATE`), `final_decision` (`REJECT`, `APPROVE`), `resolution_note`, `evidence_key`. Indexes: the inbox (`status`, `risk_score` DESC, `due_at`) and `account_id`. |
+| `case_events` | What happened to each case, in order: `id`, `case_id`, `type` (`CREATED`, `ASSIGNED`, `ESCALATED`, `RESOLVED`, `EVIDENCE_ARCHIVED`), `actor` (`X-User` or `system`), `at`, `data` (JSONB). A trigger rejects `UPDATE`, `DELETE` and `TRUNCATE`. |
+| `compliance_reports` | RN-06: one row per listed document of a transaction (`transaction_id` + `document` unique): `case_id`, `account_id`, `document`, `list_type`, `matched_at`, `notified_at` (set by the compliance summary). |
+| `account_transactions` | 30 days of transactions per account (`transaction_id` + `account_id` PK): `direction` (`OUT` for the source, `IN` for the destination), `counterparty_account_id`, `type`, `channel`, `merchant_id`, `amount`, `currency`, `amount_usd`, `device_id` (only on the main account's row), the decision, `transaction_date`, `processed_at`. Indexes: (`account_id`, `transaction_date` DESC) and (`device_id`, `transaction_date`) where `device_id` is set. |
+
 ## Valkey
 
 | Key | Type | TTL | Content |

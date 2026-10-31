@@ -21,7 +21,7 @@ One consumer per queue. Each is a function with the **AWS Lambda signature**, `h
   <InfoCard title="Cases · `casos`">
     **Handler:** `cases.handler`
 
-    **Today:** Skeleton: reads, logs non-`APPROVE` decisions and acknowledges.
+    **Today:** Skeleton: reads, logs non-`APPROVE` decisions and acknowledges. The runner already creates the [case tables](./cases.mdx) at startup.
 
     **Next:** Open a case in PostgreSQL for each decision with `opens_case: true` (mule account, splitting and restricted list; [Team decisions](../architecture/team-decisions.mdx)). HU-25.
   </InfoCard>
