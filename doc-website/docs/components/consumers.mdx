@@ -30,7 +30,7 @@ One consumer per queue. Each is a function with the **AWS Lambda signature**, `h
 
     **Today:** Writes the [30-day history](./cases.mdx#account-history-hu-28) of every account in PostgreSQL: one `account_transactions` row per account of each transaction, whatever the decision. The alerts task deletes what is older than 30 days. HU-28.
 
-    **Next:** Nothing planned. The device–account pairs in DynamoDB of the first design are not built: the engine keeps them in Valkey and HU-29 reads them from this history.
+    **Next:** Nothing planned. The device–account pairs in DynamoDB of the first design are not built: the engine keeps them in Valkey and HU-29 (`GET /accounts/{account_id}/related-accounts`) reads them from this history.
   </InfoCard>
 </div>
 

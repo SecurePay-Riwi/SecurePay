@@ -86,3 +86,25 @@ class AccountTransactionPage(BaseModel):
     total: int = Field(description="Transactions in the window, all pages.")
     page: int = Field(description="Page number, from 1.")
     size: int = Field(description="Transactions per page.")
+
+
+# --- Accounts (HU-29) --------------------------------------------------------
+
+class RelatedAccount(BaseModel):
+    """Another account that used one of the account's devices."""
+
+    account_id: UUID = Field(description="The related account.")
+    device_id: UUID = Field(description="The device both accounts used in the window.")
+    last_seen: datetime = Field(
+        description="The related account's last transaction on that device in the window, UTC.",
+    )
+    open_cases: int = Field(description="Cases of the related account that are OPEN or ESCALATED.")
+
+
+class RelatedAccountList(BaseModel):
+    account_id: UUID = Field(description="The account.")
+    days: int = Field(description="The window: devices used in the last `days` days.")
+    items: list[RelatedAccount] = Field(
+        description="One item per related account and shared device, the latest seen first.",
+    )
+    total: int = Field(description="Items in the list.")
