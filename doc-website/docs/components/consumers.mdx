@@ -21,9 +21,9 @@ One consumer per queue. Each is a function with the **AWS Lambda signature**, `h
   <InfoCard title="Cases · `casos`">
     **Handler:** `cases.handler`
 
-    **Today:** Opens a [case](./cases.mdx#opening-a-case) in PostgreSQL, with its `CREATED` event, for each decision with `opens_case: true` (mule account, splitting and restricted list; [Team decisions](../architecture/team-decisions.mdx)), once per transaction. The runner creates the case tables at startup. HU-25.
+    **Today:** Opens a [case](./cases.mdx#opening-a-case) in PostgreSQL, with its `CREATED` event, for each decision with `opens_case: true` (mule account, splitting and restricted list; [Team decisions](../architecture/team-decisions.mdx)), once per transaction. When `restricted_list` fired, it also writes a [compliance report](./cases.mdx#restricted-list-reports-rn-06) for each listed document. The runner creates the case tables at startup. HU-25, HU-34.
 
-    **Next:** A compliance report for each listed document when `restricted_list` fired. HU-34.
+    **Next:** Nothing planned.
   </InfoCard>
   <InfoCard title="History · `historial`">
     **Handler:** `history.handler`

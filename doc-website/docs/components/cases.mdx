@@ -11,7 +11,7 @@ description: The case an analyst works from the engine's decision to its resolut
 Sprint 4 turns the engine's decisions into cases an analyst works from start to end: a decision of mule account, splitting or restricted list **opens a case**, the case waits in an **inbox** ordered by risk and time left, someone **takes** it, it is **escalated** to the supervisor if it is not resolved in **4 hours** (RN-09), the analyst **resolves** it as fraud or legitimate, and its **evidence** is kept 10 years (RN-12).
 
 :::info Status
-Built: the shared contract (the tables, the states, the cases API with `/health` and the alerts task with jobs that do nothing yet) and the cases consumer, which opens the cases (HU-25). Each story of Sprint 4 fills in its part.
+Built: the shared contract (the tables, the states, the cases API with `/health` and the alerts task), the cases consumer, which opens the cases (HU-25), and the restricted list reports with their compliance e-mail (HU-34). Each story of Sprint 4 fills in its part.
 :::
 
 ## Who writes what
@@ -62,6 +62,18 @@ One session and one database transaction per batch of up to 10 messages. A messa
 
 Each transaction opens its own case: when a split goes on, every later transaction that fires `splitting` opens another one. The analyst sees them together through the account (`account_id`, HU-28 and HU-29).
 
+## Restricted list reports (RN-06)
+
+RN-06 asks for the reject and an immediate report to compliance. The engine rejects; the rest happens here (HU-34):
+
+1. **The report.** When `restricted_list` is in `rules_triggered`, the cases consumer, in the same database transaction as the case, looks up the owners of the source and destination accounts in `usuarios` and `listas_restrictivas` the way the engine does (only the digits of the document) and writes one `compliance_reports` row per listed document: case, transaction, account, document, list type and `matched_at` (the consumer's clock). Two listed owners give two reports. `ON CONFLICT (transaction_id, document) DO NOTHING`: a repeated event writes none again, and it writes a report the first delivery missed (for example a case opened before HU-34).
+2. **The e-mail.** Every run of the alerts task (5 minutes in AWS), `compliance_summary.send_summary()` takes the reports with `notified_at` null, sends them in **one** message to the SNS topic `BUSINESS_ALERTS_TOPIC` with the message attribute `audience = "compliance"` (the compliance subscription filters by it, [Team decisions](../architecture/team-decisions.mdx)) and sets `notified_at`. Without new reports nothing is published; running it twice sends one e-mail. If SNS fails, nothing is marked and the next run sends them.
+3. **The query.** `GET /compliance/restricted-list-reports` on the cases API.
+
+A report belongs to a case. If the catalog turns off `opens_case` for `restricted_list`, the transaction is still rejected but there is no case and no report. If nobody is listed when the consumer runs (the list changed after the decision), the case opens without a report and the consumer logs a warning.
+
+`BUSINESS_ALERTS_TOPIC` takes a topic name (LocalStack; the task gets its ARN with `create_topic`, which returns the existing topic) or the topic's ARN, used as is (AWS, so the Lambda needs only `sns:Publish`).
+
 The columns of the four tables are in [Data model](../reference/data-model.mdx#cases-cases-case_events-compliance_reports-account_transactions).
 
 ## Amounts
@@ -76,9 +88,9 @@ These signatures are fixed; each story fills in the body.
 # shared/evidence.py (HU-32). Today: logs and returns None.
 def archive(session, case: Case) -> str | None: ...
 
-# services/alerts/ (today each returns 0)
+# services/alerts/ (until its story, each returns 0)
 def escalate_overdue(session, now: datetime) -> int: ...   # escalation.py, HU-31
-def send_summary(session, now: datetime) -> int: ...       # compliance_summary.py, HU-34
+def send_summary(session, now: datetime) -> int: ...       # compliance_summary.py, HU-34 (built)
 def purge(session, now: datetime) -> int: ...              # account_history.py, HU-28
 
 # services/alerts/handler.py
@@ -98,8 +110,36 @@ Built like the [rules API](./rules-api.mdx): FastAPI, tables created at startup,
 | `PUT /cases/{case_id}/assignee` | HU-27 |
 | `POST /cases/{case_id}/resolution` | HU-30 |
 | `GET /reports/suspicious` | HU-35 |
-| `GET /compliance/restricted-list-reports` | HU-34 |
+| `GET /compliance/restricted-list-reports` | Built (HU-34) |
 | `GET /accounts/{account_id}/transactions` | HU-28 |
 | `GET /accounts/{account_id}/related-accounts` | HU-29 |
+
+### `GET /compliance/restricted-list-reports`
+
+The restricted list reports, newest first by `matched_at`. `from` (inclusive) and `to` (exclusive) filter the period; a date or time without a time zone is UTC. Paginated with `page` (from 1) and `size` (default 50, at most 100). A period without reports is `200` with an empty list. `400` for an invalid date or page, or `from` after `to`; `503` without PostgreSQL.
+
+```bash
+curl "http://localhost:8003/compliance/restricted-list-reports?from=2026-10-31&to=2026-11-01"
+```
+
+```json
+{
+  "items": [
+    {
+      "id": "6f1c2b9e-3c1f-4a52-9a77-1e0f4f2d8c10",
+      "case_id": "0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01",
+      "transaction_id": "a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21",
+      "account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+      "document": "1000000070",
+      "list_type": "PEP",
+      "matched_at": "2026-10-31T14:02:11.418000Z",
+      "notified_at": "2026-10-31T14:05:00.031000Z"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "size": 50
+}
+```
 
 Variables: [Configuration](../reference/configuration.mdx#cases).
