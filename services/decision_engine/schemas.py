@@ -164,6 +164,10 @@ class TransactionResponse(BaseModel):
         default=False,
         description="True when a rule that opens a case for an analyst fired (by default: mule account, splitting, restricted list).",
     )
+    amount_usd: Decimal | None = Field(
+        default=None,
+        description="The transaction amount in USD, rounded to cents (RN-11), with the same rate the rules use. The consumers store it with the case and the account history. null in decisions stored before it existed.",
+    )
     risk_score: int = Field(
         default=0,
         ge=0,

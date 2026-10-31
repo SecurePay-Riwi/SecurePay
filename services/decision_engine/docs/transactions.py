@@ -43,7 +43,7 @@ evaluate it again.
 """.strip()
 
 
-def _decision(decision, reason, rules, by_default=False) -> dict:
+def _decision(decision, reason, rules, by_default=False, amount_usd="28.32") -> dict:
     return {
         "transaction_id": REQUEST_EXAMPLE["id"],
         "decision": decision,
@@ -52,6 +52,7 @@ def _decision(decision, reason, rules, by_default=False) -> dict:
         "rules_triggered": rules,
         "rule_versions": {rule: 1 for rule in rules},
         "opens_case": False,
+        "amount_usd": amount_usd,
         "risk_score": 0,
         "by_default": by_default,
         "processed_at": "2026-10-14T00:10:03.512000Z",
@@ -94,6 +95,7 @@ EVALUATE = {
                                 "(USD 30.00, limit USD 50).",
                                 ["default_timeout"],
                                 by_default=True,
+                                amount_usd="30.00",
                             ),
                         },
                     }

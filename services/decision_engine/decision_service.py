@@ -175,11 +175,12 @@ def _decide(
         payload.transaction_date,
     )
 
+    amount_usd = currency.to_usd(payload.amount, payload.currency)
     ctx = RuleContext(
         payload=payload,
         session=session,
         t_ms=history.to_ms(payload.transaction_date),
-        amount_usd=currency.to_usd(payload.amount, payload.currency),
+        amount_usd=amount_usd,
         outgoing=outgoing,
         documents=documents,
         device_accounts=device_accounts,
@@ -198,6 +199,8 @@ def _decide(
         # tell which thresholds decided without reading the whole catalog.
         "rule_versions": {r.rule: r.rule_version for r in triggered},
         "opens_case": any(r.opens_case for r in triggered),
+        # RN-11: the cases and the account history store it (sprint 4).
+        "amount_usd": str(amount_usd),
         "risk_score": min(MAX_RISK_SCORE, sum(r.score for r in triggered)),
         "by_default": False,
         "processed_at": datetime.now(timezone.utc).isoformat(),
@@ -230,6 +233,7 @@ def default_decision(payload: TransactionRequest, snapshot: CatalogSnapshot) -> 
         "rules_triggered": [DEFAULT_RULE],
         "rule_versions": {DEFAULT_RULE: entry.rule_version if entry else 1},
         "opens_case": False,
+        "amount_usd": str(amount_usd),
         "risk_score": 0,
         "by_default": True,
         "processed_at": datetime.now(timezone.utc).isoformat(),

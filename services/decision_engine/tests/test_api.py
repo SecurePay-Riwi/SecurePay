@@ -12,6 +12,7 @@ from sqlalchemy import func
 from services.decision_engine import idempotency as idem
 from services.decision_engine import publisher
 from services.decision_engine import catalog
+from services.decision_engine import currency
 from services.decision_engine.main import app
 from services.decision_engine.schemas import TransactionRequest
 from services.decision_engine.publisher import MARCA_FALLA, Publicador
@@ -413,6 +414,18 @@ def test_decision_is_published_once(eventos_publicados):
     assert evento["transaction"]["id"] == payload["id"]
     assert evento["transaction"]["amount"] == payload["amount"]
     assert evento["decision"]["decision"] == first.json()["decision"]
+
+
+def test_decision_carries_amount_usd(eventos_publicados):
+    payload = _payload_normal()
+
+    response = client.post("/transactions", json=payload)
+
+    assert response.status_code == 200, response.text
+    expected = str(currency.to_usd(Decimal(payload["amount"]), payload["currency"]))
+    assert response.json()["amount_usd"] == expected
+    # The consumers read it from the event, not from currency.py.
+    assert eventos_publicados[0]["decision"]["amount_usd"] == expected
 
 
 def test_engine_answers_when_sns_is_down(monkeypatch, caplog):
