@@ -127,6 +127,7 @@ The assignment names a Kaggle credit card dataset as the card payment history. A
 | Rebuilding the cache from DynamoDB | Ignores anything older than 30 days, because DynamoDB's automatic deletion takes a few days. |
 | Cost figures | Corrected after the load test and the AWS Pricing Calculator, not before. |
 | Case evidence | One object (file) per case in S3 with Object Lock: each file is locked the moment it is written, so there is no unprotected window. ~$3/month with only mule, splitting and restricted list opening cases. The tests check our Terraform configuration, not S3 itself: after a case closes, deleting or overwriting its evidence must fail with access denied (proving the bucket was created with the default retention), and they confirm the real cost per file (Glacier Instant Retrieval bills at least 128 KB each). |
+| Evidence in Glacier IR | Written directly with `StorageClass=GLACIER_IR`, no lifecycle rule (2026-10-31): S3 never transitions objects under 128 KB without a size filter, and the evidence is ~50 KB. `EVIDENCE_RETENTION_DAYS` is a decimal; dev in AWS uses `0.0035` (about 5 minutes) so the bucket can still be destroyed. |
 | Compliance summary | Every 5 minutes, like the escalation, for the "immediate report" the assignment asks for. |
 | Kinesis Data Firehose for the raw layer | Approved (~$1.89/month plus ~$0.07 of PUTs, against ~$64.80 without batching). Enters the cost table with the post-load-test correction. |
 | Who reviews fallback approvals | The alerts Lambda (see above). |

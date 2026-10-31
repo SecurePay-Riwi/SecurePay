@@ -247,8 +247,14 @@ Read this before touching `shared/cases.py`, `services/cases_api/`,
   on them in the window; one item per (account, device) with
   `last_seen` and `open_cases` (cases in `PENDING`).
 - **`shared/evidence.archive(session, case)`** never raises and is
-  idempotent; until HU-32 it returns `None`. The cases API calls it after
-  resolving; the alerts task retries it.
+  idempotent. The cases API calls it after resolving; the alerts task
+  retries it with `archive_pending(session)`. One JSON per case at
+  `cases/<yyyy>/<mm>/<case_id>.json`, written once (`IfNoneMatch="*"`)
+  with COMPLIANCE Object Lock, `StorageClass=GLACIER_IR` (no lifecycle
+  rule: S3 does not transition objects under 128 KB) and a SHA-256
+  checksum. `EVIDENCE_RETENTION_DAYS` is a decimal: never run code that
+  archives against an AWS bucket with 3650 outside prod, the lock can
+  never be shortened (dev uses `0.0035`).
 - **The cases API** works like the rules API: routes in
   `routes_cases.py`, `routes_reports.py`, `routes_accounts.py`,
   `routes_compliance.py` (one owner each), session and `X-User` from

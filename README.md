@@ -206,7 +206,9 @@ usan los servicios reales.
     el bucket del proveedor de listas `pagoseguro-proveedor-listas`
     (script `02_sources.py`, en la misma carpeta) y la tabla de DynamoDB
     `pagoseguro-exchange-rates` para las tasas de cambio (script
-    `03_exchange_rates.py`).
+    `03_exchange_rates.py`). El mismo `01_messaging.py` crea también el
+    tema `business-alerts` y el bucket de evidencia `pagoseguro-evidence`,
+    con Object Lock.
     LocalStack no guarda nada al apagarse: cada vez que arranca, el script
     vuelve a crear todo vacío.
 
@@ -349,8 +351,9 @@ cuentas y comercios de la base, y tener Valkey y LocalStack encendidos
 (paso 5). Si Valkey está apagado, las pruebas de idempotencia y de
 velocidad salen como omitidas (`s`) y las de la API fallan con 503. Si
 LocalStack está apagado, las dos pruebas de punta a punta de la
-mensajería salen omitidas; las demás de la mensajería usan SNS, SQS y S3
-de mentira y no lo necesitan.
+mensajería y las de Object Lock de la evidencia
+(`shared/tests/test_evidence_localstack.py`) salen omitidas; las demás
+usan SNS, SQS y S3 de mentira y no lo necesitan.
 
 ``` bash
 uv run pytest
