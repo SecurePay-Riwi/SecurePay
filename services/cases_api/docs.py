@@ -80,3 +80,53 @@ RESTRICTED_LIST_REPORTS = {
         503: DB_DOWN,
     },
 }
+
+
+# --- Accounts (HU-28) --------------------------------------------------------
+
+_ACCOUNT = "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42"
+
+_ACCOUNT_TRANSACTION = {
+    "transaction_id": "a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21",
+    "direction": "OUT",
+    "counterparty_account_id": "9e1b3d5f-7a9c-4e1b-8d3f-5a7c9e1b3d64",
+    "type": "P2P",
+    "channel": "APP",
+    "merchant_id": None,
+    "amount": "950000.00",
+    "currency": "COP",
+    "amount_usd": "230.05",
+    "device_id": "c7e9a1b3-5d7f-4a9c-9e1b-3d5f7a9c1e86",
+    "decision": "HOLD",
+    "decision_reason": "More than 5 outgoing transfers in 10 minutes.",
+    "rules_triggered": ["velocity"],
+    "risk_score": 40,
+    "transaction_date": "2026-10-31T13:58:40Z",
+    "processed_at": "2026-10-31T13:58:40.112000Z",
+}
+
+ACCOUNT_TRANSACTIONS = {
+    "summary": "List the last 30 days of an account's transactions",
+    "description": (
+        "Every transaction where the account took part in the last `days` "
+        "days (at most 30, `ACCOUNT_HISTORY_DAYS`), whatever the engine "
+        "decided: `OUT` when it was the source, `IN` when it was the "
+        "destination. The amount is in the account's currency, with the "
+        "engine's `amount_usd` (RN-11). `device_id` is only on the main "
+        "account's row (the source; in a top-up, the destination).\n\n"
+        "Newest first by `transaction_date`. An account without history is "
+        "an empty list. Paginated with `page` and `size` (at most 100). "
+        "The history consumer writes it a moment after the decision, and "
+        "the alerts task deletes what is older than 30 days."
+    ),
+    "responses": {
+        200: _ok(
+            "The account's transactions in the window, newest first.",
+            {"account_id": _ACCOUNT, "days": 30, "items": [_ACCOUNT_TRANSACTION],
+             "total": 1, "page": 1, "size": 50},
+        ),
+        400: _error("The account id is not a UUID, or `days`, `page` or `size` is out of range.",
+                    "The request contains invalid data."),
+        503: DB_DOWN,
+    },
+}

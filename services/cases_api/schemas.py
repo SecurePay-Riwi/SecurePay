@@ -6,6 +6,7 @@ Money is Decimal (a decimal string in JSON), dates are UTC.
 """
 
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -39,3 +40,49 @@ class RestrictedListReportPage(BaseModel):
     total: int = Field(description="Reports in the period, all pages.")
     page: int = Field(description="Page number, from 1.")
     size: int = Field(description="Reports per page.")
+
+
+# --- Accounts (HU-28) --------------------------------------------------------
+
+class AccountTransactionItem(BaseModel):
+    """One transaction of the account (an account_transactions row).
+
+    The nullable fields are always sent; their default only lets Swagger
+    drop a null from an example."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    transaction_id: UUID = Field(description="The transaction.")
+    direction: str = Field(description="OUT: the account sent it (source). IN: the account received it (destination).")
+    counterparty_account_id: UUID | None = Field(
+        default=None,
+        description="The other account of the transaction; null in a QR payment, a withdrawal or a top-up.",
+    )
+    type: str = Field(description="P2P, QR, RECARGA or RETIRO.")
+    channel: str = Field(description="Where the transaction was made (APP, WEB, ...).")
+    merchant_id: UUID | None = Field(default=None, description="The merchant of a QR payment; null otherwise.")
+    amount: Decimal = Field(description="Amount in the account's currency, as a decimal string.")
+    currency: str = Field(description="The original currency (COP, USD, EUR, JPY).")
+    amount_usd: Decimal | None = Field(
+        default=None,
+        description="The engine's amount in USD (RN-11), as a decimal string; null for decisions older than Sprint 4.",
+    )
+    device_id: UUID | None = Field(
+        default=None,
+        description="The device, only on the main account's row (the source; in a top-up, the destination).",
+    )
+    decision: str = Field(description="The engine's decision: APPROVE, HOLD or REJECT.")
+    decision_reason: str = Field(description="Why the engine decided it.")
+    rules_triggered: list[str] = Field(description="The rules that fired, as in the transaction.decided event.")
+    risk_score: int = Field(description="Sum of the fired rules' scores, 0 to 100.")
+    transaction_date: datetime = Field(description="When the transaction happened, UTC.")
+    processed_at: datetime = Field(description="When the engine decided it, UTC.")
+
+
+class AccountTransactionPage(BaseModel):
+    account_id: UUID = Field(description="The account.")
+    days: int = Field(description="The window: transactions of the last `days` days.")
+    items: list[AccountTransactionItem] = Field(description="The transactions of the page, newest first.")
+    total: int = Field(description="Transactions in the window, all pages.")
+    page: int = Field(description="Page number, from 1.")
+    size: int = Field(description="Transactions per page.")

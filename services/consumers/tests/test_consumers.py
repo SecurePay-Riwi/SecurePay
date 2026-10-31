@@ -91,11 +91,12 @@ def test_analytics_retries_the_whole_batch_when_s3_fails(monkeypatch):
     }
 
 
-def test_cases_and_history_acknowledge_valid_events():
+def test_cases_acknowledges_events_that_open_no_case():
     lote = _lote(json.dumps(_evento(1, "HOLD")), json.dumps(_evento(2)))
 
+    # No opens_case: nothing to write, PostgreSQL is not touched. The
+    # history consumer writes every event (test_history_consumer.py).
     assert cases.handler(lote) == {"batchItemFailures": []}
-    assert history.handler(lote) == {"batchItemFailures": []}
 
 
 class SqsFalso:
