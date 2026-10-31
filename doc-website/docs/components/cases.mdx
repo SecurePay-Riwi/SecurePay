@@ -11,7 +11,7 @@ description: The case an analyst works from the engine's decision to its resolut
 Sprint 4 turns the engine's decisions into cases an analyst works from start to end: a decision of mule account, splitting or restricted list **opens a case**, the case waits in an **inbox** ordered by risk and time left, someone **takes** it, it is **escalated** to the supervisor if it is not resolved in **4 hours** (RN-09), the analyst **resolves** it as fraud or legitimate, and its **evidence** is kept 10 years (RN-12).
 
 :::info Status
-Built: the shared contract (the tables, the states, the cases API with `/health` and the alerts task), the cases consumer, which opens the cases (HU-25), the restricted list reports with their compliance e-mail (HU-34) and the 30-day account history (HU-28). Each story of Sprint 4 fills in its part.
+Built: the shared contract (the tables, the states, the cases API with `/health` and the alerts task), the cases consumer, which opens the cases (HU-25), the restricted list reports with their compliance e-mail (HU-34) the 30-day account history (HU-28) and the accounts related through a shared device (HU-29). Each story of Sprint 4 fills in its part.
 :::
 
 ## Who writes what
@@ -85,6 +85,15 @@ The analyst needs the last 30 days of an account to judge a case (D3: in Postgre
 
 The window counts from today's clock. The generator dates its transactions from `FECHA_REFERENCIA` (2026-10-01): a run whose dates are more than 30 days old is written and then purged, and the API does not list it.
 
+## Related accounts (HU-29)
+
+To judge a case the analyst also needs the accounts behind the same devices (the network the shared device rule, RN-04, scores). `GET /accounts/{account_id}/related-accounts` reads it from the account history, without another table:
+
+1. **The account's devices.** The `device_id` of its rows in the last `days` days (default 30). Only the main account's row has one, so an account that only received transfers has no devices.
+2. **The other accounts.** Every other account with a row on any of those devices in the same window. One item per account and device: `last_seen` is its last transaction on that device, and `open_cases` counts its cases that are `OPEN` or `ESCALATED`.
+
+The latest seen first. A use older than the window does not count, on either side, and the purge of HU-28 leaves nothing older than 30 days.
+
 The columns of the four tables are in [Data model](../reference/data-model.mdx#cases-cases-case_events-compliance_reports-account_transactions).
 
 ## Amounts
@@ -123,7 +132,7 @@ Built like the [rules API](./rules-api.mdx): FastAPI, tables created at startup,
 | `GET /reports/suspicious` | HU-35 |
 | `GET /compliance/restricted-list-reports` | Built (HU-34) |
 | `GET /accounts/{account_id}/transactions` | Built (HU-28) |
-| `GET /accounts/{account_id}/related-accounts` | HU-29 |
+| `GET /accounts/{account_id}/related-accounts` | Built (HU-29) |
 
 ### `GET /compliance/restricted-list-reports`
 
@@ -188,6 +197,30 @@ curl "http://localhost:8003/accounts/5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42/transa
   "total": 1,
   "page": 1,
   "size": 50
+}
+```
+
+### `GET /accounts/{account_id}/related-accounts`
+
+The other accounts that used, in the last `days` days (1 to 30, default 30), a device the account used in the same window. One item per related account and shared device, the latest seen first; not paginated. An account without devices or without related accounts is `200` with an empty list. `400` for an account id that is not a UUID or `days` out of range; `503` without PostgreSQL.
+
+```bash
+curl "http://localhost:8003/accounts/5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42/related-accounts"
+```
+
+```json
+{
+  "account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+  "days": 30,
+  "items": [
+    {
+      "account_id": "9e1b3d5f-7a9c-4e1b-8d3f-5a7c9e1b3d64",
+      "device_id": "c7e9a1b3-5d7f-4a9c-9e1b-3d5f7a9c1e86",
+      "last_seen": "2026-10-31T12:20:05Z",
+      "open_cases": 1
+    }
+  ],
+  "total": 1
 }
 ```
 

@@ -179,8 +179,8 @@ stop and ask instead of working around it.
 "Step 0" put the case contract in the code first (`shared/cases.py`,
 `services/cases_api/`, `services/alerts/`, `shared/evidence.py`,
 `amount_usd` in the decision). HU-25 (cases consumer, closes HU-15's
-case) and HU-34 (restricted list reports) are merged; HU-28 (30-day
-account history) is in review. Habith: HU-25 → HU-34 → HU-28 → HU-29;
+case), HU-34 (restricted list reports) and HU-28 (30-day account
+history) are merged; HU-29 (related accounts) is in review. Habith: HU-25 → HU-34 → HU-28 → HU-29;
 Yulianis: HU-26 → HU-27 → HU-30, HU-35; Jorge: HU-57 → HU-31 → HU-32.
 
 ---
@@ -241,6 +241,11 @@ Read this before touching `shared/cases.py`, `services/cases_api/`,
   `GET /accounts/{account_id}/transactions?days=` reads it by
   `transaction_date`, and `account_history.purge()` deletes what is older
   than `now - ACCOUNT_HISTORY_DAYS`.
+- **Related accounts (HU-29)** are a query on the same table, no new
+  one: `GET /accounts/{account_id}/related-accounts?days=` takes the
+  account's `device_id`s in the window and the other accounts with rows
+  on them in the window; one item per (account, device) with
+  `last_seen` and `open_cases` (cases in `PENDING`).
 - **`shared/evidence.archive(session, case)`** never raises and is
   idempotent; until HU-32 it returns `None`. The cases API calls it after
   resolving; the alerts task retries it.

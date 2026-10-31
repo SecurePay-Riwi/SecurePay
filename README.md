@@ -56,7 +56,7 @@ El repositorio reúne los componentes trabajados hasta el momento:
 
 - Motor antifraude con API FastAPI y reglas de decisión.
 - API independiente para crear, modificar, activar/desactivar y consultar versiones de reglas antifraude (`services/rules_api/`, puerto 8002).
-- Sprint 4 (en curso): tablas de casos (`shared/cases.py`), API de casos (`services/cases_api/`, puerto 8003) y tarea de alertas (`services/alerts/`). Hechos: crear casos (HU-25), reportes de lista restrictiva (HU-34) e historial de 30 días por cuenta (HU-28, `GET /accounts/{account_id}/transactions`).
+- Sprint 4 (en curso): tablas de casos (`shared/cases.py`), API de casos (`services/cases_api/`, puerto 8003) y tarea de alertas (`services/alerts/`). Hechos: crear casos (HU-25), reportes de lista restrictiva (HU-34), historial de 30 días por cuenta (HU-28, `GET /accounts/{account_id}/transactions`) y cuentas relacionadas por dispositivo (HU-29, `GET /accounts/{account_id}/related-accounts`).
 - Seed de datos maestros para PostgreSQL y generador de transacciones de prueba.
 - Pruebas automatizadas para los componentes del proyecto.
 - Simulación local de mensajería con SNS/SQS y almacenamiento en S3 mediante LocalStack.
