@@ -49,6 +49,7 @@ See [Seed](../components/seed.mdx).
 | Variable | Default | What it does |
 | :--- | :--- | :--- |
 | `VALKEY_URL` | `redis://localhost:6379/0` | Valkey connection (ElastiCache in AWS). |
+| `VALKEY_CLUSTER` | `false` | `true` uses the cluster client. ElastiCache Serverless only accepts the cluster protocol, so Terraform sets it in AWS; local Valkey is a single node. |
 | `IDEMPOTENCY_TTL_SECONDS` | `3600` | How long a decision is returned to resends. |
 | `HISTORY_OUT_HOURS` | `24` | Outgoing history kept per account (`out:{account}`). At least 24: the longest velocity and splitting windows the catalog accepts. |
 | `HISTORY_IN_MINUTES` | `60` | Incoming history kept per account (`in:{account}`), for the mule rule. At least 60, the longest mule window the catalog accepts. |
