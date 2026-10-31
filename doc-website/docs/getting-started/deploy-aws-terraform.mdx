@@ -141,10 +141,12 @@ The engine image goes to ECR tagged with the short git commit, the admin image (
    ```
 
    ```powershell
-   aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin $REPOS.engine.Split("/")[0]
+   $REGISTRY = $REPOS.engine.Split("/")[0]
+   $ECR_PASS = aws ecr get-login-password --region us-east-2
+   docker login --username AWS --password $ECR_PASS $REGISTRY
    ```
 
-   It prints `Login Succeeded`.
+   It prints `Login Succeeded` (and a warning about `--password`; the token only works for ECR and lasts 12 hours). Windows PowerShell can alter text piped to another program, so the usual `aws ecr get-login-password | docker login --password-stdin` fails there with `400 Bad Request`.
 
 2. Build and push the engine from the root of the **SecurePay** repository (four folders up from `envs\dev`):
 
@@ -216,6 +218,8 @@ The engine image goes to ECR tagged with the short git commit, the admin image (
    ```
 
    Within a minute or two the events say `has started 1 tasks` and the target group shows two healthy targets again. The other task keeps answering meanwhile: repeat the `curl.exe` of step 6.
+
+**Tested on AWS on October 31, 2026** (engine `5f38965`, seed `94745a5`, single-AZ RDS): the seed took about 4 seconds; `/health` answered `{"status":"ok", ...}`; the smoke transaction returned `APPROVE` with `amount_usd` `28.32`, and `"idempotent_replay":true` the second time; the two tasks ran in `us-east-2a` and `us-east-2b`; after `stop-task` the events showed `deregistered 1 targets`, `has begun draining connections on 1 tasks` and `has started 1 tasks`, while `/health` kept answering.
 
 ## 7. Prove that evidence cannot be deleted
 
@@ -290,6 +294,7 @@ In the console, NAT gateways must show "Deleted", **EC2 → Elastic IPs** must b
 | `aws` or `terraform` is not recognized | The terminal was open before the install | Open a new terminal (close VS Code completely if it is its terminal) |
 | `InvalidClientTokenId` | Access key copied wrong | `aws configure` again |
 | `FreeTierRestrictionError: backup retention period` | An account on the AWS free plan accepts at most 1 day of RDS backups | Already handled: dev uses `database_backup_retention_days = 1`. If a similar error mentions Multi-AZ, add `database_multi_az = false` to `terraform.tfvars` |
+| `docker login` fails with `400 Bad Request` | PowerShell altered the token piped to `--password-stdin` | Use the variable form of step 6.1 |
 | `not authorized to perform: iam:PassRole` on the task definition | The Terraform user lacks the statement `PassRolesToEcsTasks` | Paste again the whole `terraform-user-policy.json` in its inline policy |
 | The engine service never gets healthy tasks; `aws logs tail /ecs/securepay-dev-engine` shows `ResourceNotFoundException` or no logs | The image tag does not exist in ECR | Check the tag in ECR and in `terraform.tfvars`. The circuit breaker rolls the deployment back on its own |
 | `curl` gets `503` with `idempotencia` | The engine cannot reach the cache | Check that `VALKEY_CLUSTER` is `true` in the task definition and the cache is "Available" |
