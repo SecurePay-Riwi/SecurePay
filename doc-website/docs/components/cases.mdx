@@ -1,0 +1,93 @@
+---
+sidebar_position: 5.5
+title: Cases
+description: The case an analyst works from the engine's decision to its resolution, and the parts of the system that write it.
+---
+
+# Cases
+
+**Folders:** `shared/cases.py`, `services/cases_api/`, `services/alerts/`, `shared/evidence.py` · **Run:** `uv run uvicorn services.cases_api.main:app --reload --port 8003` and `uv run python -m services.alerts` · **Swagger:** http://localhost:8003/docs
+
+Sprint 4 turns the engine's decisions into cases an analyst works from start to end: a decision of mule account, splitting or restricted list **opens a case**, the case waits in an **inbox** ordered by risk and time left, someone **takes** it, it is **escalated** to the supervisor if it is not resolved in **4 hours** (RN-09), the analyst **resolves** it as fraud or legitimate, and its **evidence** is kept 10 years (RN-12).
+
+:::info Status
+Only the shared contract is built: the tables, the states, the cases API with `/health` and the alerts task with jobs that do nothing yet. Each story of Sprint 4 fills in its part.
+:::
+
+## Who writes what
+
+A case has one shape, in `shared/cases.py`, and three parts of the system write it. None of them imports another service, and none calls another over HTTP.
+
+| Part | Folder | Writes | Story |
+| :--- | :--- | :--- | :--- |
+| Cases consumer | `services/consumers/cases.py` | A case (`OPEN`) and its `CREATED` event for each `transaction.decided` event with `opens_case: true`; a `compliance_reports` row per listed document when `restricted_list` fired | HU-25, HU-34 |
+| History consumer | `services/consumers/history.py` | One `account_transactions` row per account of each transaction | HU-28 |
+| Cases API (port 8003) | `services/cases_api/` | `ASSIGNED` and `RESOLVED`, on the analyst's request (`X-User` is the actor); then archives the evidence | HU-26, HU-27, HU-30, HU-35, HU-28, HU-29, HU-34 |
+| Alerts task (every 5 minutes) | `services/alerts/` | `ESCALATED` for overdue cases, the compliance summary e-mail, the purge of old account history | HU-31, HU-34, HU-28 |
+| Evidence | `shared/evidence.py` | The case's evidence in a bucket with Object Lock, and `EVIDENCE_ARCHIVED` | HU-32 |
+
+All three services create the tables at startup with `create_schema()`: idempotent and under a PostgreSQL advisory lock, so they can start at the same time.
+
+## States
+
+```text
+OPEN ──(alerts task, due_at passed)──> ESCALATED ──(analyst)──> RESOLVED
+  └──────────────────(analyst)──────────────────────────────────────┘
+```
+
+- Only the decisions with `opens_case` open a case (team decision of 2026-10-13): by default mule account, splitting and restricted list. A velocity `HOLD` opens none.
+- One case per transaction: a repeated event never opens a second case.
+- `due_at` is `created_at` + `CASE_DUE_MINUTES` (240), with the consumer's clock.
+- Only the alerts task escalates. An escalated case can still be assigned and resolved.
+- `RESOLVED` is final: assigning or resolving it again is `409`. Resolving stores the outcome and the final decision: `FRAUD` → `REJECT`, `LEGITIMATE` → `APPROVE`.
+- Every transition writes one row in `case_events`, in the same database transaction as the change. `case_events` is append-only: a trigger rejects `UPDATE`, `DELETE` and `TRUNCATE`.
+
+| Event | Written by | `data` |
+| :--- | :--- | :--- |
+| `CREATED` | Cases consumer, actor `system` | `{}` |
+| `ASSIGNED` | Cases API | `{"from": null, "to": "ana"}` |
+| `ESCALATED` | Alerts task, actor `system` | `{"due_at": "…"}` |
+| `RESOLVED` | Cases API | `{"outcome", "final_decision", "note"}` |
+| `EVIDENCE_ARCHIVED` | `evidence.archive()` | `{"bucket", "key", "retain_until"}` |
+
+The columns of the four tables are in [Data model](../reference/data-model.mdx#cases-cases-case_events-compliance_reports-account_transactions).
+
+## Amounts
+
+The case and the account history keep the amount in the account's currency and `amount_usd`, which the engine adds to every decision (RN-11). Amounts are `Numeric`, never float, and decimal strings in JSON (`"12450.00"`). Dates are UTC.
+
+## Calls between parts
+
+These signatures are fixed; each story fills in the body.
+
+```python
+# shared/evidence.py (HU-32). Today: logs and returns None.
+def archive(session, case: Case) -> str | None: ...
+
+# services/alerts/ (today each returns 0)
+def escalate_overdue(session, now: datetime) -> int: ...   # escalation.py, HU-31
+def send_summary(session, now: datetime) -> int: ...       # compliance_summary.py, HU-34
+def purge(session, now: datetime) -> int: ...              # account_history.py, HU-28
+
+# services/alerts/handler.py
+def handler(event=None, context=None) -> dict: ...
+```
+
+`handler()` runs the three jobs in that order with the same `now`, each in its own `try`: a failing job rolls back and does not stop the others. In AWS, EventBridge runs it as a Lambda every 5 minutes; locally `python -m services.alerts` runs it every `ALERTS_INTERVAL_SECONDS`. The jobs publish to the SNS topic `business-alerts` (created in LocalStack by `infra/localstack/init/01_messaging.py`).
+
+## Cases API
+
+Built like the [rules API](./rules-api.mdx): FastAPI, tables created at startup, `X-User` (1 to 100 characters) required on what changes a case, Swagger examples of every status code in `docs.py` checked by `tests/test_openapi.py`. Errors: `400` invalid data, `404` not found, `409` invalid transition, `503` PostgreSQL down, always `{"detail": "..."}`.
+
+| Endpoint | Story |
+| :--- | :--- |
+| `GET /health` | Built |
+| `GET /cases`, `GET /cases/{case_id}` | HU-26 |
+| `PUT /cases/{case_id}/assignee` | HU-27 |
+| `POST /cases/{case_id}/resolution` | HU-30 |
+| `GET /reports/suspicious` | HU-35 |
+| `GET /compliance/restricted-list-reports` | HU-34 |
+| `GET /accounts/{account_id}/transactions` | HU-28 |
+| `GET /accounts/{account_id}/related-accounts` | HU-29 |
+
+Variables: [Configuration](../reference/configuration.mdx#cases).

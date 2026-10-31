@@ -39,8 +39,8 @@ SecurePay-Riwi/
 de las fuentes lo instalan como dependencia (`import securepay_shared`).
 Trae `models` (SQLAlchemy), `db` (conexión a PostgreSQL), `config` (variables
 y constantes) y `aws` (clientes de boto3). `shared/cache.py`,
-`shared/events.py` y `shared/rule_catalog.py` no van en el paquete: solo los
-usa `services/`.
+`shared/events.py`, `shared/rule_catalog.py`, `shared/cases.py` y
+`shared/evidence.py` no van en el paquete: solo los usa `services/`.
 
 ## Descripción
 
@@ -56,6 +56,7 @@ El repositorio reúne los componentes trabajados hasta el momento:
 
 - Motor antifraude con API FastAPI y reglas de decisión.
 - API independiente para crear, modificar, activar/desactivar y consultar versiones de reglas antifraude (`services/rules_api/`, puerto 8002).
+- Sprint 4 (en curso): tablas de casos (`shared/cases.py`), API de casos (`services/cases_api/`, puerto 8003) y tarea de alertas (`services/alerts/`). Por ahora solo el esqueleto: `/health` y trabajos que no hacen nada.
 - Seed de datos maestros para PostgreSQL y generador de transacciones de prueba.
 - Pruebas automatizadas para los componentes del proyecto.
 - Simulación local de mensajería con SNS/SQS y almacenamiento en S3 mediante LocalStack.
@@ -378,6 +379,14 @@ sus tablas al arrancar y publica el catálogo en Valkey):
 uv run uvicorn services.rules_api.main:app --reload --port 8002
 ```
 
+La API de casos (solo PostgreSQL; crea las tablas de casos al arrancar)
+y la tarea de alertas (cada `ALERTS_INTERVAL_SECONDS`, 60):
+
+```bash
+uv run uvicorn services.cases_api.main:app --reload --port 8003
+uv run python -m services.alerts
+```
+
 La API queda en http://localhost:8000 y la documentación interactiva
 en http://localhost:8000/docs.
 
@@ -549,10 +558,11 @@ Valida la configuración y levanta el stack:
     docker compose up --build -d
     docker compose ps
 
-Compose coordina PostgreSQL, Valkey, LocalStack, el seed, el motor antifraude, la API de listas restrictivas, los consumidores, el generador y los extractos. El seed y el generador son tareas de una sola ejecución. El seed usa SEED_RESET=true para regenerar los datos de desarrollo al iniciar; no uses este stack contra una base de datos con datos que quieras conservar.
+Compose coordina PostgreSQL, Valkey, LocalStack, el seed, el motor antifraude, la API de reglas, la API de casos, la API de listas restrictivas, los consumidores, la tarea de alertas, el generador y los extractos. El seed y el generador son tareas de una sola ejecución. El seed usa SEED_RESET=true para regenerar los datos de desarrollo al iniciar; no uses este stack contra una base de datos con datos que quieras conservar.
 
 - Motor antifraude: http://localhost:8000/health y http://localhost:8000/docs
 - API de reglas: http://localhost:8002/health y http://localhost:8002/docs
+- API de casos: http://localhost:8003/health y http://localhost:8003/docs
 - API de listas restrictivas: http://localhost:8001/health
 - PostgreSQL: puerto 5433; Valkey: 6379; LocalStack: 4566.
 

@@ -75,6 +75,7 @@ There is no `user_id`: the owner comes from the account.
   "rules_triggered": ["velocity"],
   "rule_versions": {"velocity": 1},
   "opens_case": false,
+  "amount_usd": "28.32",
   "risk_score": 0,
   "by_default": false,
   "processed_at": "2026-10-14T00:10:03.512+00:00",
@@ -86,6 +87,7 @@ There is no `user_id`: the owner comes from the account.
 - `rules_version` is the version of the [rule catalog](#rule-catalog) the decision used. `"0"` means the defaults in the code; the Rules API publishes a new version whenever a rule is created, modified, enabled or disabled. The rules, the default decision and this field all use the same catalog, read once per decision.
 - `rule_versions` gives the `rule_version` of each rule in `rules_triggered` (RN-08, HU-23). With `rules_version`, a past decision can be audited: `GET /rules/versions/{rules_version}` of the [Rules API](./rules-api.mdx#auditing-a-decision) returns the whole catalog that decided, and the entry of each rule there has that `rule_version`. The default decision records the version of `default_timeout`, whose limit it applied.
 - `opens_case` is `true` when a rule whose catalog entry says `opens_case` fired: by default mule account, splitting and restricted list ([Team decisions](../architecture/team-decisions.mdx)). Velocity and the default decision only hold; shared device only raises `risk_score`. The cases consumer reads this flag.
+- `amount_usd` is the transaction amount in USD, rounded to cents (RN-11), with the same rate the rules use (`currency.to_usd()`). The consumers store it with the [case](./cases.mdx) and the account history, so no other service imports `currency.py`. `null` in decisions stored before it existed.
 - `risk_score` is the sum of the `score` of the rules that fired, at most 100. Every rule of Sprint 2 has score 0; the shared device rule (HU-14) is the first that raises it (30).
 - `by_default` is `true` when the rules did not answer in time and the default decision was applied (see [Default decision on timeout](#default-decision-on-timeout)). Then `rules_triggered` is `["default_timeout"]`.
 - `idempotent_replay` is `true` when the answer is a stored decision returned to a resend. A resend keeps the versions of the first decision even if the catalog changed since. A decision stored before `rules_version`, `rules_triggered` and `rule_versions` existed is replayed with `null`, `[]` and `{}`.
