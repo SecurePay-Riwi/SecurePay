@@ -112,3 +112,56 @@ def test_analytics_consumer_writes_to_the_raw_layer(aws):
         for o in objetos
     ]
     assert any(tx_id in c for c in contenidos)
+
+
+def test_a_decision_with_opens_case_reaches_the_cases_table(aws, monkeypatch):
+    """HU-25: engine event → SNS → "casos" queue → cases consumer → PostgreSQL."""
+    from sqlalchemy import select
+
+    from services.consumers import cases
+    from shared.cases import Case, create_schema
+    from shared.tests.isolated_db import isolated_sessions
+
+    _, sqs, _, urls = aws
+    tx_id = str(uuid4())
+    event = evento_decision(
+        {
+            "id": tx_id,
+            "type": "RETIRO",
+            "source_account_id": str(uuid4()),
+            "destination_account_id": None,
+            "amount": "950000.00",
+            "currency": "COP",
+            "transaction_date": "2026-10-13T20:00:00+00:00",
+        },
+        {
+            "transaction_id": tx_id,
+            "decision": "HOLD",
+            "decision_reason": "Prueba",
+            "rules_version": "0",
+            "rules_triggered": ["mule"],
+            "rule_versions": {"mule": 1},
+            "opens_case": True,
+            "amount_usd": "230.05",
+            "risk_score": 50,
+            "processed_at": "2026-10-13T20:00:00+00:00",
+        },
+    )
+
+    with isolated_sessions("cases_localstack_test") as factory:
+        with factory() as session:
+            create_schema(session)
+        monkeypatch.setattr(cases, "SessionLocal", factory)
+
+        pub = Publicador(topic_arn=TOPIC_ARN)
+        pub.publicar(event)
+        pub.detener()
+
+        leidos = atender_lote(sqs, urls["casos"], "casos", cases.handler, espera_s=2)
+        assert leidos == 1
+        assert _leer_todo(sqs, urls["casos"]) == []
+
+        with factory() as session:
+            [case] = session.scalars(select(Case)).all()
+        assert str(case.transaction_id) == tx_id
+        assert case.rules_triggered == ["mule"]

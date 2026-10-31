@@ -284,7 +284,7 @@ def withdraws_enough(amount, balance_before, pct) -> bool:
 - **Withdrawal only.** RN-03 says "withdraws", like the generator's pattern. Moving the money on with a `P2P` or paying a merchant does not trigger it; adding them is one line (`mule.TYPES`).
 - **Out-of-order events.** A transfer that arrives late but happened before the withdrawal counts in its real place. One recorded with a time after the withdrawal does not. A transfer that arrives after the withdrawal was decided cannot change that decision.
 - **Amounts in the account's currency.** The rule compares a share of the balance, so it needs no USD conversion.
-- **The case itself** (table, inbox, 4-hour timer) is HU-25 in Sprint 4: the cases consumer will open one for each event with `opens_case: true`.
+- **The case itself** is opened by the cases consumer for each event with `opens_case: true` ([Cases](./cases.mdx#opening-a-case), HU-25).
 
 | Catalog parameter | Default | Meaning |
 | :--- | ---: | :--- |
@@ -341,7 +341,7 @@ if len(amounts) >= p.min_transactions and total > p.daily_limit_usd:
 
 - **Every way out counts.** RN-05 says "transactions", so transfers, merchant payments and withdrawals all count ([Team decisions](../architecture/team-decisions.mdx)). Top-ups are money coming in and are not in `out:`.
 - **A transaction at or above the limit is not a split.** It is left out of the count and the sum, and the rule does not fire on it (it is a single large transaction, not a split one).
-- **Every later transaction of the split fires too** while the window still holds the pattern; the cases consumer (HU-25) groups them by account.
+- **Every later transaction of the split fires too** while the window still holds the pattern, and each one opens its own case; the analyst sees them together through the account ([Cases](./cases.mdx#opening-a-case)).
 - **Out-of-order events.** A transaction recorded with a time after the one being decided does not count, like in the mule rule.
 - **USD.** Each amount is converted with `currency.to_usd()`, at the fixed 2026-10-01 rates until HU-42. The generator converts with the day's rate, so an amount within ~2 % of the limit could land on the other side; the generator's amounts (USD 3400 to 3900, control USD 2000 to 3000) stay far from it.
 
