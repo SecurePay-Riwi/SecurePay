@@ -178,7 +178,7 @@ locals {
         local.ecr_token,
         { Sid = "PullImage", Effect = "Allow", Action = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"], Resource = "${local.arn.repository}-admin" },
         { Sid = "OwnLogs", Effect = "Allow", Action = ["logs:CreateLogStream", "logs:PutLogEvents"], Resource = "${local.arn.log_group}/ecs/${local.p}-admin:*" },
-        { Sid = "MasterPassword", Effect = "Allow", Action = "ssm:GetParameters", Resource = "${local.arn.parameter}/rds/master-password" },
+        { Sid = "MasterPassword", Effect = "Allow", Action = "ssm:GetParameters", Resource = ["${local.arn.parameter}/rds/master-password", "${local.arn.parameter}/rds/master-url"] },
       ]
     }
 
@@ -201,10 +201,20 @@ locals {
     } if !in_vpc
   }
 
+  # Temporary, with security_groups.engine_reads_database: ECS hands the
+  # engine its DATABASE_URL while the engine still reads PostgreSQL.
+  temporary_database_url = {
+    Sid      = "TemporaryDatabaseUrl"
+    Effect   = "Allow"
+    Action   = "ssm:GetParameters"
+    Resource = "${local.arn.parameter}/rds/master-url"
+  }
+
   policies = {
     for name, role in local.roles : name => concat(
       role.statements,
-      contains(keys(local.lambda_logs), name) ? [local.lambda_logs[name]] : []
+      contains(keys(local.lambda_logs), name) ? [local.lambda_logs[name]] : [],
+      name == "engine-execution" && var.engine_reads_database ? [local.temporary_database_url] : []
     )
   }
 }

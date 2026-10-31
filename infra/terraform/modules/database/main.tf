@@ -91,3 +91,14 @@ resource "aws_db_instance" "this" {
   delete_automated_backups   = var.disposable
   apply_immediately          = var.disposable
 }
+
+# Full connection URL for the services that take DATABASE_URL (the admin
+# task and, temporarily, the engine). ECS injects a parameter as a whole
+# value, so the password goes inside the URL here and never as plain text
+# in a task definition.
+resource "aws_ssm_parameter" "master_url" {
+  name        = "${local.parameter_path}/master-url"
+  description = "DATABASE_URL of the master user, with TLS required."
+  type        = "SecureString"
+  value       = "postgresql://${aws_db_instance.this.username}:${urlencode(random_password.master.result)}@${aws_db_instance.this.address}:${aws_db_instance.this.port}/${aws_db_instance.this.db_name}?sslmode=require"
+}

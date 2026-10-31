@@ -9,5 +9,13 @@ budget_emails = ["you@example.com"]
 # engine_port      = 8000
 # budget_limit_usd = 5
 # budget_alert_percentages = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-# database_multi_az              = true
+# database_multi_az              = true   # false for a short test: half the RDS cost
 # database_backup_retention_days = 1   # the AWS free plan accepts at most 1
+
+# Engine on Fargate (deploy-aws-terraform.mdx, step 6). Leave the tags unset
+# on the first apply; set them after pushing the images to ECR.
+# engine_image_tag = "<short commit of SecurePay>"
+# admin_image_tag  = "<short commit of securepay-seed>"
+# engine_min_tasks = 2
+# engine_max_tasks = 4
+# domain_name      = "api.example.com"   # unset: self-signed certificate

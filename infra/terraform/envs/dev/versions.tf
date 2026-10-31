@@ -10,6 +10,10 @@ terraform {
       source  = "hashicorp/random"
       version = "3.6.3"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "4.0.6"
+    }
   }
 
   # Local state for now (it is in .gitignore). A remote S3 state bucket

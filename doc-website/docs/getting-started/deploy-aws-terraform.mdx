@@ -78,7 +78,7 @@ cd infra\terraform\envs\dev
    Copy-Item terraform.tfvars.example terraform.tfvars
    ```
 
-   Open `terraform.tfvars` and fill in `owner` (just your name, free text that goes in the `owner` tag) and `budget_emails` (your real email: the budget alerts arrive there). Git ignores this file.
+   Open `terraform.tfvars` and fill in `owner` (just your name, free text that goes in the `owner` tag) and `budget_emails` (your real email: the budget alerts arrive there). For a short test, `database_multi_az = false` halves the RDS cost and saves 10 minutes each way. Git ignores this file.
 
 2. Download the providers:
 
@@ -86,7 +86,7 @@ cd infra\terraform\envs\dev
    terraform init
    ```
 
-3. See what will be created. It must say `Plan: 139 to add, 0 to change, 0 to destroy`:
+3. See what will be created. It must say `Plan: 159 to add, 0 to change, 0 to destroy`:
 
    ```powershell
    terraform plan
@@ -98,7 +98,7 @@ cd infra\terraform\envs\dev
    terraform apply
    ```
 
-   It ends with `Apply complete! Resources: 139 added`. From this moment it costs money.
+   It ends with `Apply complete! Resources: 159 added`. From this moment it costs money. The engine is not running yet: its service starts in [step 6](#6-deploy-the-engine-on-fargate), once its image is in ECR.
 
 **If `apply` fails,** Terraform stops and prints `Error:` with the resource and the AWS message. What it created before the error stays in the state: fix the cause and run `terraform apply` again (it only creates what is missing; a resource that failed halfway is replaced), or run `terraform destroy`.
 
@@ -120,13 +120,104 @@ terraform plan
 | VPC → Security groups | 6 `securepay-dev-sg-*`; `sg-rds` and `sg-cache` with no outbound rules |
 | IAM → Roles | 21 `securepay-dev-*` |
 | S3 | 4 buckets `securepay-dev-*-<account>`; in the evidence bucket, Properties → Object Lock "Enabled" |
-| RDS → Databases | `securepay-dev-db`, Multi-AZ "Yes", "Publicly accessible: No" |
-| Systems Manager → Parameter Store | 7 parameters under `/securepay/dev/rds/` |
+| RDS → Databases | `securepay-dev-db`, Multi-AZ as in `database_multi_az`, "Publicly accessible: No" |
+| Systems Manager → Parameter Store | 8 parameters under `/securepay/dev/rds/` (the 7 passwords and `master-url`) |
+| ECR → Repositories | `securepay-dev-engine`, `-generator`, `-admin`, "Scan on push" on, tags immutable |
+| ElastiCache → Serverless caches | `securepay-dev-cache`, Valkey, "Available" |
+| EC2 → Load balancers | `securepay-dev-alb`, internet-facing, listener HTTPS:443 |
+| ECS → Clusters | `securepay-dev`, no services until step 6 |
 | Billing → Budgets | `securepay-dev-budget`, USD 5 |
 
 **Tags.** In **Resource Groups → Tag Editor**, choose the regions `us-east-2` **and** `Global` (IAM roles are global and do not show under Ohio), all resource types, and the tag `project` = `securepay`. Every resource must also carry `environment = dev`, `owner = <your name>` and `managed_by = terraform`. The pieces that are not resources of their own (route table associations, policy attachments, bucket settings) cannot carry tags; they cost nothing and disappear with their resource.
 
-## 6. Prove that evidence cannot be deleted
+## 6. Deploy the engine on Fargate
+
+The engine image goes to ECR tagged with the short git commit, the admin image (the seed) seeds the database once, and then a transaction is sent through the load balancer. Docker Desktop must be running.
+
+1. Log Docker in to ECR (the token lasts 12 hours) and keep the repository URLs:
+
+   ```powershell
+   $REPOS = terraform output -json ecr_repository_urls | ConvertFrom-Json
+   ```
+
+   ```powershell
+   aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin $REPOS.engine.Split("/")[0]
+   ```
+
+   It prints `Login Succeeded`.
+
+2. Build and push the engine from the root of the **SecurePay** repository (four folders up from `envs\dev`):
+
+   ```powershell
+   cd ..\..\..\..
+   $ENGINE_TAG = git rev-parse --short HEAD
+   docker build -t "$($REPOS.engine):$ENGINE_TAG" .
+   docker push "$($REPOS.engine):$ENGINE_TAG"
+   ```
+
+3. Build and push the seed from the root of the **securepay-seed** repository (it is the admin image):
+
+   ```powershell
+   cd <path-to>\securepay-seed
+   $ADMIN_TAG = git rev-parse --short HEAD
+   docker build -t "$($REPOS.admin):$ADMIN_TAG" .
+   docker push "$($REPOS.admin):$ADMIN_TAG"
+   ```
+
+   In **ECR → Repositories** each image shows its tag and, a minute later, its scan result. Pushing the same tag twice fails with `tag invalid ... already exists`: tags are immutable, so make a commit or use the existing image.
+
+4. Go back to `infra\terraform\envs\dev`, add both tags to `terraform.tfvars` and apply. It must say `5 to add` (the two task definitions, the engine service and its autoscaling target and policy):
+
+   ```hcl
+   engine_image_tag = "<ENGINE_TAG>"
+   admin_image_tag  = "<ADMIN_TAG>"
+   ```
+
+   ```powershell
+   terraform apply
+   ```
+
+5. Seed the database with the admin task. Terraform prints the exact command:
+
+   ```powershell
+   Invoke-Expression (terraform output -raw admin_run_task_command)
+   ```
+
+   The task takes about a minute (pulling the image, then the seed itself, a few seconds in dev mode). Its output, which ends with `Seed completado.`:
+
+   ```powershell
+   aws logs tail /ecs/securepay-dev-admin --since 10m
+   ```
+
+6. Wait until the load balancer sees two healthy tasks, one per zone (**EC2 → Target groups → securepay-dev-engine → Targets**: 2 "healthy"), then ask the engine through the load balancer. `-k` skips the check of the self-signed certificate:
+
+   ```powershell
+   $ALB = terraform output -raw alb_dns_name
+   curl.exe -k "https://$ALB/health"
+   ```
+
+   It answers `{"status":"ok", ...}`; `messaging` says SNS is not configured, which is expected until the consumers move to AWS. Now a transaction between two seeded accounts ([`smoke-transaction.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/envs/dev/smoke-transaction.json), the Swagger example):
+
+   ```powershell
+   curl.exe -k -X POST "https://$ALB/transactions" -H "Content-Type: application/json" --data-binary "@smoke-transaction.json"
+   ```
+
+   It must return a decision (`"decision":"APPROVE"`, with `rules_version` and `processed_at`). Sending it again returns the same decision with `"idempotent_replay":true`: whichever task gets it, the answer comes from the shared cache.
+
+7. Stop one engine task and watch ECS replace it:
+
+   ```powershell
+   $TASK = aws ecs list-tasks --cluster securepay-dev --service-name engine --query "taskArns[0]" --output text
+   aws ecs stop-task --cluster securepay-dev --task $TASK --reason "failover test"
+   ```
+
+   ```powershell
+   aws ecs describe-services --cluster securepay-dev --services engine --query "services[0].events[0:3].message"
+   ```
+
+   Within a minute or two the events say `has started 1 tasks` and the target group shows two healthy targets again. The other task keeps answering meanwhile: repeat the `curl.exe` of step 6.
+
+## 7. Prove that evidence cannot be deleted
 
 The evidence bucket has Object Lock. In dev it has no default retention, so `destroy` works the same day; instead, you upload a test object locked for 5 minutes in COMPLIANCE mode. Decide the time before uploading: COMPLIANCE can be extended but never shortened.
 
@@ -166,7 +257,7 @@ The evidence bucket has Object Lock. In dev it has no default retention, so `des
 
 Delete the local `test.txt` so it does not end up in a commit.
 
-## 7. Destroy it
+## 8. Destroy it
 
 Once the lock of the last uploaded version has passed, destroy everything and type `yes`. RDS takes another 10 to 15 minutes:
 
@@ -174,7 +265,7 @@ Once the lock of the last uploaded version has passed, destroy everything and ty
 terraform destroy
 ```
 
-It ends with `Destroy complete! Resources: 139 destroyed`. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
+It ends with `Destroy complete! Resources: 164 destroyed` (159 if the image tags were never set). The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
 
 **Check that nothing is left.** This must print nothing:
 
@@ -199,4 +290,7 @@ In the console, NAT gateways must show "Deleted", **EC2 → Elastic IPs** must b
 | `aws` or `terraform` is not recognized | The terminal was open before the install | Open a new terminal (close VS Code completely if it is its terminal) |
 | `InvalidClientTokenId` | Access key copied wrong | `aws configure` again |
 | `FreeTierRestrictionError: backup retention period` | An account on the AWS free plan accepts at most 1 day of RDS backups | Already handled: dev uses `database_backup_retention_days = 1`. If a similar error mentions Multi-AZ, add `database_multi_az = false` to `terraform.tfvars` |
+| `not authorized to perform: iam:PassRole` on the task definition | The Terraform user lacks the statement `PassRolesToEcsTasks` | Paste again the whole `terraform-user-policy.json` in its inline policy |
+| The engine service never gets healthy tasks; `aws logs tail /ecs/securepay-dev-engine` shows `ResourceNotFoundException` or no logs | The image tag does not exist in ECR | Check the tag in ECR and in `terraform.tfvars`. The circuit breaker rolls the deployment back on its own |
+| `curl` gets `503` with `idempotencia` | The engine cannot reach the cache | Check that `VALKEY_CLUSTER` is `true` in the task definition and the cache is "Available" |
 | `AccessDenied ... protected by object lock` on `destroy` | A test object is still locked | Wait until its retain-until date and run `destroy` again |

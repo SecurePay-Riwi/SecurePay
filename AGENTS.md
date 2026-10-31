@@ -45,7 +45,7 @@ SecurePay/                  ← this repo: the product (engine, consumers, infra
 │                             messaging, S3 buckets and the exchange-rates DynamoDB
 │                             table; add the service to SERVICES in Compose), Docker Compose
 │   └── terraform/          ← AWS infrastructure: modules/ (network, security_groups,
-│                             iam, storage, database) and envs/dev; local state,
+│                             iam, storage, database, ecr, cache, ecs) and envs/dev; local state,
 │                             never committed
 ├── doc-website/            ← Docusaurus documentation site
 ├── db/                     ← BACKUP only: now in securepay-seed
@@ -417,8 +417,10 @@ Read these before changing the design, not to work on the code:
 - `infra/terraform/` implements `doc-website/docs/architecture/infrastructure.mdx` and `security.mdx`; it does not redesign them. AWS names are English, `securepay-<env>-<resource>` (the design pages still show the old Spanish names; the mapping is in `terraform.mdx`); bucket names end with the account id. Tags `project`, `environment`, `owner`, `managed_by` through `default_tags`, region `us-east-2`.
 - Run everything from `infra/terraform/envs/dev`: `terraform init`, `plan`, `apply`, and `destroy` after every test (the NAT Gateways and RDS cost money even idle). Dev is disposable on purpose: `force_destroy` buckets, RDS without deletion protection or final snapshot, no default Object Lock retention (test objects are uploaded with a 5-minute retain-until date), USD 5 budget that counts usage paid with credits.
 - State and `terraform.tfvars` are local and ignored by git; the state holds the RDS passwords, so it is never shared, and apply/destroy always run from the same computer. Credentials come from the AWS profile, never from files; the IAM user needs `PowerUserAccess` plus `infra/terraform/terraform-user-policy.json`. Commit `.terraform.lock.hcl`.
-- Step by step (IAM user, access key, create, check, destroy): `doc-website/docs/getting-started/deploy-aws-terraform.mdx`.
+- Step by step (IAM user, access key, create, check, push the images, deploy the engine, destroy): `doc-website/docs/getting-started/deploy-aws-terraform.mdx`.
+- Engine on Fargate (MAG-191): images in ECR tagged with the short git commit (immutable tags, never only `latest`); the engine service and the admin task exist only once `engine_image_tag` / `admin_image_tag` are set. The admin task is the `securepay-seed` image and seeds RDS on demand (`terraform output -raw admin_run_task_command`). The load balancer listens on 443 with a self-signed certificate unless `domain_name` is set.
 - ElastiCache Serverless only accepts cluster-protocol clients: `shared/cache.py` uses `valkey.ValkeyCluster` when `VALKEY_CLUSTER=true` (set by Terraform in AWS; false locally). New Valkey code must keep one key per command, or keys sharing a hash tag like `{rules}`.
+- Temporary (agreed 2026-10-31): `engine_reads_database = true` in dev opens 5432 from `sg-engine` to `sg-rds` and hands the engine `DATABASE_URL` from `/securepay/<env>/rds/master-url`, because the engine still reads accounts, merchants, owners and the restricted list from PostgreSQL. It goes to false once that data is loaded into the cache.
 - Before a PR: `terraform fmt -check -recursive` in `infra/terraform/` and `terraform validate` in `envs/dev`. The page `doc-website/docs/architecture/terraform.mdx` changes with the code.
 
 ## Docker images and local ecosystem (MAG-31 / MAG-32)

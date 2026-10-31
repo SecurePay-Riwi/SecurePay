@@ -19,3 +19,8 @@ output "master_password_parameter" {
 output "component_password_parameters" {
   value = { for user, parameter in aws_ssm_parameter.component_password : user => parameter.name }
 }
+
+output "master_url_parameter_arn" {
+  description = "ARN of the DATABASE_URL parameter of the master user (the value is never an output)."
+  value       = aws_ssm_parameter.master_url.arn
+}

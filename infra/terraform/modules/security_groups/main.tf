@@ -25,6 +25,17 @@ locals {
     admin_rds      = { from = "admin", to = "rds", port = 5432 }
   }
 
+  # Temporary (agreed with the team on 2026-10-31): today the engine still
+  # reads accounts, merchants, owners and the restricted list from
+  # PostgreSQL. Remove it, with engine_reads_database = false, once that data
+  # is loaded into the cache (security.mdx, "The engine no longer reaches
+  # the database").
+  temporary_links = var.engine_reads_database ? {
+    engine_rds = { from = "engine", to = "rds", port = 5432 }
+  } : {}
+
+  all_links = merge(local.links, local.temporary_links)
+
   # Outbound HTTPS to AWS services (SNS, ECR, CloudWatch, X-Ray, Parameter
   # Store, DynamoDB through its endpoint) and the list service.
   https_out = ["engine", "lambda", "admin"]
@@ -54,7 +65,7 @@ resource "aws_vpc_security_group_ingress_rule" "alb_https" {
 }
 
 resource "aws_vpc_security_group_ingress_rule" "link" {
-  for_each = local.links
+  for_each = local.all_links
 
   security_group_id            = aws_security_group.this[each.value.to].id
   referenced_security_group_id = aws_security_group.this[each.value.from].id
@@ -65,7 +76,7 @@ resource "aws_vpc_security_group_ingress_rule" "link" {
 }
 
 resource "aws_vpc_security_group_egress_rule" "link" {
-  for_each = local.links
+  for_each = local.all_links
 
   security_group_id            = aws_security_group.this[each.value.from].id
   referenced_security_group_id = aws_security_group.this[each.value.to].id

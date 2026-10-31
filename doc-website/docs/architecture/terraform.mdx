@@ -38,18 +38,21 @@ infra/terraform/
 │   ├── security_groups/    the 6 security groups and their rules
 │   ├── iam/                one role per component, the GitHub deploy role and the Power BI user
 │   ├── storage/            the 4 S3 buckets
-│   └── database/           RDS PostgreSQL and its passwords in Parameter Store
+│   ├── database/           RDS PostgreSQL and its passwords in Parameter Store
+│   ├── ecr/                one image repository per component
+│   ├── cache/              ElastiCache Serverless for Valkey
+│   └── ecs/                cluster, load balancer, engine service with autoscaling, admin task
 └── envs/
     └── dev/                the development environment: uses the modules, budget alert
         ├── main.tf
         ├── variables.tf
         ├── outputs.tf
-        ├── versions.tf     Terraform >= 1.9, AWS provider 5.80.0 and random 3.6.3, fixed
+        ├── versions.tf     Terraform >= 1.9, AWS provider 5.80.0, random 3.6.3 and tls 4.0.6, fixed
         ├── .terraform.lock.hcl
         └── terraform.tfvars.example
 ```
 
-A module is the reusable piece. An environment folder chooses its values and calls the modules. Only `dev` exists in sprint 3.
+A module is the reusable piece. An environment folder chooses its values and calls the modules. Only `dev` exists so far.
 
 | What | How |
 | :--- | :--- |
@@ -61,7 +64,7 @@ A module is the reusable piece. An environment folder chooses its values and cal
 
 ## What it creates
 
-The first `plan` must say `139 to add, 0 to change, 0 to destroy`.
+The first `plan` must say `159 to add, 0 to change, 0 to destroy`. Once the image tags are set (see [Deploy the engine](../getting-started/deploy-aws-terraform.mdx#6-deploy-the-engine-on-fargate)), the next one adds 5 more: the two task definitions, the engine service and its autoscaling target and policy.
 
 ![SecurePay network on AWS](/img/network-diagram.png)
 
@@ -78,6 +81,11 @@ The first `plan` must say `139 to add, 0 to change, 0 to destroy`.
 | `iam` | 21 roles, GitHub OIDC provider, Power BI user | The permissions of [Identity and access](./security.mdx#iam). The roles are scoped to the ARNs of resources that later sprints create, built from the naming convention, so they do not depend on those resources existing |
 | `storage` | 4 buckets | Versioning, S3 managed encryption, public access blocked, requests without TLS denied. Object Lock on the evidence bucket |
 | `database` | RDS, subnet group, parameter group, 7 passwords | PostgreSQL 16, `db.t3.micro`, Multi-AZ, 20 GB gp3, encrypted, `rds.force_ssl = 1`, automated backups, not public. The master password and the 6 component passwords go to `/securepay/dev/rds/` |
+| `ecr` | 3 repositories and their lifecycle rules | `securepay-dev-engine`, `-generator`, `-admin`. Scan on push, immutable tags (an image is tagged with the short git commit, never only `latest`), keeps the last 10 images |
+| `cache` | 1 serverless cache | `securepay-dev-cache`, Valkey 8, in the data subnets with `sg-cache`, encryption in transit always on (`rediss://`), limits of 1 GB and 5,000 ECPU/s. Clients must speak the cluster protocol, so the engine runs with `VALKEY_CLUSTER=true` |
+| `ecs` | Cluster, 2 log groups, load balancer, target group, HTTPS listener, certificate | Cluster `securepay-dev` (Fargate only). Load balancer `securepay-dev-alb` in the public subnets, listener on 443 with TLS 1.2 or 1.3, target group to port 8000 with a health check on `GET /health` |
+| | Engine service (once `engine_image_tag` is set) | Service `engine`, 0.5 vCPU / 1 GB per task in `app-a` and `app-b`, no public address, deployment circuit breaker with rollback, CPU target tracking at 60 % |
+| | Admin task (once `admin_image_tag` is set) | Task definition `securepay-dev-admin` with the `securepay-seed` image, 0.25 vCPU / 0.5 GB. It runs only when started with `aws ecs run-task` |
 | `envs/dev` | 1 budget | See below |
 
 **The 21 roles.** `engine-execution`, `engine`, `cases-consumer`, `history-consumer`, `analytics-consumer`, `firehose-raw`, `rules-api`, `cases-api`, `rules-cache-refresh`, `alerts`, `exchange-rates`, `list-loader`, `list-service`, `statement-reader`, `difference-writer`, `reconciliation`, `emr-jobs`, `scheduler`, `admin-execution`, `admin` and `deploy`, each `securepay-dev-<name>`. The deploy role only trusts GitHub tokens from the `main` branch of `SecurePay-Riwi/SecurePay`. The EMR Serverless application id does not exist yet, so the roles that start Spark jobs are scoped to the applications of the account until it does.
@@ -92,6 +100,11 @@ The first `plan` must say `139 to add, 0 to change, 0 to destroy`.
 | Buckets with objects | Not deleted | `force_destroy = true` | `destroy` empties them first |
 | RDS | Deletion protection and a final snapshot | Neither | `destroy` deletes it at once and leaves no snapshot that keeps costing |
 | RDS backups | 7 days | 1 day (`database_backup_retention_days`) | An AWS account on the free plan rejects more than 1 day (`FreeTierRestrictionError`) |
+| Engine tasks | 4 to 24 | 2 to 4 (`engine_min_tasks`, `engine_max_tasks`) | One per zone is enough to show the failover; the load test sizes prod |
+| Load balancer certificate | ACM certificate for the domain | Self-signed, generated by Terraform and imported into ACM (`curl -k`) | There is no domain yet. Setting `domain_name` switches to a public ACM certificate validated by DNS; the record to add is the output `certificate_validation_records` |
+| Engine to database | No access | 5432 open from `sg-engine` to `sg-rds` and `DATABASE_URL` from Parameter Store (`engine_reads_database = true`) | Temporary: the engine code still reads accounts, merchants, owners and the restricted list from PostgreSQL (see [Security](./security.mdx#security-groups)) |
+| Container Insights, logs | On, 30 days | Off, 7 days | Container Insights bills extra metrics |
+| Image repositories with images | Not deleted | `force_delete = true` | `destroy` deletes the images too |
 | Budget | 80 % and 100 % of the USD 200 credit | USD 5 a month, an email at every 10 % | Dev only lives during a test |
 
 **Budget.** It measures usage before credits are subtracted (`include_credit = false`). Credits appear on the bill as a negative amount, so a budget that includes them sees USD 0 while the credit lasts and never alerts. AWS refreshes costs about three times a day, so an email can arrive hours after the spend: the real protection is destroying the environment right after each test. Budget alerts are free.
@@ -108,6 +121,12 @@ The first `plan` must say `139 to add, 0 to change, 0 to destroy`.
 | `bucket_names` | Bucket name by purpose: `datalake`, `evidence`, `list-provider`, `artifacts` |
 | `database_endpoint` | RDS host name, reachable only inside the VPC |
 | `database_master_password_parameter` | Parameter Store name of the master password; the password itself is never an output |
+| `ecr_repository_urls` | Where to push each image: `<url>:<short commit>` |
+| `alb_dns_name` | Public name of the load balancer |
+| `ecs_cluster_name` | `securepay-dev` |
+| `cache_address` | Cache host name, reachable only inside the VPC |
+| `admin_run_task_command` | The command that seeds the database with the admin task |
+| `certificate_validation_records` | With `domain_name`: the DNS record ACM needs; empty otherwise |
 
 ## Create and destroy the development environment
 
@@ -116,7 +135,7 @@ The first `plan` must say `139 to add, 0 to change, 0 to destroy`.
 ```bash
 cp terraform.tfvars.example terraform.tfvars   # your name and email
 terraform init
-terraform plan       # the first time: 139 to add
+terraform plan       # the first time: 159 to add
 terraform apply
 terraform destroy    # always when you finish testing
 ```

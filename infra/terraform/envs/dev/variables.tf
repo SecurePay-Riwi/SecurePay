@@ -60,3 +60,39 @@ variable "database_multi_az" {
   type        = bool
   default     = true
 }
+
+variable "engine_image_tag" {
+  description = "Engine image tag in ECR (the short git commit). Leave it unset on the first apply; the engine service starts once it is set."
+  type        = string
+  default     = null
+}
+
+variable "admin_image_tag" {
+  description = "securepay-seed image tag in ECR. Leave it unset until the image is pushed."
+  type        = string
+  default     = null
+}
+
+variable "engine_min_tasks" {
+  description = "Engine tasks at least, one per zone. The design says 4 in prod."
+  type        = number
+  default     = 2
+}
+
+variable "engine_max_tasks" {
+  description = "Engine tasks at most. The design says 24 in prod."
+  type        = number
+  default     = 4
+}
+
+variable "domain_name" {
+  description = "Domain for the load balancer certificate. Unset: a self-signed certificate (curl -k)."
+  type        = string
+  default     = null
+}
+
+variable "engine_reads_database" {
+  description = "Temporary: the engine still reads PostgreSQL, so dev opens sg-engine -> sg-rds 5432 and hands it DATABASE_URL. Set false once the cache holds that data."
+  type        = bool
+  default     = true
+}

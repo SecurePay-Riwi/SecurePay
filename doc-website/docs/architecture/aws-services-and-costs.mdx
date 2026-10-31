@@ -85,6 +85,21 @@ What changed against the earlier estimate of $333.21:
 
 **One-off costs**, outside the monthly table: the load test at 50, 150 and 300 tx/s (USD 5 to 10 per full run) and running the full-mode seed against RDS (a couple of dollars).
 
+**Cost of a dev test session**, per hour, with what `envs/dev` creates (2 engine tasks, single-AZ RDS). Rates from the official AWS price list for `us-east-2`, checked on October 31, 2026:
+
+| Resource | Rate | Per hour |
+| :--- | :--- | ---: |
+| Application Load Balancer | $0.0225 an hour + $0.008 per LCU-hour (a test uses less than 1 LCU) | ~$0.031 |
+| Fargate, 2 engine tasks of 0.5 vCPU / 1 GB | $0.04048 per vCPU-hour + $0.004445 per GB-hour, per task $0.0247 | $0.049 |
+| Fargate, admin task of 0.25 vCPU / 0.5 GB | $0.0123 an hour, billed per second (1 minute minimum) only while it runs | < $0.001 per run |
+| ElastiCache Serverless (Valkey) | $0.084 per GB-hour, at least 100 MB billed; $0.0023 per million ECPUs | ~$0.009 |
+| Public IPv4 addresses (2 ALB + 2 NAT) | $0.005 an hour each | $0.020 |
+| NAT Gateway (×2) | $0.045 an hour each | $0.090 |
+| RDS `db.t3.micro`, single-AZ, 20 GB gp3 | Instance and prorated storage | ~$0.021 |
+| **Total** | | **~$0.22** |
+
+A full session (apply, push, seed, smoke test, failover test, destroy) takes 1 to 2 hours: under USD 0.50. ECR storage ($0.10 per GB-month) is a few cents and disappears with `destroy`.
+
 ## How each service is configured
 
 This is what Terraform has to create.
