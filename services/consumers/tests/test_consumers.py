@@ -2,9 +2,13 @@
 
 import json
 
+from sqlalchemy import create_engine, inspect
+from sqlalchemy.orm import sessionmaker
+
 from services.consumers import analytics, cases, history
-from services.consumers.runner import atender_lote
+from services.consumers.runner import atender_lote, prepare_database
 from shared.events import evento_decision
+from shared.tests.isolated_db import isolated_sessions
 
 
 def _evento(n, decision="APPROVE"):
@@ -145,3 +149,19 @@ def test_decision_without_required_fields_is_rejected():
     resultado = cases.handler(_lote(json.dumps(evento)))
 
     assert resultado == {"batchItemFailures": [{"itemIdentifier": "m0"}]}
+
+
+def test_runner_creates_the_case_tables_before_reading():
+    down = sessionmaker(bind=create_engine("postgresql+psycopg://x:x@127.0.0.1:1/x"))
+    with isolated_sessions("consumers_runner_test") as factory:
+        attempts = []
+
+        def first_down_then_up():
+            attempts.append(1)
+            return (down if len(attempts) == 1 else factory)()
+
+        prepare_database(first_down_then_up, wait_s=0)
+
+        with factory() as session:
+            assert "cases" in inspect(session.connection()).get_table_names()
+    assert len(attempts) == 2
