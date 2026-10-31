@@ -1,10 +1,11 @@
-"""Cases consumer (HU-25) against an empty PostgreSQL schema of its own.
+"""Cases consumer (HU-25, HU-34) against an empty PostgreSQL schema of its own.
 
-Needs PostgreSQL (DATABASE_URL); the seed's tables are not used.
+Needs PostgreSQL (DATABASE_URL). The seed's tables are created empty in
+that schema; the restricted list tests add the owners they need.
 """
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
 
@@ -20,9 +21,12 @@ from shared.cases import (
     CaseEvent,
     CaseEventType,
     CaseStatus,
+    ComplianceReport,
     create_schema,
 )
 from shared.events import evento_decision
+from shared.models import Base as SeedBase
+from shared.models import Cuenta, ListaRestrictiva, Usuario
 from shared.tests.isolated_db import isolated_sessions
 
 
@@ -30,6 +34,9 @@ from shared.tests.isolated_db import isolated_sessions
 def sessions(monkeypatch):
     with isolated_sessions("cases_consumer_test") as factory:
         with factory() as session:
+            # usuarios, cuentas and listas_restrictivas, empty: the
+            # restricted list reports read them.
+            SeedBase.metadata.create_all(session.connection())
             create_schema(session)
         monkeypatch.setattr(cases, "SessionLocal", factory)
         yield factory
@@ -41,6 +48,8 @@ def _event(
     opens_case=True,
     tx_type="RETIRO",
     source=True,
+    source_account=None,
+    destination_account=None,
     **decision_fields,
 ):
     tx_id = str(uuid4())
@@ -48,8 +57,8 @@ def _event(
         "id": tx_id,
         "type": tx_type,
         "channel": "APP",
-        "source_account_id": str(uuid4()) if source else None,
-        "destination_account_id": str(uuid4()),
+        "source_account_id": str(source_account or uuid4()) if source else None,
+        "destination_account_id": str(destination_account or uuid4()),
         "merchant_id": None,
         "amount": "950000.00",
         "currency": "COP",
@@ -257,3 +266,174 @@ def test_a_failed_batch_writes_nothing(sessions, monkeypatch):
     with sessions() as session:
         assert session.scalar(select(func.count()).select_from(Case)) == 0
         assert session.scalar(select(func.count()).select_from(CaseEvent)) == 0
+
+
+# --- RN-06: restricted list reports (HU-34) ---------------------------------
+
+
+def _owner(factory, document, listed_as=None):
+    """A user with their account; on the restricted list as `listed_as`
+    (only the digits of the document, as the list stores it)."""
+    with factory() as session:
+        user = Usuario(
+            nombre="Test owner",
+            email=f"{uuid4()}@example.com",
+            documento=document,
+            kyc_estado="verificado",
+            fecha_registro=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        session.add(user)
+        session.flush()
+        account = Cuenta(
+            user_id=user.id,
+            moneda="COP",
+            saldo=Decimal("1000000.00"),
+            fecha_apertura=datetime(2026, 1, 1, tzinfo=UTC),
+            estado="activa",
+        )
+        session.add(account)
+        if listed_as:
+            session.add(
+                ListaRestrictiva(
+                    documento="".join(c for c in document if c.isdigit()),
+                    tipo=listed_as,
+                    fecha_inclusion=date(2026, 9, 1),
+                )
+            )
+        session.commit()
+        return account.id
+
+
+def _reports(factory):
+    with factory() as session:
+        return session.scalars(
+            select(ComplianceReport).order_by(ComplianceReport.document)
+        ).all()
+
+
+def _listed_event(source, destination, tx_type="P2P"):
+    return _event(
+        rules=("restricted_list",),
+        decision="REJECT",
+        tx_type=tx_type,
+        source_account=source,
+        destination_account=destination,
+    )
+
+
+def test_a_listed_owner_gets_a_compliance_report(sessions):
+    listed = _owner(sessions, "1000000070", listed_as="PEP")
+    clean = _owner(sessions, "1000000001")
+    event = _listed_event(listed, clean)
+    before = datetime.now(UTC)
+
+    assert cases.handler(_batch(event)) == {"batchItemFailures": []}
+
+    [case] = _cases(sessions)
+    [report] = _reports(sessions)
+    assert report.case_id == case.id
+    assert report.transaction_id == UUID(event["transaction"]["id"])
+    assert report.account_id == listed
+    assert report.document == "1000000070"
+    assert report.list_type == "PEP"
+    # "Immediately": written with the case, with the consumer's clock.
+    assert report.matched_at == case.created_at
+    assert report.matched_at >= before
+    assert report.notified_at is None
+
+
+def test_two_listed_owners_get_two_reports(sessions):
+    source = _owner(sessions, "1000000016", listed_as="sanciones")
+    destination = _owner(sessions, "1000000040", listed_as="PEP")
+
+    cases.handler(_batch(_listed_event(source, destination)))
+
+    reports = _reports(sessions)
+    assert [(r.account_id, r.document, r.list_type) for r in reports] == [
+        (source, "1000000016", "sanciones"),
+        (destination, "1000000040", "PEP"),
+    ]
+    assert len({r.case_id for r in reports}) == 1
+
+
+def test_the_document_is_matched_by_its_digits(sessions):
+    """The engine compares only the digits (normalize_document())."""
+    listed = _owner(sessions, "1.000.000.071", listed_as="PEP")
+
+    cases.handler(_batch(_listed_event(listed, _owner(sessions, "1000000002"))))
+
+    [report] = _reports(sessions)
+    assert report.document == "1000000071"
+
+
+def test_a_listed_top_up_destination_gets_a_report(sessions):
+    listed = _owner(sessions, "1000000071", listed_as="PEP")
+    event = _listed_event(None, listed, tx_type="RECARGA")
+    event["transaction"]["source_account_id"] = None
+
+    assert cases.handler(_batch(event)) == {"batchItemFailures": []}
+
+    [report] = _reports(sessions)
+    assert report.account_id == listed
+
+
+def test_nobody_listed_means_no_report(sessions):
+    """The list changed between the decision and the consumer: the case
+    opens, without a report."""
+    event = _listed_event(_owner(sessions, "1000000003"), _owner(sessions, "1000000004"))
+
+    assert cases.handler(_batch(event)) == {"batchItemFailures": []}
+
+    assert len(_cases(sessions)) == 1
+    assert _reports(sessions) == []
+
+
+def test_another_rule_writes_no_report_even_for_a_listed_owner(sessions):
+    listed = _owner(sessions, "1000000070", listed_as="PEP")
+    event = _event(rules=("mule",), source_account=listed)
+
+    cases.handler(_batch(event))
+
+    assert len(_cases(sessions)) == 1
+    assert _reports(sessions) == []
+
+
+def test_the_same_event_twice_writes_one_report(sessions):
+    listed = _owner(sessions, "1000000070", listed_as="PEP")
+    body = json.dumps(_listed_event(listed, _owner(sessions, "1000000005")))
+
+    assert cases.handler(_batch(body)) == {"batchItemFailures": []}
+    assert cases.handler(_batch(body, body)) == {"batchItemFailures": []}
+
+    assert len(_reports(sessions)) == 1
+
+
+def test_a_repeated_event_writes_a_report_the_first_delivery_missed(sessions):
+    """A case opened before HU-34 (or before the owner was listed) gets
+    its report when the event comes again."""
+    owner = _owner(sessions, "1000000006")
+    body = json.dumps(_listed_event(owner, _owner(sessions, "1000000007")))
+    cases.handler(_batch(body))
+    assert _reports(sessions) == []
+
+    with sessions() as session:
+        session.add(
+            ListaRestrictiva(documento="1000000006", tipo="PEP", fecha_inclusion=date(2026, 10, 1))
+        )
+        session.commit()
+    cases.handler(_batch(body))
+
+    [case] = _cases(sessions)
+    [report] = _reports(sessions)
+    assert report.case_id == case.id
+
+
+def test_a_restricted_list_event_with_a_bad_account_fails_alone(sessions):
+    good = _listed_event(_owner(sessions, "1000000070", listed_as="PEP"), uuid4())
+    bad = _listed_event(uuid4(), uuid4())
+    bad["transaction"]["destination_account_id"] = "not-a-uuid"
+
+    result = cases.handler(_batch(good, bad))
+
+    assert result == {"batchItemFailures": [{"itemIdentifier": "m1"}]}
+    assert len(_reports(sessions)) == 1

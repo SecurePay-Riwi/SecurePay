@@ -74,5 +74,8 @@ def test_a_failing_job_does_not_stop_the_others(session, calls):
     assert session.rollbacks == 1
 
 
-def test_the_skeleton_jobs_do_nothing(session):
+def test_the_skeleton_jobs_do_nothing(session, monkeypatch):
+    # send_summary is built (HU-34) and reads PostgreSQL:
+    # test_compliance_summary.py covers it.
+    monkeypatch.setattr(compliance_summary, "send_summary", lambda session, now: 0)
     assert handler.handler() == {"escalated": 0, "notified": 0, "purged": 0}
