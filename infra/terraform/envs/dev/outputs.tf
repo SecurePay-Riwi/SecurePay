@@ -39,3 +39,31 @@ output "database_endpoint" {
 output "database_master_password_parameter" {
   value = module.database.master_password_parameter
 }
+
+output "ecr_repository_urls" {
+  description = "Where to push each image: <url>:<short commit>."
+  value       = module.ecr.repository_urls
+}
+
+output "alb_dns_name" {
+  description = "Public name of the load balancer: curl -k https://<this>/health"
+  value       = module.ecs.alb_dns_name
+}
+
+output "ecs_cluster_name" {
+  value = module.ecs.cluster_name
+}
+
+output "cache_address" {
+  value = module.cache.address
+}
+
+output "admin_run_task_command" {
+  description = "Seeds the database (once admin_image_tag is set)."
+  value       = module.ecs.admin_run_task_command
+}
+
+output "certificate_validation_records" {
+  description = "With domain_name: the DNS record to add at the DNS provider."
+  value       = module.ecs.certificate_validation_records
+}

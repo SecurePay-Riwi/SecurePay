@@ -583,14 +583,16 @@ En el workflow de GitHub Actions, la validación de arranque y health checks de 
 
 ## Infraestructura en AWS (Terraform)
 
-`infra/terraform/` crea en AWS la red, los security groups, los roles IAM, los buckets S3 y RDS del diseño. Los nombres van en inglés con el prefijo `securepay-<ambiente>-`. Qué crea y por qué está en `doc-website/docs/architecture/terraform.mdx`; el paso a paso (instalar la CLI de AWS y Terraform, crear el usuario IAM y su llave, crear, revisar y destruir) está en `doc-website/docs/getting-started/deploy-aws-terraform.mdx`.
+`infra/terraform/` crea en AWS la red, los security groups, los roles IAM, los buckets S3, RDS, los repositorios de ECR, la cache (ElastiCache Serverless) y el motor en ECS Fargate detrás del balanceador del diseño. Los nombres van en inglés con el prefijo `securepay-<ambiente>-`. Qué crea y por qué está en `doc-website/docs/architecture/terraform.mdx`; el paso a paso (instalar la CLI de AWS y Terraform, crear el usuario IAM y su llave, crear, revisar y destruir) está en `doc-website/docs/getting-started/deploy-aws-terraform.mdx`.
 
 Necesitas Terraform 1.9 o más reciente, la CLI de AWS y un usuario IAM (nunca root) con `PowerUserAccess` más la política `infra/terraform/terraform-user-policy.json`. No se guardan credenciales en archivos. Desde `infra/terraform/envs/dev`:
 
     cp terraform.tfvars.example terraform.tfvars   # tu nombre y tu correo
     terraform init
-    terraform plan       # la primera vez: 139 to add
+    terraform plan       # la primera vez: 159 to add
     terraform apply
     terraform destroy    # siempre al terminar de probar: los NAT y RDS cobran aunque no haya tráfico
+
+Para levantar el motor: subir las imágenes a ECR con el commit corto como tag, poner `engine_image_tag` y `admin_image_tag` en `terraform.tfvars`, `terraform apply` otra vez, sembrar con la tarea admin y probar con `curl.exe -k` contra el balanceador. Los comandos exactos están en la sección 6 de `deploy-aws-terraform.mdx`.
 
 El estado (`terraform.tfstate`) y `terraform.tfvars` quedan en tu equipo y git los ignora. El estado guarda las contraseñas de RDS, así que no se comparte. Corre `apply` y `destroy` siempre desde el mismo equipo.
