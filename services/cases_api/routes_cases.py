@@ -10,18 +10,25 @@ from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from services.cases_api import deps, docs
-from services.cases_api.schemas import CaseDetail, CaseEventItem, CasePage, CaseSummary
-from shared.cases import PENDING, Case, CaseEvent, CaseStatus
+from services.cases_api.schemas import (
+    AssigneeChange,
+    CaseDetail,
+    CaseEventItem,
+    CasePage,
+    CaseSummary,
+)
+from shared.cases import PENDING, Case, CaseEvent, CaseEventType, CaseStatus
 
 router = APIRouter(tags=["Cases"])
 
 MAX_PAGE_SIZE = 100
 NOT_FOUND = "Case not found."
+RESOLVED = "The case is resolved; it can no longer change."
 
 
 def minutes_left(case: Case, now: datetime) -> int | None:
@@ -86,6 +93,28 @@ def get_case(session: Session, case_id: UUID, *, for_update: bool = False) -> Ca
     return case
 
 
+def ensure_pending(case: Case) -> None:
+    """RESOLVED is final: changing it is 409."""
+    if case.status == CaseStatus.RESOLVED.value:
+        raise HTTPException(status_code=409, detail=RESOLVED)
+
+
+def assign(session: Session, case: Case, assignee: str, actor: str, now: datetime) -> bool:
+    """Set the owner and write ASSIGNED {"from", "to"} in the same
+    transaction. The same owner again changes nothing (no event)."""
+    if case.assignee == assignee:
+        return False
+    session.add(CaseEvent(
+        case_id=case.id,
+        type=CaseEventType.ASSIGNED.value,
+        actor=actor,
+        at=now,
+        data={"from": case.assignee, "to": assignee},
+    ))
+    case.assignee = assignee
+    return True
+
+
 @router.get("/cases", response_model=CasePage, **docs.CASES)
 def list_cases(
     session: Annotated[Session, Depends(deps.get_session)],
@@ -135,3 +164,21 @@ def read_case(
     session: Annotated[Session, Depends(deps.get_session)],
 ):
     return detail(session, get_case(session, case_id), datetime.now(UTC))
+
+
+@router.put("/cases/{case_id}/assignee", response_model=CaseDetail, **docs.ASSIGN)
+def assign_case(
+    case_id: UUID,
+    body: AssigneeChange,
+    session: Annotated[Session, Depends(deps.get_session)],
+    x_user: Annotated[str | None, Header(description="Who makes the change (1 to 100 characters).")] = None,
+):
+    actor = deps.author(x_user)
+    case = get_case(session, case_id, for_update=True)
+    ensure_pending(case)
+    now = datetime.now(UTC)
+    if assign(session, case, body.assignee, actor, now):
+        session.commit()
+    else:
+        session.rollback()  # nothing changed: release the row lock
+    return detail(session, case, now)

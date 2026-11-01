@@ -186,3 +186,13 @@ class CaseDetail(CaseSummary):
         description="S3 key of the archived evidence (RN-12); null until archived.",
     )
     events: list[CaseEventItem] = Field(description="What happened to the case, oldest first.")
+
+
+# --- Cases (HU-27) -----------------------------------------------------------
+
+class AssigneeChange(BaseModel):
+    """Who owns the case from now on."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    assignee: str = Field(min_length=1, max_length=100, description="The analyst, 1 to 100 characters.")

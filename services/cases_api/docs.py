@@ -264,3 +264,44 @@ CASE = {
         503: DB_DOWN,
     },
 }
+
+
+# --- Cases (HU-27) -----------------------------------------------------------
+
+CASE_RESOLVED = _error("The case is RESOLVED, which is final.",
+                       "The case is resolved; it can no longer change.")
+
+_ASSIGNED_CASE = {
+    **_CASE_DETAIL,
+    "assignee": "ana",
+    "events": [
+        *_CASE_DETAIL["events"],
+        {
+            "id": 2,
+            "type": "ASSIGNED",
+            "actor": "supervisor.luis",
+            "at": "2026-10-31T14:10:45.002000Z",
+            "data": {"from": None, "to": "ana"},
+        },
+    ],
+}
+
+ASSIGN = {
+    "summary": "Assign or reassign a case",
+    "description": (
+        "Sets the analyst who owns the case and writes an `ASSIGNED` event "
+        "with the previous and the new owner (`from` is null the first "
+        "time), with `X-User` as its actor. Assigning the owner it already "
+        "has changes nothing and writes no event. An `ESCALATED` case can "
+        "still be assigned; a `RESOLVED` one cannot (`409`).\n\n"
+        "`X-User` is required. Returns the case with its events."
+    ),
+    "responses": {
+        200: _ok("The case with its new owner and events.", _ASSIGNED_CASE),
+        400: _error("`X-User` is missing, the id is not a UUID, or `assignee` is not 1 to 100 characters.",
+                    "X-User must have 1 to 100 characters."),
+        404: CASE_NOT_FOUND,
+        409: CASE_RESOLVED,
+        503: DB_DOWN,
+    },
+}

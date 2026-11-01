@@ -26,6 +26,7 @@ EXPECTED = {
     ("get", "/accounts/{account_id}/related-accounts"): ["200", "400", "503"],
     ("get", "/cases"): ["200", "400", "503"],
     ("get", "/cases/{case_id}"): ["200", "400", "404", "503"],
+    ("put", "/cases/{case_id}/assignee"): ["200", "400", "404", "409", "503"],
 }
 
 
@@ -76,6 +77,12 @@ def test_examples_are_valid():
     for status in ("400", "404", "503"):
         assert set(_example("get", case, status)) == {"detail"}
 
+    assignee = "/cases/{case_id}/assignee"
+    assigned = CaseDetail.model_validate(_example("put", assignee, "200"))
+    assert assigned.events[-1].type == "ASSIGNED"
+    for status in ("400", "404", "409", "503"):
+        assert set(_example("put", assignee, status)) == {"detail"}
+
 
 def test_the_reports_period_is_from_and_to():
     params = _paths()["/compliance/restricted-list-reports"]["get"]["parameters"]
@@ -95,6 +102,11 @@ def test_the_related_accounts_take_days():
 def test_the_inbox_filters_and_paginates():
     params = _paths()["/cases"]["get"]["parameters"]
     assert [p["name"] for p in params] == ["status", "assignee", "page", "size"]
+
+
+def test_assigning_needs_x_user():
+    params = _paths()["/cases/{case_id}/assignee"]["put"]["parameters"]
+    assert [p["name"] for p in params] == ["case_id", "x-user"]
 
 
 def test_title():
