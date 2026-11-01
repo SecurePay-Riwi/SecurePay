@@ -180,7 +180,10 @@ stop and ask instead of working around it.
 `services/cases_api/`, `services/alerts/`, `shared/evidence.py`,
 `amount_usd` in the decision). HU-25 (cases consumer, closes HU-15's
 case), HU-34 (restricted list reports) and HU-28 (30-day account
-history) are merged; HU-29 (related accounts) is in review. Habith: HU-25 → HU-34 → HU-28 → HU-29;
+history) are merged, and so are HU-29 (related accounts), HU-57
+(Fargate) and HU-32 (evidence). HU-26 (inbox), HU-27 (assignment) and
+HU-30 (resolution) are built together in `feature/MAG-182-case-workflow`.
+Habith: HU-25 → HU-34 → HU-28 → HU-29;
 Yulianis: HU-26 → HU-27 → HU-30, HU-35; Jorge: HU-57 → HU-31 → HU-32.
 
 ---
@@ -261,6 +264,14 @@ Read this before touching `shared/cases.py`, `services/cases_api/`,
   `deps.py`, models in `schemas.py`, Swagger in `docs.py`, checked by
   `tests/test_openapi.py`. Tests run in their own schema
   (`shared/tests/isolated_db.py`, `deps.bind()`).
+- **The analyst's routes** (`routes_cases.py`, HU-26, HU-27, HU-30):
+  `GET /cases` lists `PENDING` by default, ordered by `risk_score` desc,
+  then `due_at` (RN-09), with `minutes_left` (rounded down, negative when
+  overdue, null when resolved). Assigning and resolving lock the row
+  (`get_case(..., for_update=True)`), refuse `RESOLVED` with `409`
+  (`ensure_pending()`) and write the case and its event in one commit
+  (`assign()`, `resolve()`). Resolving calls `evidence.archive()` after
+  the commit; tests replace it with monkeypatch on `shared.evidence`.
 - Amounts are `Numeric` (decimal strings in JSON) and the case keeps the
   engine's `amount_usd`; no service outside the engine imports
   `currency.py`.

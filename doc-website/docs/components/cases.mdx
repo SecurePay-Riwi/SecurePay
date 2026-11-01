@@ -11,7 +11,7 @@ description: The case an analyst works from the engine's decision to its resolut
 Sprint 4 turns the engine's decisions into cases an analyst works from start to end: a decision of mule account, splitting or restricted list **opens a case**, the case waits in an **inbox** ordered by risk and time left, someone **takes** it, it is **escalated** to the supervisor if it is not resolved in **4 hours** (RN-09), the analyst **resolves** it as fraud or legitimate, and its **evidence** is kept 10 years (RN-12).
 
 :::info Status
-Built: the shared contract (the tables, the states, the cases API with `/health` and the alerts task), the cases consumer, which opens the cases (HU-25), the restricted list reports with their compliance e-mail (HU-34) the 30-day account history (HU-28) and the accounts related through a shared device (HU-29). Each story of Sprint 4 fills in its part.
+Built: the shared contract (the tables, the states, the cases API with `/health` and the alerts task), the cases consumer, which opens the cases (HU-25), the restricted list reports with their compliance e-mail (HU-34) the 30-day account history (HU-28), the accounts related through a shared device (HU-29), and the analyst's side of the cases API: the inbox (HU-26), assigning (HU-27) and resolving (HU-30). Each story of Sprint 4 fills in its part.
 :::
 
 ## Who writes what
@@ -144,13 +144,82 @@ Built like the [rules API](./rules-api.mdx): FastAPI, tables created at startup,
 | Endpoint | Story |
 | :--- | :--- |
 | `GET /health` | Built |
-| `GET /cases`, `GET /cases/{case_id}` | HU-26 |
-| `PUT /cases/{case_id}/assignee` | HU-27 |
-| `POST /cases/{case_id}/resolution` | HU-30 |
+| `GET /cases`, `GET /cases/{case_id}` | Built (HU-26) |
+| `PUT /cases/{case_id}/assignee` | Built (HU-27) |
+| `POST /cases/{case_id}/resolution` | Built (HU-30) |
 | `GET /reports/suspicious` | HU-35 |
 | `GET /compliance/restricted-list-reports` | Built (HU-34) |
 | `GET /accounts/{account_id}/transactions` | Built (HU-28) |
 | `GET /accounts/{account_id}/related-accounts` | Built (HU-29) |
+
+### `GET /cases`
+
+The inbox. Without `status`, the pending cases: `OPEN` and `ESCALATED`. `status` asks for one state (`RESOLVED` too) and `assignee` for one analyst's cases; both can be combined. Highest `risk_score` first and, with the same risk, the closest to `due_at` (RN-09). `minutes_left` is the whole minutes until `due_at`, rounded down: negative once the case is overdue, `null` when it is resolved. Paginated with `page` (from 1) and `size` (default 20, at most 100). An empty inbox is `200` with an empty list. `400` for a `status` that is not a case state or `assignee`, `page` or `size` out of range; `503` without PostgreSQL.
+
+```bash
+curl "http://localhost:8003/cases"
+curl "http://localhost:8003/cases?status=ESCALATED&assignee=ana&page=1&size=20"
+```
+
+```json
+{
+  "items": [
+    {
+      "id": "0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01",
+      "transaction_id": "a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21",
+      "account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+      "status": "OPEN",
+      "decision": "HOLD",
+      "rules_triggered": ["mule"],
+      "risk_score": 50,
+      "amount": "950000.00",
+      "currency": "COP",
+      "amount_usd": "230.05",
+      "assignee": null,
+      "created_at": "2026-10-31T14:02:11.418000Z",
+      "due_at": "2026-10-31T18:02:11.418000Z",
+      "minutes_left": 87
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "size": 20
+}
+```
+
+### `GET /cases/{case_id}`
+
+The case with everything it stores (the engine's decision, the transaction as it came, the resolution and `evidence_key`) and its `events`, oldest first. `404` if there is no such case, `400` if the id is not a UUID, `503` without PostgreSQL.
+
+```bash
+curl "http://localhost:8003/cases/0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01"
+```
+
+### `PUT /cases/{case_id}/assignee`
+
+Sets the analyst who owns the case and writes `ASSIGNED` with the previous and the new owner (`from` is `null` the first time) and `X-User` as the actor, in the same transaction. The same owner again changes nothing and writes no event. An `ESCALATED` case can be assigned; a `RESOLVED` one is `409`. `X-User` is required (`400` without it), `assignee` is 1 to 100 characters. Returns the case with its events.
+
+```bash
+curl -X PUT "http://localhost:8003/cases/0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01/assignee" \
+  -H "X-User: supervisor.luis" -H "Content-Type: application/json" \
+  -d '{"assignee": "ana"}'
+```
+
+### `POST /cases/{case_id}/resolution`
+
+Closes the case. `FRAUD` sets `final_decision` to `REJECT`; `LEGITIMATE` sets it to `APPROVE`. That is how the held transaction is rejected or released: there is no core to call (team decision D4), so the core reads `final_decision` from the case and its `RESOLVED` event. The outcome, the note (1 to 2000 characters), `resolved_at`, `resolved_by` (`X-User`) and the `RESOLVED` event are written in one transaction; the outcome is what the rule precision and false-positive metrics read.
+
+After the commit the API archives the evidence (`shared.evidence.archive()`, RN-12) and returns its key in `evidence_key`. If archiving fails, the case stays resolved with `evidence_key` null and the alerts task retries it. An `OPEN` or `ESCALATED` case can be resolved with or without an owner; a `RESOLVED` one is `409`. `X-User` is required.
+
+```bash
+curl -X POST "http://localhost:8003/cases/0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01/resolution" \
+  -H "X-User: ana" -H "Content-Type: application/json" \
+  -d '{"outcome": "FRAUD", "note": "The three senders are linked accounts."}'
+```
+
+The answer is the resolved case: `"status": "RESOLVED"`, `"outcome": "FRAUD"`, `"final_decision": "REJECT"`, `"minutes_left": null`, the `evidence_key` and the `RESOLVED` and `EVIDENCE_ARCHIVED` events.
+
+Assigning and resolving lock the case row (`SELECT ... FOR UPDATE`) until their commit, so two analysts, or an analyst and the escalation of the alerts task, never change the same case at the same time.
 
 ### `GET /compliance/restricted-list-reports`
 
