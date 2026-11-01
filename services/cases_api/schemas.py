@@ -11,6 +11,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from shared.cases import CaseOutcome
+
 
 class Health(BaseModel):
     status: str
@@ -196,3 +198,16 @@ class AssigneeChange(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     assignee: str = Field(min_length=1, max_length=100, description="The analyst, 1 to 100 characters.")
+
+
+# --- Cases (HU-30) -----------------------------------------------------------
+
+class Resolution(BaseModel):
+    """How the analyst closes the case."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    outcome: CaseOutcome = Field(
+        description="FRAUD (final_decision REJECT) or LEGITIMATE (final_decision APPROVE).",
+    )
+    note: str = Field(min_length=1, max_length=2000, description="Why, 1 to 2000 characters.")

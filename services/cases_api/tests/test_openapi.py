@@ -27,6 +27,7 @@ EXPECTED = {
     ("get", "/cases"): ["200", "400", "503"],
     ("get", "/cases/{case_id}"): ["200", "400", "404", "503"],
     ("put", "/cases/{case_id}/assignee"): ["200", "400", "404", "409", "503"],
+    ("post", "/cases/{case_id}/resolution"): ["200", "400", "404", "409", "503"],
 }
 
 
@@ -83,6 +84,12 @@ def test_examples_are_valid():
     for status in ("400", "404", "409", "503"):
         assert set(_example("put", assignee, status)) == {"detail"}
 
+    resolution = "/cases/{case_id}/resolution"
+    resolved = CaseDetail.model_validate(_example("post", resolution, "200"))
+    assert (resolved.outcome, resolved.final_decision) == ("FRAUD", "REJECT")
+    for status in ("400", "404", "409", "503"):
+        assert set(_example("post", resolution, status)) == {"detail"}
+
 
 def test_the_reports_period_is_from_and_to():
     params = _paths()["/compliance/restricted-list-reports"]["get"]["parameters"]
@@ -106,6 +113,11 @@ def test_the_inbox_filters_and_paginates():
 
 def test_assigning_needs_x_user():
     params = _paths()["/cases/{case_id}/assignee"]["put"]["parameters"]
+    assert [p["name"] for p in params] == ["case_id", "x-user"]
+
+
+def test_resolving_needs_x_user():
+    params = _paths()["/cases/{case_id}/resolution"]["post"]["parameters"]
     assert [p["name"] for p in params] == ["case_id", "x-user"]
 
 

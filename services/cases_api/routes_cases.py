@@ -21,14 +21,30 @@ from services.cases_api.schemas import (
     CaseEventItem,
     CasePage,
     CaseSummary,
+    Resolution,
 )
-from shared.cases import PENDING, Case, CaseEvent, CaseEventType, CaseStatus
+from shared import evidence
+from shared.cases import (
+    PENDING,
+    Case,
+    CaseEvent,
+    CaseEventType,
+    CaseOutcome,
+    CaseStatus,
+)
 
 router = APIRouter(tags=["Cases"])
 
 MAX_PAGE_SIZE = 100
 NOT_FOUND = "Case not found."
 RESOLVED = "The case is resolved; it can no longer change."
+
+# D4: what the core applies to the held transaction. There is no core to
+# call: it reads final_decision from the case (and its RESOLVED event).
+FINAL_DECISION = {
+    CaseOutcome.FRAUD: "REJECT",
+    CaseOutcome.LEGITIMATE: "APPROVE",
+}
 
 
 def minutes_left(case: Case, now: datetime) -> int | None:
@@ -115,6 +131,26 @@ def assign(session: Session, case: Case, assignee: str, actor: str, now: datetim
     return True
 
 
+def resolve(session: Session, case: Case, outcome: CaseOutcome, note: str,
+            actor: str, now: datetime) -> None:
+    """Close the case with its outcome and write RESOLVED {"outcome",
+    "final_decision", "note"} in the same transaction."""
+    final_decision = FINAL_DECISION[outcome]
+    case.status = CaseStatus.RESOLVED.value
+    case.outcome = outcome.value
+    case.final_decision = final_decision
+    case.resolution_note = note
+    case.resolved_at = now
+    case.resolved_by = actor
+    session.add(CaseEvent(
+        case_id=case.id,
+        type=CaseEventType.RESOLVED.value,
+        actor=actor,
+        at=now,
+        data={"outcome": outcome.value, "final_decision": final_decision, "note": note},
+    ))
+
+
 @router.get("/cases", response_model=CasePage, **docs.CASES)
 def list_cases(
     session: Annotated[Session, Depends(deps.get_session)],
@@ -181,4 +217,23 @@ def assign_case(
         session.commit()
     else:
         session.rollback()  # nothing changed: release the row lock
+    return detail(session, case, now)
+
+
+@router.post("/cases/{case_id}/resolution", response_model=CaseDetail, **docs.RESOLVE)
+def resolve_case(
+    case_id: UUID,
+    body: Resolution,
+    session: Annotated[Session, Depends(deps.get_session)],
+    x_user: Annotated[str | None, Header(description="Who resolves the case (1 to 100 characters).")] = None,
+):
+    actor = deps.author(x_user)
+    case = get_case(session, case_id, for_update=True)
+    ensure_pending(case)
+    now = datetime.now(UTC)
+    resolve(session, case, body.outcome, body.note, actor, now)
+    session.commit()
+    # RN-12, after the commit: archive() never raises, and if it fails the
+    # alerts task retries it (archive_pending), so the resolution stands.
+    evidence.archive(session, case)
     return detail(session, case, now)

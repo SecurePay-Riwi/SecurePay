@@ -305,3 +305,71 @@ ASSIGN = {
         503: DB_DOWN,
     },
 }
+
+
+# --- Cases (HU-30) -----------------------------------------------------------
+
+_RESOLVED_CASE = {
+    **_ASSIGNED_CASE,
+    "status": "RESOLVED",
+    "minutes_left": None,
+    "resolved_at": "2026-10-31T15:31:02.540000Z",
+    "resolved_by": "ana",
+    "outcome": "FRAUD",
+    "final_decision": "REJECT",
+    "resolution_note": "The three senders are linked accounts; the customer did not recognise the withdrawal.",
+    "evidence_key": f"cases/2026/10/{_CASE_ID}.json",
+    "events": [
+        *_ASSIGNED_CASE["events"],
+        {
+            "id": 3,
+            "type": "RESOLVED",
+            "actor": "ana",
+            "at": "2026-10-31T15:31:02.540000Z",
+            "data": {
+                "outcome": "FRAUD",
+                "final_decision": "REJECT",
+                "note": "The three senders are linked accounts; the customer did not recognise the withdrawal.",
+            },
+        },
+        {
+            "id": 4,
+            "type": "EVIDENCE_ARCHIVED",
+            "actor": "system",
+            "at": "2026-10-31T15:31:02.871000Z",
+            "data": {
+                "bucket": "pagoseguro-evidence",
+                "key": f"cases/2026/10/{_CASE_ID}.json",
+                "retain_until": "2036-10-28T15:31:02.871000+00:00",
+            },
+        },
+    ],
+}
+
+RESOLVE = {
+    "summary": "Resolve a case with its outcome",
+    "description": (
+        "Closes the case: `FRAUD` sets `final_decision` to `REJECT` and "
+        "`LEGITIMATE` to `APPROVE`. That is how the held transaction is "
+        "rejected or released: there is no core to call (team decision "
+        "D4), so the core reads `final_decision` from the case. Stores the "
+        "outcome, the note, `resolved_at` and `resolved_by` (`X-User`) and "
+        "writes a `RESOLVED` event, all in one transaction. The outcome "
+        "feeds the rule precision and false-positive metrics.\n\n"
+        "Then the evidence is archived for 10 years (RN-12) and its key is "
+        "`evidence_key`. If archiving fails the case stays resolved, "
+        "`evidence_key` is null and the alerts task retries it.\n\n"
+        "An `OPEN` or `ESCALATED` case can be resolved, with or without an "
+        "owner; a `RESOLVED` one cannot (`409`). `X-User` is required. "
+        "Returns the case with its events."
+    ),
+    "responses": {
+        200: _ok("The resolved case with its events.", _RESOLVED_CASE),
+        400: _error("`X-User` is missing, the id is not a UUID, `outcome` is not FRAUD or "
+                    "LEGITIMATE, or `note` is not 1 to 2000 characters.",
+                    "X-User must have 1 to 100 characters."),
+        404: CASE_NOT_FOUND,
+        409: CASE_RESOLVED,
+        503: DB_DOWN,
+    },
+}
