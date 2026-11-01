@@ -10,18 +10,19 @@ import logging
 from datetime import UTC, datetime
 
 from services.alerts import account_history, compliance_summary, escalation
-from shared import db
+from shared import db, evidence
 
 log = logging.getLogger(__name__)
 
 SessionLocal = db.SessionLocal
 
-# In this order. HU-32 adds the archive() retry for RESOLVED cases with
-# evidence_key null.
+# In this order. "archived" retries the evidence of RESOLVED cases whose
+# evidence_key is still null (HU-32).
 JOBS = {
     "escalated": lambda session, now: escalation.escalate_overdue(session, now),
     "notified": lambda session, now: compliance_summary.send_summary(session, now),
     "purged": lambda session, now: account_history.purge(session, now),
+    "archived": lambda session, now: evidence.archive_pending(session),
 }
 
 

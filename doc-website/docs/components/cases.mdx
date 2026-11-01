@@ -105,8 +105,9 @@ The case and the account history keep the amount in the account's currency and `
 These signatures are fixed; each story fills in the body.
 
 ```python
-# shared/evidence.py (HU-32). Today: logs and returns None.
+# shared/evidence.py (HU-32, built)
 def archive(session, case: Case) -> str | None: ...
+def archive_pending(session) -> int: ...   # the alerts task's retry
 
 # services/alerts/ (until its story, each returns 0)
 def escalate_overdue(session, now: datetime) -> int: ...   # escalation.py, HU-31
@@ -117,7 +118,24 @@ def purge(session, now: datetime) -> int: ...              # account_history.py,
 def handler(event=None, context=None) -> dict: ...
 ```
 
-`handler()` runs the three jobs in that order with the same `now`, each in its own `try`: a failing job rolls back and does not stop the others. In AWS, EventBridge runs it as a Lambda every 5 minutes; locally `python -m services.alerts` runs it every `ALERTS_INTERVAL_SECONDS`. The jobs publish to the SNS topic `business-alerts` (created in LocalStack by `infra/localstack/init/01_messaging.py`).
+`handler()` runs the jobs in that order with the same `now` (and then `archive_pending()`, which retries the evidence), each in its own `try`: a failing job rolls back and does not stop the others. In AWS, EventBridge runs it as a Lambda every 5 minutes; locally `python -m services.alerts` runs it every `ALERTS_INTERVAL_SECONDS`. The jobs publish to the SNS topic `business-alerts` (created in LocalStack by `infra/localstack/init/01_messaging.py`).
+
+## Evidence
+
+When a case is resolved, the cases API calls `archive()` and the case's evidence goes to S3, one JSON object per case, at `cases/<yyyy>/<mm>/<case_id>.json` (month of the resolution). It holds the case, its events in order, the transaction as it came and the engine's decision. The upload carries:
+
+| Setting | Why |
+| :--- | :--- |
+| `ObjectLockMode=COMPLIANCE`, `ObjectLockRetainUntilDate` = now + `EVIDENCE_RETENTION_DAYS` | Nobody can delete that version or shorten the date, not even the root account (RN-12). The date is on each object, so dev (no default retention in the bucket) behaves like prod |
+| `StorageClass=GLACIER_IR` | Written there directly. A lifecycle rule would never move it: S3 does not transition objects under 128 KB without a size filter, and the evidence is about 50 KB |
+| `ChecksumAlgorithm=SHA256` + `ChecksumSHA256` | Object Lock uploads need it. S3 rejects bytes that changed on the way, keeps the checksum and checks it again on every read |
+| `IfNoneMatch="*"` | If the object is already there (an earlier call wrote it and its commit failed), S3 answers 412 instead of adding a second version, and that counts as archived |
+
+Then `evidence_key` is set and an `EVIDENCE_ARCHIVED` event is written, in their own commit. `archive()` never raises: if S3 or the database fails it logs, rolls back and returns `None`, and the alerts task retries every resolved case without `evidence_key` (`archive_pending()`, at most 50 per run). The case row is locked while archiving, so the API and the task never archive the same case twice.
+
+For an audit, `evidence.read(key, version_id=None)` returns the JSON; boto3 checks the stored SHA-256. A `DeleteObject` without `VersionId` is allowed but only adds a delete marker on top: the locked version is still there and is read with its `VersionId`.
+
+**Tests:** `shared/tests/test_evidence.py` (PostgreSQL and a fake S3: key, lock, class, checksum, event, idempotency, errors, retries) and `shared/tests/test_evidence_localstack.py` (LocalStack's S3, which enforces COMPLIANCE like AWS: deleting the version, shortening the date and switching to GOVERNANCE are denied, overwriting returns 412, a plain delete loses nothing). The second one is skipped without LocalStack.
 
 ## Cases API
 

@@ -125,7 +125,21 @@ The VPC, its six subnets in three tiers, the NAT Gateways, the gateway endpoints
 | ElastiCache Serverless (Valkey) | No node choice, scales by itself, 100 MB minimum billed, cross-AZ replica included, encryption in transit. Key design in [Decision engine](../components/decision-engine.mdx) |
 | DynamoDB | On demand, TTL on. Device–account pairs (30 days) and exchange rates |
 | S3 Data Lake | Three medallion layers: `raw` (bronze), `curated` (silver, clean Parquet), `analytics` (gold, dimensional model) |
-| S3 evidence | Separate bucket, Object Lock in COMPLIANCE mode for 10 years, Glacier Instant Retrieval |
+| S3 evidence | Separate bucket, Object Lock in COMPLIANCE mode for 10 years. Each object is written directly in Glacier Instant Retrieval (no lifecycle rule: S3 does not transition objects under 128 KB without a size filter). Cost over 10 years below |
+
+#### Evidence retention cost over 10 years {/* #evidence-cost */}
+
+Only mule, splitting and restricted list open a case, so about **0.1% of the transactions** (the team's estimate; the first figures assumed 1%). With 1.8 M transactions a day that is **~54,000 cases a month**. Each object is about 50 KB, but Glacier Instant Retrieval bills **at least 128 KB per object**. Prices in `us-east-2`: Glacier IR $0.004 per GB-month and $0.02 per 1,000 PUT; S3 Standard $0.023 per GB-month and $0.005 per 1,000 PUT.
+
+| Item | Glacier IR (chosen) | S3 Standard |
+| :--- | :--- | :--- |
+| Stored each month | 54,000 × 128 KB ≈ 7.1 GB | 54,000 × 50 KB ≈ 2.7 GB |
+| PUT each month | $1.08 | $0.27 |
+| Storage in month 12 | 85 GB → $0.34 | 32 GB → $0.75 |
+| Storage in month 120 | 850 GB → $3.40 | 324 GB → $7.45 |
+| **Total over 10 years** | **≈ $335** ($206 storage + $130 PUT) | **≈ $483** ($451 storage + $32 PUT) |
+
+The 128 KB minimum eats most of the saving (Glacier IR would be ~83% cheaper with large objects), but it still costs about 30% less and is just as fast to read. Reading evidence for an audit costs $0.03 per GB in Glacier IR, which is negligible for a few cases. At 1% of transactions every figure is ten times larger (≈ $3,350 against ≈ $4,830). The S3 line of the monthly table ($5.26) was estimated with 1% of transactions, so it is on the high side.
 
 ### Messaging
 

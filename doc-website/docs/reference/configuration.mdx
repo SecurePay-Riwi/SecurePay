@@ -79,7 +79,7 @@ In `SecurePay`: the cases API (`services/cases_api/`), the consumers and the ale
 | `ALERTS_INTERVAL_SECONDS` | `60` | Local only: seconds between runs of `python -m services.alerts`. In AWS, EventBridge runs it every 5 minutes. |
 | `BUSINESS_ALERTS_TOPIC` | `business-alerts` | SNS topic of the business alerts (supervisor and compliance): a name or an ARN. In AWS: the ARN of `securepay-<env>-business-alerts` (with a name the task calls `create_topic` to get the ARN). |
 | `EVIDENCE_BUCKET` | `pagoseguro-evidence` | RN-12: bucket with Object Lock where a resolved case's evidence is archived (HU-32). In AWS: the `evidence` bucket of Terraform. |
-| `EVIDENCE_RETENTION_DAYS` | `3650` | RN-12: retention of the evidence, 10 years. |
+| `EVIDENCE_RETENTION_DAYS` | `3650` | RN-12: how long each evidence object stays locked (COMPLIANCE), 10 years. A decimal: dev in AWS and the tests use `0.0035` (about 5 minutes), because a COMPLIANCE lock can never be shortened and 3650 would keep the bucket, and `terraform destroy`, blocked for 10 years. |
 
 ## Messaging and Data Lake
 

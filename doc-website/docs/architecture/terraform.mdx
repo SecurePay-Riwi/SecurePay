@@ -96,7 +96,7 @@ The first `plan` must say `159 to add, 0 to change, 0 to destroy`. Once the imag
 
 | Setting | Prod (design) | Dev | Why |
 | :--- | :--- | :--- | :--- |
-| Evidence retention | Object Lock COMPLIANCE, 10 years by default | No default retention; the test object is uploaded with its own retain-until date 5 minutes ahead | Not Terraform: the lock is set by the upload command. AWS does not accept less than 1 day of default retention, and a locked object stops `destroy`. For those 5 minutes nobody can delete the object, not even the root account; after that the bucket is destroyed normally. If this is not accepted, the alternative is the 1-day default and destroying the bucket the next day |
+| Evidence retention | Object Lock COMPLIANCE, 10 years by default | No default retention; the test object is uploaded with its own retain-until date 5 minutes ahead, and the cases API, once deployed, runs with `EVIDENCE_RETENTION_DAYS=0.0035` (also about 5 minutes) | Not Terraform: the lock is set by the upload command. AWS does not accept less than 1 day of default retention, and a locked object stops `destroy`. For those 5 minutes nobody can delete the object, not even the root account; after that the bucket is destroyed normally. If this is not accepted, the alternative is the 1-day default and destroying the bucket the next day |
 | Buckets with objects | Not deleted | `force_destroy = true` | `destroy` empties them first |
 | RDS | Deletion protection and a final snapshot | Neither | `destroy` deletes it at once and leaves no snapshot that keeps costing |
 | RDS backups | 7 days | 1 day (`database_backup_retention_days`) | An AWS account on the free plan rejects more than 1 day (`FreeTierRestrictionError`) |

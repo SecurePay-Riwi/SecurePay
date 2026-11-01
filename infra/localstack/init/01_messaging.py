@@ -13,6 +13,11 @@ configuración de la bitácora (sección 3, Mensajería):
 - SNS topic `business-alerts` (Sprint 4): the alerts task publishes the
   supervisor escalations and the compliance summary there. No queues: in
   local the e-mails are only seen in LocalStack's logs.
+- Bucket `pagoseguro-evidence` (Sprint 4, HU-32): case evidence, with
+  Object Lock (it can only be turned on when the bucket is created) and
+  versioning, which Object Lock needs. No default retention: each object
+  carries its own retain-until date (shared/evidence.py). LocalStack does
+  not keep data between restarts, so local locks never pile up.
 
 Va en Python y no en bash porque LocalStack ejecuta los .sh directo:
 un .sh guardado desde Windows (sin permiso de ejecución o con fin de
@@ -30,6 +35,7 @@ TEMA = "decisiones"
 COLAS = ["casos", "historial", "analitica"]
 BUCKET = "pagoseguro-datalake"
 BUSINESS_ALERTS_TOPIC = "business-alerts"
+EVIDENCE_BUCKET = "pagoseguro-evidence"
 
 REINTENTOS_ANTES_DE_DLQ = 5
 RETENCION_DLQ_S = 14 * 24 * 3600
@@ -103,3 +109,15 @@ print(
     f"Mensajería lista: tema {TEMA}, colas {COLAS}, bucket {BUCKET} "
     f"y tema {BUSINESS_ALERTS_TOPIC}"
 )
+
+s3.create_bucket(
+    Bucket=EVIDENCE_BUCKET,
+    CreateBucketConfiguration={"LocationConstraint": REGION},
+    ObjectLockEnabledForBucket=True,
+)
+s3.put_bucket_versioning(
+    Bucket=EVIDENCE_BUCKET,
+    VersioningConfiguration={"Status": "Enabled"},
+)
+
+print(f"Evidence bucket ready: {EVIDENCE_BUCKET} (Object Lock)")
