@@ -108,3 +108,81 @@ class RelatedAccountList(BaseModel):
         description="One item per related account and shared device, the latest seen first.",
     )
     total: int = Field(description="Items in the list.")
+
+
+# --- Cases (HU-26) -----------------------------------------------------------
+
+class CaseSummary(BaseModel):
+    """One case of the inbox. The nullable fields are always sent."""
+
+    id: UUID = Field(description="Case id.")
+    transaction_id: UUID = Field(description="The transaction that opened it (one case per transaction).")
+    account_id: UUID = Field(description="The main account: the source; in a top-up, the destination.")
+    status: str = Field(description="OPEN, ESCALATED (still open after due_at, RN-09) or RESOLVED.")
+    decision: str = Field(description="The engine's decision: APPROVE, HOLD or REJECT.")
+    rules_triggered: list[str] = Field(description="The rules that fired, as in the transaction.decided event.")
+    risk_score: int = Field(description="Sum of the fired rules' scores, 0 to 100.")
+    amount: Decimal = Field(description="Amount in the original currency, as a decimal string.")
+    currency: str = Field(description="The original currency (COP, USD, EUR, JPY).")
+    amount_usd: Decimal | None = Field(
+        default=None,
+        description="The engine's amount in USD (RN-11), as a decimal string; null for decisions older than Sprint 4.",
+    )
+    assignee: str | None = Field(default=None, description="The analyst who owns it; null until assigned.")
+    created_at: datetime = Field(description="When the case was opened, UTC.")
+    due_at: datetime = Field(description="The 4-hour limit (RN-09): created_at + CASE_DUE_MINUTES, UTC.")
+    minutes_left: int | None = Field(
+        default=None,
+        description="Whole minutes until due_at, rounded down: negative once it is overdue. Null when RESOLVED.",
+    )
+
+
+class CasePage(BaseModel):
+    items: list[CaseSummary] = Field(
+        description="The cases of the page: highest risk first, then the closest to due_at.",
+    )
+    total: int = Field(description="Cases that match the filters, all pages.")
+    page: int = Field(description="Page number, from 1.")
+    size: int = Field(description="Cases per page.")
+
+
+class CaseEventItem(BaseModel):
+    """One thing that happened to a case (a case_events row)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(description="Event id; increases with every event.")
+    type: str = Field(description="CREATED, ASSIGNED, ESCALATED, RESOLVED or EVIDENCE_ARCHIVED.")
+    actor: str = Field(description="The X-User who did it, or `system`.")
+    at: datetime = Field(description="When it happened, UTC.")
+    data: dict = Field(
+        description=(
+            'Details by type: ASSIGNED {"from", "to"}; ESCALATED {"due_at"}; '
+            'RESOLVED {"outcome", "final_decision", "note"}; '
+            'EVIDENCE_ARCHIVED {"bucket", "key", "retain_until"}; CREATED {}.'
+        ),
+    )
+
+
+class CaseDetail(CaseSummary):
+    """A case with everything it stores and its events."""
+
+    decision_reason: str = Field(description="Why the engine decided it.")
+    rules_version: str = Field(description="The rule catalog version that decided (RN-08).")
+    rule_versions: dict[str, int] = Field(description="rule_version of each fired rule, by code (RN-08).")
+    transaction_date: datetime = Field(description="When the transaction happened, UTC.")
+    transaction: dict = Field(description="The transaction as it came in the event (evidence).")
+    escalated_at: datetime | None = Field(default=None, description="When the alerts task escalated it, UTC.")
+    resolved_at: datetime | None = Field(default=None, description="When it was resolved, UTC.")
+    resolved_by: str | None = Field(default=None, description="The X-User who resolved it.")
+    outcome: str | None = Field(default=None, description="FRAUD or LEGITIMATE, once resolved.")
+    final_decision: str | None = Field(
+        default=None,
+        description="REJECT (FRAUD) or APPROVE (LEGITIMATE), set on resolution; what the core applies.",
+    )
+    resolution_note: str | None = Field(default=None, description="The analyst's note on resolution.")
+    evidence_key: str | None = Field(
+        default=None,
+        description="S3 key of the archived evidence (RN-12); null until archived.",
+    )
+    events: list[CaseEventItem] = Field(description="What happened to the case, oldest first.")

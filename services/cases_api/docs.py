@@ -170,3 +170,97 @@ RELATED_ACCOUNTS = {
         503: DB_DOWN,
     },
 }
+
+
+# --- Cases (HU-26) -----------------------------------------------------------
+
+_CASE_ID = "0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01"
+
+_CASE_SUMMARY = {
+    "id": _CASE_ID,
+    "transaction_id": "a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21",
+    "account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+    "status": "OPEN",
+    "decision": "HOLD",
+    "rules_triggered": ["mule"],
+    "risk_score": 50,
+    "amount": "950000.00",
+    "currency": "COP",
+    "amount_usd": "230.05",
+    "assignee": None,
+    "created_at": "2026-10-31T14:02:11.418000Z",
+    "due_at": "2026-10-31T18:02:11.418000Z",
+    "minutes_left": 87,
+}
+
+_CASE_DETAIL = {
+    **_CASE_SUMMARY,
+    "decision_reason": "The account received 3 transfers from different senders and withdrew 95% of its balance.",
+    "rules_version": "3",
+    "rule_versions": {"mule": 1},
+    "transaction_date": "2026-10-31T14:02:10Z",
+    "transaction": {
+        "id": "a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21",
+        "type": "RETIRO",
+        "source_account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+        "destination_account_id": None,
+        "amount": "950000.00",
+        "currency": "COP",
+        "transaction_date": "2026-10-31T14:02:10Z",
+    },
+    "escalated_at": None,
+    "resolved_at": None,
+    "resolved_by": None,
+    "outcome": None,
+    "final_decision": None,
+    "resolution_note": None,
+    "evidence_key": None,
+    "events": [{
+        "id": 1,
+        "type": "CREATED",
+        "actor": "system",
+        "at": "2026-10-31T14:02:11.418000Z",
+        "data": {},
+    }],
+}
+
+CASE_NOT_FOUND = _error("There is no case with that id.", "Case not found.")
+
+CASES = {
+    "summary": "List the case inbox",
+    "description": (
+        "The cases an analyst has to work on. Without `status`, the pending "
+        "ones: `OPEN` and `ESCALATED` (still open after the 4-hour limit, "
+        "RN-09). `status` asks for one state (`RESOLVED` too) and "
+        "`assignee` for one analyst's cases.\n\n"
+        "Highest `risk_score` first and, with the same risk, the closest to "
+        "`due_at`. `minutes_left` is the whole minutes until `due_at`, "
+        "negative once it is overdue, and null for a resolved case. "
+        "Paginated with `page` and `size` (default 20, at most 100)."
+    ),
+    "responses": {
+        200: _ok(
+            "The cases of the page, by risk and then by time left.",
+            {"items": [_CASE_SUMMARY], "total": 1, "page": 1, "size": 20},
+        ),
+        400: _error("`status` is not a case state, or `assignee`, `page` or `size` is out of range.",
+                    "The request contains invalid data."),
+        503: DB_DOWN,
+    },
+}
+
+CASE = {
+    "summary": "Read a case with its events",
+    "description": (
+        "Everything the case stores (the engine's decision, the transaction "
+        "as it came, the resolution and the evidence key) and its events, "
+        "oldest first: `CREATED`, `ASSIGNED`, `ESCALATED`, `RESOLVED`, "
+        "`EVIDENCE_ARCHIVED`."
+    ),
+    "responses": {
+        200: _ok("The case and its events.", _CASE_DETAIL),
+        400: _error("The case id is not a UUID.", "The request contains invalid data."),
+        404: CASE_NOT_FOUND,
+        503: DB_DOWN,
+    },
+}
