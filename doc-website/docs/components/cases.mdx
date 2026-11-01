@@ -242,4 +242,43 @@ curl "http://localhost:8003/accounts/5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42/relate
 }
 ```
 
+### `GET /reports/suspicious`
+
+The suspicious operations report for compliance (HU-35): the cases opened in a period. Every case is a compliance case, because only mule account (RN-03), splitting (RN-05) and restricted list (RN-06) open one. One row per case, oldest first, with `case_id`, `transaction_id`, `account_id`, `pattern` (the rules that fired, joined by `+`), `amount` and `currency` (original), `amount_usd` (RN-11), `status`, `outcome` and `created_at`.
+
+`from` and `to` are days (`YYYY-MM-DD`, UTC), both inclusive and required, at most 31 days apart. `format=json` (default) answers the rows with `total`; a period without cases is `200` with an empty list and `"message": "No compliance cases in the period."`. `format=csv` answers the same rows as a file to download, `suspicious-report-<from>-<to>.csv` (`text/csv`), with amounts as decimal text and an empty value for null; a period without cases is only the header. `400` for a missing or invalid date, `from` after `to`, a period of more than 31 days or a `format` that is not `json` or `csv`; `503` without PostgreSQL.
+
+```bash
+curl "http://localhost:8003/reports/suspicious?from=2026-10-31&to=2026-10-31"
+curl -o report.csv "http://localhost:8003/reports/suspicious?from=2026-10-01&to=2026-10-31&format=csv"
+```
+
+```json
+{
+  "from": "2026-10-31",
+  "to": "2026-10-31",
+  "items": [
+    {
+      "case_id": "0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01",
+      "transaction_id": "a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21",
+      "account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+      "pattern": "mule",
+      "amount": "950000.00",
+      "currency": "COP",
+      "amount_usd": "230.05",
+      "status": "RESOLVED",
+      "outcome": "FRAUD",
+      "created_at": "2026-10-31T14:02:11.418000Z"
+    }
+  ],
+  "total": 1,
+  "message": null
+}
+```
+
+```text
+case_id,transaction_id,account_id,pattern,amount,currency,amount_usd,status,outcome,created_at
+0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01,a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21,5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42,mule,950000.00,COP,230.05,RESOLVED,FRAUD,2026-10-31T14:02:11.418000+00:00
+```
+
 Variables: [Configuration](../reference/configuration.mdx#cases).
