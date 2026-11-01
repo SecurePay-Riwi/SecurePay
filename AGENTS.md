@@ -230,6 +230,18 @@ Read this before touching `shared/cases.py`, `services/cases_api/`,
   `escalation.escalate_overdue`, `compliance_summary.send_summary` and
   `account_history.purge` with one `now`, each in its own try. Locally,
   `python -m services.alerts` loops every `ALERTS_INTERVAL_SECONDS`.
+- **Escalation (HU-31, RN-09):** `escalate_overdue()` takes up to 100
+  `OPEN` cases with `due_at <= now` (most overdue first, `FOR UPDATE SKIP
+  LOCKED`), sets `ESCALATED`, `escalated_at` and the `ESCALATED` event,
+  and publishes ONE summary with `audience = "supervisor"` BEFORE the
+  commit (contract v2, 2026-11-01): SNS down → rollback, the cases stay
+  `OPEN` for the next run. Its tests: `test_escalation.py`. Locally,
+  `CASE_DUE_MINUTES=2` shows it in minutes.
+- **`services/alerts/notify.py`** is the only SNS code of the alerts jobs:
+  `TOPIC` (`BUSINESS_ALERTS_TOPIC`), `topic_arn()` and
+  `publish(subject, body, audience)`. `escalation.py` and
+  `compliance_summary.py` use it; tests replace `notify._client` and
+  reset `notify._topic_arn`.
 - **The 30-day account history is PostgreSQL `account_transactions`**
   (D3), not DynamoDB. The history consumer (`services/consumers/history.py`,
   HU-28) writes one row per account of every event, whatever the

@@ -109,8 +109,8 @@ These signatures are fixed; each story fills in the body.
 def archive(session, case: Case) -> str | None: ...
 def archive_pending(session) -> int: ...   # the alerts task's retry
 
-# services/alerts/ (until its story, each returns 0)
-def escalate_overdue(session, now: datetime) -> int: ...   # escalation.py, HU-31
+# services/alerts/
+def escalate_overdue(session, now: datetime) -> int: ...   # escalation.py, HU-31 (built)
 def send_summary(session, now: datetime) -> int: ...       # compliance_summary.py, HU-34 (built)
 def purge(session, now: datetime) -> int: ...              # account_history.py, HU-28 (built)
 
@@ -118,7 +118,35 @@ def purge(session, now: datetime) -> int: ...              # account_history.py,
 def handler(event=None, context=None) -> dict: ...
 ```
 
-`handler()` runs the jobs in that order with the same `now` (and then `archive_pending()`, which retries the evidence), each in its own `try`: a failing job rolls back and does not stop the others. In AWS, EventBridge runs it as a Lambda every 5 minutes; locally `python -m services.alerts` runs it every `ALERTS_INTERVAL_SECONDS`. The jobs publish to the SNS topic `business-alerts` (created in LocalStack by `infra/localstack/init/01_messaging.py`).
+`handler()` runs the jobs in that order with the same `now` (and then `archive_pending()`, which retries the evidence), each in its own `try`: a failing job rolls back and does not stop the others. In AWS, EventBridge runs it as a Lambda every 5 minutes; locally `python -m services.alerts` runs it every `ALERTS_INTERVAL_SECONDS`. The jobs publish to the SNS topic `business-alerts` (created in LocalStack by `infra/localstack/init/01_messaging.py`) through `services/alerts/notify.py`: `publish(subject, body, audience)` adds the attribute `audience` (`supervisor` or `compliance`), so each e-mail subscription keeps only its own messages.
+
+## Escalation
+
+RN-09: a case not resolved in 4 hours goes to the supervisor. There is no timer per case (team decision D2): every run of the alerts task (every 5 minutes in AWS) takes the `OPEN` cases with `due_at <= now`, so a case is escalated at most 5 minutes late. Every pending case escalates, not only the `HOLD` ones: restricted list and splitting cases also wait for an analyst, and an assigned case that is still `OPEN` escalates too (escalating does not take it from the analyst).
+
+1. Up to 100 overdue cases per run, the most overdue first, locked with `FOR UPDATE SKIP LOCKED` (an overlapping run skips them). After an outage the rest go in the next runs.
+2. Each one: `status = ESCALATED`, `escalated_at = now` and an `ESCALATED` event (actor `system`, `{"due_at": …}`).
+3. **One** summary to the supervisor (`audience = supervisor`), published **before** the commit, like the compliance summary. If SNS fails, everything rolls back and the cases stay `OPEN` for the next run; if the commit fails after the publish, the supervisor gets the summary twice, never zero times.
+
+A `RESOLVED` or `ESCALATED` case never moves again, so running it twice sends nothing new. Without overdue cases nothing is published. The summary has the totals first and then one line per case:
+
+```text
+Subject: 2 cases escalated (open over 4 hours)
+
+Cases open for more than 4 hours: 2. Escalated to the supervisor.
+Unassigned: 1
+Most overdue: due at 2026-11-01 10:55 UTC (3 h 10 min ago)
+
+Cases, most overdue first:
+- 0b5e7c43-…  due 2026-11-01 10:55 UTC  rules: restricted_list  assignee: ana
+- 6f1c2b9e-…  due 2026-11-01 14:03 UTC  rules: mule, splitting  assignee: (none)
+
+Details: GET /cases?status=ESCALATED on the cases API.
+```
+
+To see it locally in a few minutes, set `CASE_DUE_MINUTES=2` and `ALERTS_INTERVAL_SECONDS=30` in `.env`. The alerts Lambda, its EventBridge rule and the supervisor's e-mail subscription in AWS come in Sprint 5 with the consumers as Lambdas; a CloudWatch alarm on repeated escalation failures goes with them (today a failing SNS only leaves an error in the log every run).
+
+**Tests:** `services/alerts/tests/test_escalation.py` (PostgreSQL and a fake SNS: overdue, not yet due, resolved in time, twice, already escalated, SNS down, the 100 limit, the summary text, and against LocalStack that only the supervisor queue gets it).
 
 ## Evidence
 
