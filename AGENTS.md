@@ -365,9 +365,9 @@ Read this before touching `shared/reconciliation.py`,
   `raw/decisiones/fecha=<day-1..day+1>`. DATE_OFF (dates more than 1 day
   apart) is checked before AMOUNT_OFF; both limits are included.
   `match.reconcile()` is PySpark (HU-37): `match.session()` is local[*]
-  in tests and Compose, the cluster's under spark-submit (EMR Serverless
+  in tests and Compose, the job's on AWS Glue 6.0 (`infra/spark/match_job.py`
   runs `match.main --day --records --decisions --output`). Spark reads
-  and writes local folders, and `s3://` only on a cluster; in local mode
+  and writes local folders, and `s3://` only on Glue; in local mode
   `s3://` (LocalStack) goes through `storage.py`. Output keeps nulls
   (`ignoreNullFields=false`), one `part-*.json` per day, replaced on a
   re-run. `match.match_day()` is the plain-Python reference: the Spark
@@ -416,8 +416,8 @@ Read this before touching `shared/reconciliation.py`,
   file is a `RejectedRow` with `line_number = 0`. Tests:
   `tests/test_ingest.py`.
 - `pyspark` is in the `spark` dependency group (default for `uv sync`),
-  pinned to 4.1.x: EMR Serverless `emr-spark-8.1.0` runs Spark 4.1.1 with
-  Python 3.12, so never use an API newer than 4.1. The Docker image
+  pinned to 4.1.x: AWS Glue 6.0 runs Spark 4.1.1 with
+  Python 3.13, so never use an API newer than 4.1. The Docker image
   leaves it out (`--no-default-groups`).
 
 ## Decision engine: rules and account history
