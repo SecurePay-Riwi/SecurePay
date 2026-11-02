@@ -145,7 +145,7 @@ stop and ask instead of working around it.
 
 ---
 
-## Sprint state (as of 2026-10-31)
+## Sprint state (as of 2026-11-02)
 
 ### Sprint 1 — Done ✅
 - Seed + generator + Kaggle ETL + partner statements + exchange rates + restricted list API
@@ -175,16 +175,32 @@ stop and ask instead of working around it.
 | HU-14, HU-15 | MAG-129, MAG-131 | Shared device (RN-04), splitting (RN-05) | Habith | #52, #53 |
 | HU-23 | MAG-137 | Rule version per decision | Habith | #57 |
 
-### Sprint 4 — In progress (Cases + Compliance)
-"Step 0" put the case contract in the code first (`shared/cases.py`,
+### Sprint 4 — Closed ✅ (Cases + Compliance)
+"Step 0" (PR #60) put the case contract in the code first (`shared/cases.py`,
 `services/cases_api/`, `services/alerts/`, `shared/evidence.py`,
-`amount_usd` in the decision). HU-25 (cases consumer, closes HU-15's
-case), HU-34 (restricted list reports) and HU-28 (30-day account
-history) are merged, and so are HU-29 (related accounts), HU-57
-(Fargate) and HU-32 (evidence). HU-26 (inbox), HU-27 (assignment) and
-HU-30 (resolution) are built together in `feature/MAG-182-case-workflow`.
-Habith: HU-25 → HU-34 → HU-28 → HU-29;
-Yulianis: HU-26 → HU-27 → HU-30, HU-35; Jorge: HU-57 → HU-31 → HU-32.
+`amount_usd` in the decision). Every story is merged in `main`.
+
+| HU | Jira | Description | Owner | PR |
+|----|------|-------------|-------|----|
+| HU-25 (closes HU-15's case) | MAG-181 | Cases consumer: a decision with `opens_case` opens a case | Habith | #60, #61 |
+| HU-34 | MAG-189 | Restricted list reports (RN-06) | Habith | #62 |
+| HU-28 | MAG-184 | 30-day account history | Habith | #63 |
+| HU-29 | MAG-185 | Accounts related through a device | Habith | #64 |
+| HU-26, HU-27, HU-30 | MAG-182, MAG-183, MAG-186 | Case inbox, assignment and resolution | Yulianis | #68 |
+| HU-35 | MAG-190 | Suspicious operations report | Yulianis | #69 |
+| HU-57 | MAG-191 | Engine on ECR and ECS/Fargate (with `VALKEY_CLUSTER`) | Jorge | #65, #66 |
+| HU-32 | MAG-188 | Immutable case evidence (RN-12) | Jorge | #67 |
+| HU-31 | MAG-187 | Escalation after 4 hours (RN-09), code and local run | Jorge | #71 |
+| — | — | Windows and full-stack test fixes | Jorge | #70 |
+
+### Sprint 5 — Planned (Reconciliation + FX + CI/CD)
+Besides the backlog in `doc-website/docs/product-backlog/sprint-backlog-5.mdx`,
+two stories came out of Sprint 4:
+
+| HU | Jira | Description | Owner |
+|----|------|-------------|-------|
+| HU-68 | MAG-351 | Deploy the consumers and the alerts task as Lambdas (the AWS part of HU-31: EventBridge every 5 minutes, `business-alerts` e-mails filtered by `audience`, S3 permissions for the evidence) | Jorge |
+| HU-67 | MAG-352 | Load the restricted list and the account data into the cache; when it closes, remove the temporary `engine_reads_database` rule (`sg-engine` → `sg-rds`) of HU-57 | — |
 
 ---
 
@@ -490,7 +506,7 @@ Read these before changing the design, not to work on the code:
 - Step by step (IAM user, access key, create, check, push the images, deploy the engine, destroy): `doc-website/docs/getting-started/deploy-aws-terraform.mdx`.
 - Engine on Fargate (MAG-191): images in ECR tagged with the short git commit (immutable tags, never only `latest`); the engine service and the admin task exist only once `engine_image_tag` / `admin_image_tag` are set. The admin task is the `securepay-seed` image and seeds RDS on demand (`terraform output -raw admin_run_task_command`). The load balancer listens on 443 with a self-signed certificate unless `domain_name` is set.
 - ElastiCache Serverless only accepts cluster-protocol clients: `shared/cache.py` uses `valkey.ValkeyCluster` when `VALKEY_CLUSTER=true` (set by Terraform in AWS; false locally). New Valkey code must keep one key per command, or keys sharing a hash tag like `{rules}`.
-- Temporary (agreed 2026-10-31): `engine_reads_database = true` in dev opens 5432 from `sg-engine` to `sg-rds` and hands the engine `DATABASE_URL` from `/securepay/<env>/rds/master-url`, because the engine still reads accounts, merchants, owners and the restricted list from PostgreSQL. It goes to false once that data is loaded into the cache.
+- Temporary (agreed 2026-10-31): `engine_reads_database = true` in dev opens 5432 from `sg-engine` to `sg-rds` and hands the engine `DATABASE_URL` from `/securepay/<env>/rds/master-url`, because the engine still reads accounts, merchants, owners and the restricted list from PostgreSQL. It is removed by HU-67 (MAG-352), which loads that data into the cache.
 - Before a PR: `terraform fmt -check -recursive` in `infra/terraform/` and `terraform validate` in `envs/dev`. The page `doc-website/docs/architecture/terraform.mdx` changes with the code.
 
 ## Docker images and local ecosystem (MAG-31 / MAG-32)
