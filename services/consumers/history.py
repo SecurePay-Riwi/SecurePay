@@ -35,7 +35,7 @@ from uuid import UUID
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 
-from services.consumers.batch import leer_lote, respuesta
+from services.consumers.batch import ensure_schema, leer_lote, respuesta
 from shared import db
 from shared.cases import AccountTransaction, main_account
 
@@ -150,6 +150,7 @@ def handler(event, context=None):
     if not rows:
         return respuesta(failed)
 
+    ensure_schema(SessionLocal)
     try:
         with SessionLocal() as session:
             written = write(session, rows)
