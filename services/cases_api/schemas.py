@@ -5,7 +5,7 @@ tables and states are shared/cases.py; never redefine them.
 Money is Decimal (a decimal string in JSON), dates are UTC.
 """
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -266,6 +266,98 @@ class Resolution(BaseModel):
         description="FRAUD (final_decision REJECT) or LEGITIMATE (final_decision APPROVE).",
     )
     note: str = Field(min_length=1, max_length=2000, description="Why, 1 to 2000 characters.")
+
+
+# --- Reconciliation differences (HU-38 to HU-41) ---------------------------
+
+class ReconciliationDifferenceItem(BaseModel):
+    """What treasury has to look at: one reconciliation_differences row.
+
+    The nullable fields are always sent; their default only lets Swagger
+    drop a null from an example."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID = Field(description="Difference id.")
+    run_day: date = Field(description="The partners' day reconciled (YYYY-MM-DD).")
+    partner: str = Field(description="banco_andino, red_corresponsales, cajeros_express or qr_pagos.")
+    type: str = Field(
+        description=(
+            "MISSING_IN_PARTNER (approved by PagoSeguro, not in the partner's file), "
+            "MISSING_IN_PAGOSEGURO (in the file, not approved by PagoSeguro) or "
+            "AMOUNT_MISMATCH (same reference, more than 0.01 apart; RN-10)."
+        ),
+    )
+    reference: str = Field(description="PagoSeguro's transaction id (as the partner wrote it, if only theirs).")
+    partner_reference: str | None = Field(default=None, description="The partner's own reference; null when only ours.")
+    currency: str = Field(description="The original currency (COP, USD, EUR, JPY).")
+    pagoseguro_amount: Decimal | None = Field(
+        default=None,
+        description="PagoSeguro's amount, with its currency's decimals (JPY: none); null in MISSING_IN_PAGOSEGURO.",
+    )
+    partner_amount: Decimal | None = Field(
+        default=None,
+        description="The partner's amount, with its currency's decimals; null in MISSING_IN_PARTNER.",
+    )
+    amount_difference: Decimal | None = Field(
+        default=None,
+        description="partner_amount - pagoseguro_amount, only in AMOUNT_MISMATCH.",
+    )
+    pagoseguro_at: datetime | None = Field(default=None, description="When PagoSeguro approved it, UTC.")
+    partner_at: datetime | None = Field(default=None, description="When the partner dated it, UTC.")
+    status: str = Field(description="PENDING or RESOLVED (final).")
+    age_days: int | None = Field(
+        default=None,
+        description="Whole days from run_day to today (UTC) while PENDING (HU-41); null once RESOLVED.",
+    )
+    detected_at: datetime = Field(description="When the reconciliation first found it, UTC.")
+    resolved_at: datetime | None = Field(default=None, description="When treasury resolved it, UTC.")
+    resolved_by: str | None = Field(default=None, description="The X-User who resolved it.")
+    resolution_note: str | None = Field(default=None, description="Treasury's note on resolution.")
+
+    @model_validator(mode="after")
+    def _currency_decimals_and_utc(self):
+        """The columns keep two decimals; JPY is answered without them.
+        PostgreSQL returns times in the session's zone; they go out in UTC."""
+        for name in ("pagoseguro_amount", "partner_amount", "amount_difference"):
+            value = getattr(self, name)
+            if value is not None:
+                setattr(self, name, in_currency(value, self.currency))
+        for name in ("pagoseguro_at", "partner_at", "detected_at", "resolved_at"):
+            value = getattr(self, name)
+            if value is not None and value.tzinfo is not None:
+                setattr(self, name, value.astimezone(UTC))
+        return self
+
+
+class ReconciliationDifferencePage(BaseModel):
+    items: list[ReconciliationDifferenceItem] = Field(
+        description="The differences of the page: oldest run_day first, then by partner.",
+    )
+    total: int = Field(description="Differences that match the filters, all pages.")
+    page: int = Field(description="Page number, from 1.")
+    size: int = Field(description="Differences per page.")
+
+
+class AgeRange(BaseModel):
+    range: str = Field(description="0-1, 2-7 or 8+ days old.")
+    count: int = Field(description="Pending differences of that age.")
+    by_type: dict[str, int] = Field(
+        description="The same count by type: MISSING_IN_PARTNER, MISSING_IN_PAGOSEGURO, AMOUNT_MISMATCH.",
+    )
+
+
+class DifferenceAging(BaseModel):
+    total: int = Field(description="Pending differences.")
+    ranges: list[AgeRange] = Field(description="Always the three ranges, in order, even when empty.")
+
+
+class DifferenceResolution(BaseModel):
+    """How treasury closes a difference."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    note: str = Field(min_length=1, max_length=2000, description="What was found or done, 1 to 2000 characters.")
 
 
 # --- Reconciliation runs (HU-37) --------------------------------------------

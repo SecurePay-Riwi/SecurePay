@@ -440,6 +440,118 @@ RESOLVE = {
 }
 
 
+# --- Reconciliation differences (HU-38 to HU-41) ---------------------------
+
+_DIFFERENCE = {
+    "id": "3b9d1f57-2c4e-4a6b-8d0f-1e3a5c7e9b20",
+    "run_day": "2026-10-05",
+    "partner": "cajeros_express",
+    "type": "AMOUNT_MISMATCH",
+    "reference": "d462ba1c-5dab-599d-ac2e-63c354c7f3ce",
+    "partner_reference": "CX000000002",
+    "currency": "COP",
+    "pagoseguro_amount": "123456.78",
+    "partner_amount": "123457.00",
+    "amount_difference": "0.22",
+    "pagoseguro_at": "2026-10-05T19:00:00Z",
+    "partner_at": "2026-10-05T19:00:00Z",
+    "status": "PENDING",
+    "age_days": 3,
+    "detected_at": "2026-10-06T07:04:41.530000Z",
+    "resolved_at": None,
+    "resolved_by": None,
+    "resolution_note": None,
+}
+
+_RESOLVED_DIFFERENCE = {
+    **_DIFFERENCE,
+    "status": "RESOLVED",
+    "age_days": None,
+    "resolved_at": "2026-10-08T15:12:09.004000Z",
+    "resolved_by": "tesoreria.maria",
+    "resolution_note": "The ATM network rounds COP to whole pesos; adjusted in the partner's next settlement.",
+}
+
+DIFFERENCE_NOT_FOUND = _error("There is no difference with that id.", "Difference not found.")
+
+RECONCILIATION_DIFFERENCES = {
+    "summary": "List the reconciliation differences (RN-10)",
+    "description": (
+        "What the nightly reconciliation could not match (RN-10: same "
+        "reference, amount within 0.01, date within 1 day):\n\n"
+        "- `MISSING_IN_PARTNER` (HU-38): PagoSeguro approved it and the "
+        "partner's file does not have it. Only PagoSeguro's amount and time.\n"
+        "- `MISSING_IN_PAGOSEGURO` (HU-39): it is in the partner's file and "
+        "PagoSeguro did not approve it. Only the partner's amount, time and "
+        "reference.\n"
+        "- `AMOUNT_MISMATCH` (HU-40): same reference, more than 0.01 apart. "
+        "Both amounts and `amount_difference` = partner − PagoSeguro.\n\n"
+        "The same reference more than one day apart is missing on both "
+        "sides (team decision D4). Amounts keep their currency's decimals "
+        "(JPY: none).\n\n"
+        "Without `status`, the `PENDING` ones; `type`, `partner` and `from`/"
+        "`to` (days, inclusive, by `run_day`) narrow them. Oldest `run_day` "
+        "first, then by partner. `age_days` counts whole days from "
+        "`run_day` to today in UTC, null once resolved. Paginated with "
+        "`page` and `size` (default 50, at most 200)."
+    ),
+    "responses": {
+        200: _ok("The differences of the page, oldest day first.",
+                 {"items": [_DIFFERENCE], "total": 1, "page": 1, "size": 50}),
+        400: _error("`type`, `partner` or `status` is not a known value, a day is not valid, "
+                    "`from` is after `to`, or `page` or `size` is out of range.",
+                    "The request contains invalid data."),
+        503: DB_DOWN,
+    },
+}
+
+RECONCILIATION_AGING = {
+    "summary": "Group the pending differences by age (HU-41)",
+    "description": (
+        "The `PENDING` differences by age in days (from `run_day` to today "
+        "in UTC): `0-1`, `2-7` and `8+`. Always the three ranges, in that "
+        "order, even when one is empty, each with its count by type. "
+        "`partner` narrows it to one partner."
+    ),
+    "responses": {
+        200: _ok("The pending differences by age range.", {
+            "total": 6,
+            "ranges": [
+                {"range": "0-1", "count": 2,
+                 "by_type": {"MISSING_IN_PARTNER": 1, "MISSING_IN_PAGOSEGURO": 1, "AMOUNT_MISMATCH": 0}},
+                {"range": "2-7", "count": 3,
+                 "by_type": {"MISSING_IN_PARTNER": 2, "MISSING_IN_PAGOSEGURO": 0, "AMOUNT_MISMATCH": 1}},
+                {"range": "8+", "count": 1,
+                 "by_type": {"MISSING_IN_PARTNER": 0, "MISSING_IN_PAGOSEGURO": 1, "AMOUNT_MISMATCH": 0}},
+            ],
+        }),
+        400: _error("`partner` is not a known partner.", "The request contains invalid data."),
+        503: DB_DOWN,
+    },
+}
+
+RECONCILIATION_RESOLVE = {
+    "summary": "Resolve a reconciliation difference (HU-41)",
+    "description": (
+        "Treasury closes a difference with a note (1 to 2000 characters): it "
+        "becomes `RESOLVED` with `resolved_at`, `resolved_by` (`X-User`) and "
+        "`resolution_note`, and stops counting as pending. `RESOLVED` is "
+        "final: running the day again never reopens it, and resolving it "
+        "again is `409`.\n\n"
+        "`X-User` is required. Returns the difference."
+    ),
+    "responses": {
+        200: _ok("The resolved difference.", _RESOLVED_DIFFERENCE),
+        400: _error("`X-User` is missing, the id is not a UUID, or `note` is not 1 to 2000 characters.",
+                    "X-User must have 1 to 100 characters."),
+        404: DIFFERENCE_NOT_FOUND,
+        409: _error("The difference is RESOLVED, which is final.",
+                    "The difference is resolved; it can no longer change."),
+        503: DB_DOWN,
+    },
+}
+
+
 # --- Reconciliation runs (HU-37) --------------------------------------------
 
 _RUN = {
