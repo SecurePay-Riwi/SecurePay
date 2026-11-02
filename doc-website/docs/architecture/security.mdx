@@ -233,6 +233,7 @@ The subscription to the `regla-cambiada` topic is authorized by a permission on 
 | `ssm:GetParameter` | parameter `/pagoseguro/prod/rds/alertas` | Password of the database user `alertas`: find overdue cases, mark them as escalated and read the pending transactions approved by fallback |
 | `sns:Publish` | `tema:alertas-negocio` | Email to the supervisor and summary to compliance (with a filter by recipient) |
 | `s3:PutObject`, `s3:PutObjectRetention`, `s3:GetObject` | `pagoseguro-prod-evidencia/*` | Retry the evidence of resolved cases whose archive failed (`archive_pending()`, Sprint 4) |
+| `sns:Publish` | `tema:alarmas-operacion` | At 06:30 Bogota, warn the team when last night's reconciliation is not done (Sprint 5, HU-36) |
 
 To review the transactions approved by fallback it calls the engine over HTTPS through the load balancer; it needs no IAM permission for that.
 
@@ -262,11 +263,13 @@ It requests the full list from the list service over HTTPS (`GET /lista`), witho
 | :--- | :--- | :--- |
 | `s3:ListBucket` | bucket `pagoseguro-prod-datalake`, only the `raw/extractos/` prefix (`s3:prefix` condition) | Find the day's files |
 | `s3:GetObject` | `pagoseguro-prod-datalake/raw/extractos/*` | Read and validate the statements |
+| `s3:PutObject` | `pagoseguro-prod-datalake/curated/extractos/*` | Write the day's records and rejected rows (`records.jsonl`, `rejects.jsonl`) |
 
 **15. `rol-escribe-diferencias`** · VPC networking · own logs
 
 | Action | Resource | Purpose |
 | :--- | :--- | :--- |
+| `s3:ListBucket` | bucket `pagoseguro-prod-datalake`, only the `curated/conciliacion/` prefix | Find the files Spark wrote |
 | `s3:GetObject` | `pagoseguro-prod-datalake/curated/conciliacion/*` | Read the differences Spark found |
 | `ssm:GetParameter` | parameter `/pagoseguro/prod/rds/conciliacion` | Password of the database user `conciliacion`: store the classified differences |
 | `sns:Publish` | `tema:alertas-negocio` | Notify treasury |
@@ -276,10 +279,10 @@ It requests the full list from the list service over HTTPS (`GET /lista`), witho
 | Action | Resource | Purpose |
 | :--- | :--- | :--- |
 | `lambda:InvokeFunction` | Lambdas `lee-extractos` and `escribe-diferencias` | Steps 1 and 3 |
-| `emr-serverless:StartJobRun` | the EMR application | Step 2 |
-| `emr-serverless:GetJobRun`, `emr-serverless:CancelJobRun` | the application's job runs | Wait for the job to finish (`.sync` integration) |
-| `events:PutTargets`, `events:PutRule`, `events:DescribeRule` | rule `StepFunctionsGetEventsForEMRServerlessJobRule` | Rule that Step Functions creates to learn that the job finished |
-| `iam:PassRole` | `rol-emr-jobs`, only to `emr-serverless.amazonaws.com` | Hand the job its role |
+| `glue:StartJobRun`, `glue:GetJobRun`, `glue:GetJobRuns`, `glue:BatchStopJobRun` | the Glue job `conciliacion-cruce` | Step 2 and waiting for it (`.sync` integration). The match runs on AWS Glue: EMR is not available on AWS's free account plan (Sprint 5, HU-36) |
+| `sns:Publish` | `tema:alertas-negocio` | Step 4: e-mail treasury the day's result (`audience = treasury`) |
+
+The Glue job runs with its own role, `rol-glue-jobs` (assumed by AWS Glue): `s3:GetObject` and `s3:ListBucket` on the Data Lake, `s3:PutObject` and `s3:DeleteObject` on `curated/*`, `s3:GetObject` on the artifacts bucket's `jobs/` prefix and its logs in `/aws-glue/*`. Terraform hands it the role when it creates the job (`iam:PassRole` to `glue.amazonaws.com`); Step Functions does not.
 
 **17. `rol-emr-jobs`** (assumed by EMR Serverless)
 

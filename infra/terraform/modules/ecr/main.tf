@@ -71,3 +71,32 @@ resource "aws_ecr_repository_policy" "lambda_pull" {
   repository = aws_ecr_repository.this[each.key].name
   policy     = data.aws_iam_policy_document.lambda_pull[each.key].json
 }
+
+# EMR Serverless also pulls with its service principal, and checks the
+# image when the application is created (HU-36, the reconciliation's job).
+data "aws_iam_policy_document" "emr_pull" {
+  for_each = toset(var.emr_repositories)
+
+  statement {
+    sid     = "EmrServerlessPull"
+    actions = ["ecr:BatchGetImage", "ecr:DescribeImages", "ecr:GetDownloadUrlForLayer"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["emr-serverless.amazonaws.com"]
+    }
+
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:${data.aws_partition.current.partition}:emr-serverless:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:/applications/*"]
+    }
+  }
+}
+
+resource "aws_ecr_repository_policy" "emr_pull" {
+  for_each = toset(var.emr_repositories)
+
+  repository = aws_ecr_repository.this[each.key].name
+  policy     = data.aws_iam_policy_document.emr_pull[each.key].json
+}

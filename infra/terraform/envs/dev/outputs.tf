@@ -81,3 +81,12 @@ output "dlq_urls" {
 output "decisions_topic_arn" {
   value = module.messaging.decisions_topic_arn
 }
+
+output "reconciliation_state_machine_arn" {
+  description = "Start a day by hand: aws stepfunctions start-execution --state-machine-arn <this> --input '{\"day\": \"2026-10-05\"}'."
+  value       = module.reconciliation.state_machine_arn
+}
+
+output "spark_job_name" {
+  value = module.reconciliation.spark_job_name
+}

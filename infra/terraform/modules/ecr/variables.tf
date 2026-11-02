@@ -26,3 +26,9 @@ variable "lambda_repositories" {
   type        = list(string)
   default     = []
 }
+
+variable "emr_repositories" {
+  description = "Repositories whose images EMR Serverless applications of this account may run (custom images)."
+  type        = list(string)
+  default     = []
+}

@@ -97,6 +97,8 @@ locals {
       statements = [
         { Sid = "DatabasePassword", Effect = "Allow", Action = "ssm:GetParameter", Resource = "${local.arn.parameter}/rds/alerts" },
         { Sid = "BusinessAlerts", Effect = "Allow", Action = "sns:Publish", Resource = "${local.arn.topic}-business-alerts" },
+        # The 06:30 check warns the team when the night's reconciliation is not DONE.
+        { Sid = "ReconciliationLate", Effect = "Allow", Action = "sns:Publish", Resource = "${local.arn.topic}-ops-alarms" },
         # archive_pending() retries the evidence of resolved cases (HU-32).
         { Sid = "ArchiveEvidence", Effect = "Allow", Action = ["s3:PutObject", "s3:PutObjectRetention", "s3:GetObject"], Resource = "${local.bucket.evidence}/*" },
       ]
@@ -128,12 +130,15 @@ locals {
       statements = [
         { Sid = "FindStatements", Effect = "Allow", Action = "s3:ListBucket", Resource = local.bucket.datalake, Condition = { StringLike = { "s3:prefix" = ["raw/extractos/*"] } } },
         { Sid = "ReadStatements", Effect = "Allow", Action = "s3:GetObject", Resource = "${local.bucket.datalake}/raw/extractos/*" },
+        # ingest.run() writes records.jsonl and rejects.jsonl (HU-36).
+        { Sid = "WriteRecords", Effect = "Allow", Action = "s3:PutObject", Resource = "${local.bucket.datalake}/curated/extractos/*" },
       ]
     }
 
     difference-writer = {
       service = "lambda.amazonaws.com"
       statements = [
+        { Sid = "FindMatchFiles", Effect = "Allow", Action = "s3:ListBucket", Resource = local.bucket.datalake, Condition = { StringLike = { "s3:prefix" = ["curated/conciliacion/*"] } } },
         { Sid = "ReadDifferences", Effect = "Allow", Action = "s3:GetObject", Resource = "${local.bucket.datalake}/curated/conciliacion/*" },
         { Sid = "DatabasePassword", Effect = "Allow", Action = "ssm:GetParameter", Resource = "${local.arn.parameter}/rds/reconciliation" },
         { Sid = "NotifyTreasury", Effect = "Allow", Action = "sns:Publish", Resource = "${local.arn.topic}-business-alerts" },
@@ -144,10 +149,21 @@ locals {
       service = "states.amazonaws.com"
       statements = [
         { Sid = "InvokeSteps", Effect = "Allow", Action = "lambda:InvokeFunction", Resource = ["${local.arn.function}-statement-reader", "${local.arn.function}-difference-writer"] },
-        { Sid = "StartSparkJob", Effect = "Allow", Action = "emr-serverless:StartJobRun", Resource = local.arn.emr_app },
-        { Sid = "WaitSparkJob", Effect = "Allow", Action = ["emr-serverless:GetJobRun", "emr-serverless:CancelJobRun"], Resource = local.arn.emr_job_run },
-        { Sid = "JobFinishedRule", Effect = "Allow", Action = ["events:PutTargets", "events:PutRule", "events:DescribeRule"], Resource = "arn:${local.aws}:events:${local.region}:${local.account}:rule/StepFunctionsGetEventsForEMRServerlessJobRule" },
-        local.pass_emr_role,
+        # The match runs on AWS Glue (EMR is not on AWS's free account plan).
+        { Sid = "RunSparkJob", Effect = "Allow", Action = ["glue:StartJobRun", "glue:GetJobRun", "glue:GetJobRuns", "glue:BatchStopJobRun"], Resource = "${local.arn.glue}:job/${local.p}-reconciliation-match" },
+        # The last step e-mails treasury the day's result (audience = treasury).
+        { Sid = "NotifyTreasury", Effect = "Allow", Action = "sns:Publish", Resource = "${local.arn.topic}-business-alerts" },
+      ]
+    }
+
+    # The reconciliation's Spark job on AWS Glue (HU-36).
+    glue-jobs = {
+      service = "glue.amazonaws.com"
+      statements = [
+        { Sid = "ReadDataLake", Effect = "Allow", Action = ["s3:GetObject", "s3:ListBucket"], Resource = [local.bucket.datalake, "${local.bucket.datalake}/*"] },
+        { Sid = "WriteCurated", Effect = "Allow", Action = ["s3:PutObject", "s3:DeleteObject"], Resource = "${local.bucket.datalake}/curated/*" },
+        { Sid = "ReadJobCode", Effect = "Allow", Action = "s3:GetObject", Resource = "${local.bucket.artifacts}/jobs/*" },
+        { Sid = "JobLogs", Effect = "Allow", Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"], Resource = "${local.arn.log_group}/aws-glue/*" },
       ]
     }
 
