@@ -144,9 +144,9 @@ Cases, most overdue first:
 Details: GET /cases?status=ESCALATED on the cases API.
 ```
 
-To see it locally in a few minutes, set `CASE_DUE_MINUTES=2` and `ALERTS_INTERVAL_SECONDS=30` in `.env`. The alerts Lambda, its EventBridge rule and the supervisor's e-mail subscription in AWS come in Sprint 5 with the consumers as Lambdas; a CloudWatch alarm on repeated escalation failures goes with them (today a failing SNS only leaves an error in the log every run).
+The times are always in UTC, even if the database uses another time zone. The limit in the text comes from `CASE_DUE_MINUTES` ("4 hours" with 240, "2 minutes" with 2). To see it locally in a few minutes, set `CASE_DUE_MINUTES=2` and `ALERTS_INTERVAL_SECONDS=30` in `.env`. The alerts Lambda, its EventBridge rule and the supervisor's e-mail subscription in AWS come in Sprint 5 with the consumers as Lambdas; a CloudWatch alarm on repeated escalation failures goes with them (today a failing SNS only leaves an error in the log every run).
 
-**Tests:** `services/alerts/tests/test_escalation.py` (PostgreSQL and a fake SNS: overdue, not yet due, resolved in time, twice, already escalated, SNS down, the 100 limit, the summary text, and against LocalStack that only the supervisor queue gets it).
+**Tests:** `services/alerts/tests/test_escalation.py` (PostgreSQL and a fake SNS: overdue, not yet due, resolved in time, twice, already escalated, SNS down, the 100 limit, the summary text, the limit in the text, and against LocalStack that only the supervisor queue gets it).
 
 ## Evidence
 

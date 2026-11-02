@@ -19,13 +19,20 @@ moves again.
 """
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from services.alerts import notify
-from shared.cases import SYSTEM_ACTOR, Case, CaseEvent, CaseEventType, CaseStatus
+from shared.cases import (
+    CASE_DUE_MINUTES,
+    SYSTEM_ACTOR,
+    Case,
+    CaseEvent,
+    CaseEventType,
+    CaseStatus,
+)
 
 log = logging.getLogger(__name__)
 
@@ -35,9 +42,24 @@ AUDIENCE = "supervisor"
 BATCH_SIZE = 100
 
 
+def limit_text(minutes: int = CASE_DUE_MINUTES) -> str:
+    """The time limit as the e-mail says it: 240 -> "4 hours", and a demo
+    with CASE_DUE_MINUTES=2 -> "2 minutes"."""
+    if minutes % 60:
+        return f"{minutes} minute" + ("" if minutes == 1 else "s")
+    hours = minutes // 60
+    return f"{hours} hour" + ("" if hours == 1 else "s")
+
+
 def subject(count: int) -> str:
     noun = "case" if count == 1 else "cases"
-    return f"{count} {noun} escalated (open over 4 hours)"
+    return f"{count} {noun} escalated (open over {limit_text()})"
+
+
+def _utc(moment: datetime) -> datetime:
+    """PostgreSQL returns timestamptz in the session's time zone (a local
+    database may use America/Bogota); the e-mail and the event say UTC."""
+    return moment.astimezone(UTC)
 
 
 def _ago(due_at: datetime, now: datetime) -> str:
@@ -50,9 +72,9 @@ def body(cases: list[Case], now: datetime) -> str:
     """Plain text: the totals first, then one line per case, the most
     overdue first (``cases`` comes in that order)."""
     unassigned = sum(1 for case in cases if not case.assignee)
-    oldest = cases[0].due_at
+    oldest = _utc(cases[0].due_at)
     lines = [
-        f"Cases open for more than 4 hours: {len(cases)}. Escalated to the supervisor.",
+        f"Cases open for more than {limit_text()}: {len(cases)}. Escalated to the supervisor.",
         f"Unassigned: {unassigned}",
         f"Most overdue: due at {oldest:%Y-%m-%d %H:%M} UTC ({_ago(oldest, now)})",
         "",
@@ -61,7 +83,7 @@ def body(cases: list[Case], now: datetime) -> str:
     for case in cases:
         rules = ", ".join(case.rules_triggered) or "-"
         lines.append(
-            f"- {case.id}  due {case.due_at:%Y-%m-%d %H:%M} UTC  "
+            f"- {case.id}  due {_utc(case.due_at):%Y-%m-%d %H:%M} UTC  "
             f"rules: {rules}  assignee: {case.assignee or '(none)'}"
         )
     lines += ["", "Details: GET /cases?status=ESCALATED on the cases API."]
@@ -92,7 +114,7 @@ def escalate_overdue(session: Session, now: datetime) -> int:
             type=CaseEventType.ESCALATED.value,
             actor=SYSTEM_ACTOR,
             at=now,
-            data={"due_at": case.due_at.isoformat()},
+            data={"due_at": _utc(case.due_at).isoformat()},
         ))
     session.flush()
 

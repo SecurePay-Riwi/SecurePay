@@ -265,3 +265,12 @@ def test_against_localstack_only_the_supervisor_gets_it(sessions, monkeypatch):
         for url, subscription in (supervisor, compliance):
             sns.unsubscribe(SubscriptionArn=subscription)
             sqs.delete_queue(QueueUrl=url)
+
+
+@pytest.mark.parametrize(
+    ("minutes", "text"),
+    [(240, "4 hours"), (60, "1 hour"), (2, "2 minutes"), (1, "1 minute"), (90, "90 minutes")],
+)
+def test_the_e_mail_says_the_configured_limit(minutes, text):
+    """CASE_DUE_MINUTES=2 in a demo says "2 minutes", not "4 hours"."""
+    assert escalation.limit_text(minutes) == text

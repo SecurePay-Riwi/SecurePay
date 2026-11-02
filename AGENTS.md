@@ -236,7 +236,9 @@ Read this before touching `shared/cases.py`, `services/cases_api/`,
   and publishes ONE summary with `audience = "supervisor"` BEFORE the
   commit (contract v2, 2026-11-01): SNS down → rollback, the cases stay
   `OPEN` for the next run. Its tests: `test_escalation.py`. Locally,
-  `CASE_DUE_MINUTES=2` shows it in minutes.
+  `CASE_DUE_MINUTES=2` shows it in minutes (the text says the limit with
+  `limit_text()`). Times in the summary and the event go through `_utc()`:
+  PostgreSQL returns `timestamptz` in the session's time zone.
 - **`services/alerts/notify.py`** is the only SNS code of the alerts jobs:
   `TOPIC` (`BUSINESS_ALERTS_TOPIC`), `topic_arn()` and
   `publish(subject, body, audience)`. `escalation.py` and
