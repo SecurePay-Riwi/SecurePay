@@ -3,10 +3,11 @@
 Contract C2: reconcile() reads the records of a day and the decisions of
 the window day-1..day+1, and writes one MatchRow per reference.
 
-Step 0 leaves a reference version in plain Python (match_day()), without
-Spark, so the other steps and their tests have a match to work with. HU-37
-moves reconcile() to PySpark (local mode in tests, EMR Serverless in AWS)
-and keeps match_day() as the reference its tests compare against.
+reconcile() runs in PySpark (HU-37): local[*] in the tests and Compose,
+the cluster's session on EMR Serverless (spark-submit runs main()).
+match_day() is the same match in plain Python: the reference the Spark
+tests compare against. pyspark is imported inside the Spark functions,
+so importing this module does not need it (the Docker image has none).
 
 The rules (RN-10, D3, D4):
 - PagoSeguro side: APPROVE decisions that are not P2P, once per
@@ -33,13 +34,13 @@ from services.reconciliation import storage
 from shared.reconciliation import (
     AMOUNT_TOLERANCE,
     DATE_TOLERANCE_DAYS,
+    PARTNER_UTC_OFFSET,
     MatchRow,
     MatchStatus,
     StatementRecord,
     partner_day,
     partner_for,
     record_from_json,
-    to_json,
 )
 
 log = logging.getLogger(__name__)
@@ -151,6 +152,165 @@ def read_decisions(decisions_path: str, day: date) -> list[dict]:
     return events
 
 
+# --- Spark (HU-37) -----------------------------------------------------------
+
+APP_NAME = "securepay-reconciliation-match"
+_ONE_DAY_SECONDS = DATE_TOLERANCE_DAYS * 24 * 3600
+
+# The keys of a MatchRow, in to_json() order (the keys Spark writes).
+MATCH_COLUMNS = ("run_day", "partner", "status", "reference", "partner_reference", "currency",
+                 "pagoseguro_amount", "partner_amount", "pagoseguro_at", "partner_at")
+
+
+def session():
+    """The Spark session of the match: the cluster's under spark-submit
+    (EMR Serverless), local[*] otherwise. Times are compared in UTC."""
+    from pyspark.sql import SparkSession
+
+    return (SparkSession.builder.appName(APP_NAME)
+            .config("spark.sql.session.timeZone", "UTC")
+            .getOrCreate())
+
+
+def _spark_reads(spark, path: str) -> bool:
+    """Whether Spark reads and writes `path` itself: always a local folder,
+    s3:// only on a cluster (EMR reads S3; local mode has no S3 driver,
+    so with LocalStack the files go through storage.py)."""
+    return not storage.is_s3(path) or not spark.sparkContext.master.startswith("local")
+
+
+def _lines(spark, paths: list[str]):
+    """A DataFrame with one `value` per JSON line of the files, in order."""
+    from pyspark.sql import Row
+
+    if not paths:
+        return spark.createDataFrame([], "value string")
+    if all(_spark_reads(spark, p) for p in paths):
+        return spark.read.text(paths)
+    rows = [Row(value=line) for p in paths for line in storage.read_text(p).splitlines()]
+    return spark.createDataFrame(rows, "value string")
+
+
+def _utc_text(ts):
+    """A timestamp as to_json() writes it: ISO 8601 in UTC, microseconds
+    only when they are not zero (datetime.isoformat())."""
+    from pyspark.sql import functions as F
+
+    micros = F.date_format(ts, "SSSSSS")
+    return F.when(ts.isNull(), F.lit(None)).otherwise(F.concat(
+        F.date_format(ts, "yyyy-MM-dd'T'HH:mm:ss"),
+        F.when(micros == "000000", F.lit("")).otherwise(F.concat(F.lit("."), micros)),
+        F.lit("+00:00"),
+    ))
+
+
+def partner_column(tx_type, channel):
+    """partner_for() as a Spark column (null when no partner sees it);
+    test_match checks that both agree."""
+    from pyspark.sql import functions as F
+
+    return (F.when((tx_type == "RECARGA") & channel.isin("APP", "WEB"), "banco_andino")
+            .when(tx_type.isin("RECARGA", "RETIRO") & (channel == "CORRESPONSAL"), "red_corresponsales")
+            .when((tx_type == "RETIRO") & (channel == "CAJERO"), "cajeros_express")
+            .when(tx_type == "QR", "qr_pagos"))
+
+
+def _offset_hours(partner):
+    from pyspark.sql import functions as F
+
+    pairs = [item for name, hours in PARTNER_UTC_OFFSET.items() for item in (F.lit(name), F.lit(hours))]
+    return F.create_map(*pairs)[partner]
+
+
+EVENT_SCHEMA = ("transaction struct<id string, type string, channel string, amount string, "
+                "currency string, transaction_date string>, decision struct<decision string>")
+RECORD_SCHEMA = ("partner string, pagoseguro_reference string, partner_reference string, "
+                 "currency string, amount string, transaction_at string")
+
+
+def spark_pagoseguro_side(spark, decisions_path: str, day: date):
+    """pagoseguro_side() in Spark: one row per approved transaction a
+    partner sees, with its partner_day."""
+    from pyspark.sql import functions as F
+
+    paths = [f for d in window(day)
+             for f in storage.list_files(storage.join(decisions_path, f"fecha={d.isoformat()}"), "*.jsonl")]
+    events = _lines(spark, paths).select(F.from_json("value", EVENT_SCHEMA).alias("e")).select("e.*")
+    tx = F.col("transaction")
+    at = F.to_timestamp(tx["transaction_date"])
+    ours = (events
+            .where((F.col("decision.decision") == "APPROVE") & ~tx["type"].isin(*INTERNAL_TYPES))
+            .select(tx["id"].alias("reference"),
+                    partner_column(tx["type"], tx["channel"]).alias("our_partner"),
+                    tx["currency"].alias("our_currency"),
+                    tx["amount"].alias("pagoseguro_amount"),
+                    at.alias("our_at"))
+            .where(F.col("our_partner").isNotNull())
+            .dropDuplicates(["reference"]))
+    local_time = F.col("our_at") + F.make_interval(hours=_offset_hours(F.col("our_partner")))
+    return ours.withColumn("our_day", F.to_date(local_time))
+
+
+def spark_records(spark, records_path: str):
+    """The partners' records of the day, the first line of a repeated
+    reference only (like match_day)."""
+    from pyspark.sql import Window
+    from pyspark.sql import functions as F
+
+    records = (_lines(spark, [records_path])
+               .withColumn("_order", F.monotonically_increasing_id())
+               .select("_order", F.from_json("value", RECORD_SCHEMA).alias("r")).select("_order", "r.*"))
+    first = Window.partitionBy("pagoseguro_reference").orderBy("_order")
+    return (records.withColumn("_n", F.row_number().over(first)).where(F.col("_n") == 1)
+            .select(F.col("pagoseguro_reference").alias("reference"), "partner", "partner_reference",
+                    "currency", F.col("amount").alias("partner_amount"),
+                    F.to_timestamp("transaction_at").alias("partner_ts")))
+
+
+def spark_match(spark, day: date, records_path: str, decisions_path: str):
+    """match_day() in Spark: a DataFrame with the MATCH_COLUMNS (strings,
+    as to_json() writes them), sorted by partner and reference."""
+    from pyspark.sql import functions as F
+
+    ours = spark_pagoseguro_side(spark, decisions_path, day)
+    records = spark_records(spark, records_path)
+    decimal = "decimal(38,10)"
+    seconds_apart = F.abs(F.col("partner_ts").cast("double") - F.col("our_at").cast("double"))
+    amount_apart = F.abs(F.col("partner_amount").cast(decimal) - F.col("pagoseguro_amount").cast(decimal))
+    status = (F.when(F.col("our_at").isNull(), MatchStatus.ONLY_PARTNER.value)
+              .when(seconds_apart > _ONE_DAY_SECONDS, MatchStatus.DATE_OFF.value)
+              .when(amount_apart > F.lit(str(AMOUNT_TOLERANCE)).cast(decimal), MatchStatus.AMOUNT_OFF.value)
+              .otherwise(MatchStatus.MATCHED.value))
+    in_file = records.join(ours, "reference", "left").select(
+        "reference", "partner", status.alias("status"), "partner_reference", "currency",
+        "pagoseguro_amount", "partner_amount", F.col("our_at"), F.col("partner_ts"))
+    only_ours = (ours.where(F.col("our_day") == F.lit(day.isoformat()).cast("date"))
+                 .join(records.select("reference"), "reference", "left_anti")
+                 .select("reference", F.col("our_partner").alias("partner"),
+                         F.lit(MatchStatus.ONLY_PAGOSEGURO.value).alias("status"),
+                         F.lit(None).cast("string").alias("partner_reference"),
+                         F.col("our_currency").alias("currency"), "pagoseguro_amount",
+                         F.lit(None).cast("string").alias("partner_amount"),
+                         F.col("our_at"), F.lit(None).cast("timestamp").alias("partner_ts")))
+    return (in_file.unionByName(only_ours)
+            .select(F.lit(day.isoformat()).alias("run_day"), "partner", "status", "reference",
+                    "partner_reference", "currency", "pagoseguro_amount", "partner_amount",
+                    _utc_text(F.col("our_at")).alias("pagoseguro_at"),
+                    _utc_text(F.col("partner_ts")).alias("partner_at"))
+            .orderBy("partner", "reference"))
+
+
+def write_rows(spark, rows, output_path: str) -> None:
+    """The MatchRows as JSON lines, part-*.json under output_path (replaced
+    if the day runs again). Nulls are written, as to_json() does."""
+    if _spark_reads(spark, output_path):
+        (rows.coalesce(1).write.mode("overwrite")
+         .option("ignoreNullFields", "false").json(output_path))
+        return
+    storage.write_jsonl(storage.join(output_path, "part-00000.json"),
+                        [r.asDict() for r in rows.collect()])
+
+
 def reconcile(spark, day: date, records_path: str, decisions_path: str, output_path: str) -> dict:
     """PagoSeguro side: events of raw/decisiones fecha=day-1..day+1, decision
     APPROVE, type != P2P, deduplicated by transaction id, partner_for() and
@@ -162,12 +322,22 @@ def reconcile(spark, day: date, records_path: str, decisions_path: str, output_p
     output_path (curated/conciliacion/fecha=<day>/). Returns {"day",
     "match_path", "matched", "unmatched"}.
 
-    Step 0: `spark` is not used yet; match_day() does the work (HU-37)."""
-    rows = match_day(day, read_records(records_path), read_decisions(decisions_path, day))
-    storage.write_jsonl(storage.join(output_path, "part-00000.json"), [to_json(r) for r in rows])
-    matched = sum(1 for r in rows if r.status == MatchStatus.MATCHED.value)
+    `spark` None: session() (local[*], or the cluster's under spark-submit)."""
+    from pyspark.sql import functions as F
+
+    spark = spark or session()
+    rows = spark_match(spark, day, records_path, decisions_path).cache()
+    try:
+        write_rows(spark, rows, output_path)
+        counts = rows.groupBy().agg(
+            F.count(F.lit(1)).alias("total"),
+            F.sum(F.when(F.col("status") == MatchStatus.MATCHED.value, 1).otherwise(0)).alias("matched"),
+        ).first()
+    finally:
+        rows.unpersist()
+    matched = int(counts["matched"] or 0)
     return {"day": day.isoformat(), "match_path": output_path,
-            "matched": matched, "unmatched": len(rows) - matched}
+            "matched": matched, "unmatched": int(counts["total"]) - matched}
 
 
 def main(argv=None) -> None:  # spark-submit / EMR Serverless entry point
