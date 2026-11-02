@@ -95,7 +95,8 @@ levanta por separado:
 | Subir los CSV de Kaggle al Data Lake | `uv run python -m securepay_csv.kaggle_datasets` (en `securepay-csv`) | LocalStack (y el token de Kaggle si faltan los CSV); no usa PostgreSQL | 8c |
 | Generar transacciones de prueba | `uv run python -m securepay_generator` (en `securepay-generator`) | Seed hecho | 9 |
 | Correr las pruebas | `uv run pytest` | Seed hecho; Valkey y LocalStack para algunas | 10 |
-| Levantar el motor de decisión | `uv run uvicorn services.decision_engine.main:app --reload` | PostgreSQL y Valkey (y LocalStack para publicar) | 11 |
+| Cargar la caché del motor (cuentas, comercios, lista restrictiva) | `uv run python -m services.cache_loader` | Seed hecho y Valkey | 11 |
+| Levantar el motor de decisión | `uv run uvicorn services.decision_engine.main:app --reload` | Valkey con la caché cargada (y LocalStack para publicar); no usa PostgreSQL | 11 |
 | Levantar los consumidores | `uv run python -m services.consumers` | LocalStack | 11b |
 | Generar los extractos de los socios | `uv run python -m securepay_csv.partner_statements` (en `securepay-csv`) | Salida del generador (paso 9 o 12) | 13 |
 | Conciliar un día con los socios | `uv run python -m services.reconciliation --day 2026-10-05` | PostgreSQL; los extractos (paso 13) y las decisiones en LocalStack | 13b |
@@ -353,7 +354,7 @@ Con la semilla 42 y los valores de `.env.example`, debería terminar en
 ### Paso 10 --- Ejecutar las pruebas
 
 Requiere haber ejecutado el seed, porque las pruebas de la API leen
-cuentas y comercios de la base, y tener Valkey y LocalStack encendidos
+cuentas y comercios de la base (y las del motor las cargan antes en la caché, como el `cache-loader`), y tener Valkey y LocalStack encendidos
 (paso 5). Si Valkey está apagado, las pruebas de idempotencia y de
 velocidad salen como omitidas (`s`) y las de la API fallan con 503. Si
 LocalStack está apagado, las dos pruebas de punta a punta de la
@@ -377,9 +378,17 @@ PostgreSQL: el proyecto instala **Psycopg 3** (`psycopg[binary]`) y
 
 ### Paso 11 --- Levantar la API
 
+El motor lee las cuentas, los comercios y la lista restrictiva de Valkey,
+no de PostgreSQL (HU-67). Primero se cargan en la caché desde el seed
+(cada vez que Valkey se reinicia, porque no guarda nada):
+
 ``` bash
+uv run python -m services.cache_loader
 uv run uvicorn services.decision_engine.main:app --reload
 ```
+
+Sin la caché cargada el motor responde igual, con la decisión por defecto
+de RN-01 (`by_default: true`) y `HOLD` si falta la lista restrictiva.
 
 En otra terminal, la API de reglas (necesita PostgreSQL y Valkey; crea
 sus tablas al arrancar y publica el catálogo en Valkey):
@@ -399,7 +408,7 @@ uv run python -m services.alerts
 La API queda en http://localhost:8000 y la documentación interactiva
 en http://localhost:8000/docs.
 
-Necesita PostgreSQL y Valkey encendidos. Sin Valkey, `POST /transactions`
+El motor necesita Valkey encendido. Sin Valkey, `POST /transactions`
 responde 503 ("El servicio de idempotencia no está disponible").
 
 `POST /security-events` stores device and password changes for the

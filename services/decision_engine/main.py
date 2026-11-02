@@ -1,14 +1,10 @@
 
 import logging
-from collections.abc import Generator
 from contextlib import asynccontextmanager
 
 import valkey
-from fastapi import Body, Depends, FastAPI, HTTPException
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
+from fastapi import Body, FastAPI, HTTPException
 
-from shared.db import get_session
 from services.decision_engine.docs.app import APP
 from services.decision_engine.docs.health import HEALTH
 from services.decision_engine.docs.security import (
@@ -24,7 +20,6 @@ from services.decision_engine.schemas import (
     TransactionResponse,
 )
 from services.decision_engine.decision_service import (
-    LATE_SESSION,
     InvalidReference,
     process_transaction,
 )
@@ -78,17 +73,6 @@ async def validation_exception_handler(
         },
     )
 
-def get_db() -> Generator[Session, None, None]:
-    session = get_session()
-    try:
-        yield session
-    finally:
-        # A decision that timed out still uses the session in the
-        # background and closes it itself when it ends.
-        if not session.info.get(LATE_SESSION):
-            session.close()
-
-
 @app.get("/health", response_model=HealthResponse, **HEALTH)
 def health_check():
     # La mensajería no cambia el "ok": si SNS falla, el motor sigue
@@ -99,10 +83,11 @@ def health_check():
 @app.post("/transactions", response_model=TransactionResponse, **EVALUATE)
 def evaluate_transaction(
     payload: TransactionRequest = Body(openapi_examples=REQUEST_EXAMPLES),
-    session: Session = Depends(get_db),
 ):
+    # The engine reads accounts, merchants and the restricted list from
+    # the cache (HU-67): it has no database session.
     try:
-        resultado, replay = process_transaction(session, payload)
+        resultado, replay = process_transaction(payload)
 
         return TransactionResponse(**resultado, idempotent_replay=replay)
 
@@ -128,13 +113,6 @@ def evaluate_transaction(
         raise HTTPException(
             status_code=503,
             detail="El servicio de idempotencia no está disponible.",
-        ) from exc
-
-    except SQLAlchemyError as exc:
-        session.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail="Error interno al procesar la transacción.",
         ) from exc
 
 

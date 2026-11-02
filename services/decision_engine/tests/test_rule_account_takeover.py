@@ -62,7 +62,6 @@ def context(events, amount="250.00", currency_="USD", type_="RETIRO"):
     payload = TransactionRequest.model_validate(body)
     ctx = RuleContext(
         payload=payload,
-        session=None,
         t_ms=history.to_ms(T),
         amount_usd=currency.to_usd(payload.amount, payload.currency),
     )

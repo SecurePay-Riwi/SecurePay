@@ -58,14 +58,13 @@ def _context(transfers: int, on_list: bool = False) -> RuleContext:
     )
     ctx = RuleContext(
         payload=payload,
-        session=None,
         t_ms=to_ms(times[-1]),
         amount_usd=Decimal("10.00"),
         outgoing=[
             Outgoing(str(i), "P2P", "10.00", to_ms(t)) for i, t in enumerate(times)
         ],
     )
-    ctx.on_restricted_list = on_list  # skips the PostgreSQL query
+    ctx.on_restricted_list = on_list  # skips the cache read
     return ctx
 
 

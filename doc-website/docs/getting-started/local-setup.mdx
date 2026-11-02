@@ -140,7 +140,7 @@ docker compose up --build -d
 docker compose ps
 ```
 
-Compose builds and coordinates PostgreSQL, Valkey, LocalStack, the seed, decision engine, restricted-list API, consumers, transaction generator and partner statements. The seed and generator are one-shot jobs. The seed uses `SEED_RESET=true`, so this setup regenerates development data and must not be run against data you need to preserve.
+Compose builds and coordinates PostgreSQL, Valkey, LocalStack, the seed, the cache loader, decision engine, restricted-list API, consumers, transaction generator and partner statements. The seed, the cache loader and the generator are one-shot jobs: the cache loader copies accounts, merchants and the restricted list into Valkey after the seed, and the engine starts after it (it never reads PostgreSQL). Valkey keeps nothing when it restarts: run `docker compose up cache-loader` again, or the engine answers with default decisions. The seed uses `SEED_RESET=true`, so this setup regenerates development data and must not be run against data you need to preserve.
 
 - Decision engine: http://localhost:8000/health
 - Restricted-list API: http://localhost:8001/health

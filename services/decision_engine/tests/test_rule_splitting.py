@@ -61,7 +61,6 @@ def _context(*movements, currency="USD") -> RuleContext:
     outgoing.sort(key=lambda o: o.t)
     return RuleContext(
         payload=payload,
-        session=None,
         t_ms=to_ms(BASE),
         amount_usd=to_usd(payload.amount, currency),
         outgoing=outgoing,

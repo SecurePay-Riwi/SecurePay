@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ErrorResponse(BaseModel):
-    """Error body for 409, 422, 500 and 503."""
+    """Error body for 409, 422 and 503."""
 
     detail: str = Field(description="What went wrong.")
 

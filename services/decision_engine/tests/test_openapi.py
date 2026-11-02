@@ -22,7 +22,7 @@ def _post_transactions() -> dict:
 def test_every_status_code_the_engine_returns_is_documented():
     # 400 instead of FastAPI's default 422 for an invalid body.
     assert sorted(_post_transactions()["responses"]) == [
-        "200", "400", "409", "422", "500", "503",
+        "200", "400", "409", "422", "503",
     ]
 
 

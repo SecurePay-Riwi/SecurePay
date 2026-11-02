@@ -33,13 +33,15 @@ SecurePay/                  ← this repo: the product (engine, consumers, infra
 │   ├── rule_catalog.py     ← rule catalog models and defaults (used only by services/)
 │   ├── cases.py            ← case tables, states and create_schema() (used only by services/)
 │   ├── evidence.py         ← case evidence archive, archive() (used only by services/)
-│   └── reconciliation.py   ← reconciliation records, tables and create_schema() (used only by services/)
+│   ├── reconciliation.py   ← reconciliation records, tables and create_schema() (used only by services/)
+│   └── refdata.py          ← cache keys of accounts, merchants and the restricted list (used only by services/)
 ├── services/
 │   ├── decision_engine/    ← FastAPI antifraud engine (rules in rules/, catalog in catalog.py)
 │   ├── rules_api/           ← FastAPI rules management and catalog versioning
 │   ├── cases_api/          ← FastAPI cases API for analysts (port 8003, Sprint 4)
 │   ├── alerts/             ← alerts task: escalation, compliance summary, history purge
 │   ├── reconciliation/     ← nightly reconciliation: ingest, match (Spark), store (Sprint 5)
+│   ├── cache_loader/       ← loads accounts, merchants and the restricted list into Valkey (HU-67)
 │   └── consumers/          ← SNS/SQS consumers and analytics
 ├── tests/                  ← end-to-end tests that run more than one service
 │                             (test_rule_catalog_e2e.py: rules API + engine)
@@ -80,7 +82,7 @@ files, never imports: each one finds the others' output in `../securepay-<repo>/
 dependencies = ["securepay-shared>=0.1.0"]
 ```
 
-`cache.py`, `events.py`, `rule_catalog.py`, `cases.py`, `evidence.py` and `reconciliation.py` are **not** part of the published package — they are only
+`cache.py`, `events.py`, `rule_catalog.py`, `cases.py`, `evidence.py`, `reconciliation.py` and `refdata.py` are **not** part of the published package — they are only
 used by `services/` and stay in this repo.
 
 ---
@@ -406,6 +408,26 @@ Read this before touching `shared/reconciliation.py`,
 
 Read this before adding or changing a rule in `services/decision_engine/`.
 
+- **The engine never reads PostgreSQL** (HU-67, contract C5). Accounts,
+  merchants and the restricted list come from Valkey through
+  `reference_data.py`: `get_account()` (`acct:<id>` hash: `currency`,
+  `user_id`, `document` digits only, `status`), `merchant_exists()`
+  (`merch:<id>`) and `on_restricted_list()` (`{restricted}:docs`, `None`
+  when `{restricted}:loaded_at` is missing); a Valkey error is
+  `CacheUnavailable`. Key names live in `shared/refdata.py`.
+  `services/cache_loader/` (`python -m services.cache_loader`, or
+  `handler()` as a daily Lambda) writes them from PostgreSQL: hashes with
+  a pipeline without transaction and `REFDATA_TTL_HOURS` (48) renewed by
+  every load, the list into `{restricted}:docs:next` and `RENAME` over
+  `{restricted}:docs`. D2: an account or merchant missing in the cache,
+  or `CacheUnavailable`, gets RN-01's default decision (`by_default`);
+  the list not loaded with its rule enabled → `HOLD` whatever the
+  amount; `422` only for a currency that is not the account's. The
+  engine's tests load the cache from the seed once per run
+  (`tests/conftest.py`); `test_reference_data.py` checks that the engine
+  does not import `shared.db`. No session reaches `_decide()` or
+  `RuleContext`.
+
 - **Rules are configured by the catalog, not by code or variables**
   (RF-03, RN-08, CA-06). `shared/rule_catalog.py` holds the models
   (`RuleEntry`, `CatalogSnapshot`, one `*Params` model per rule type) and
@@ -604,6 +626,7 @@ Read these before changing the design, not to work on the code:
 - Use service hostnames inside containers (postgres, valkey, localstack, decision-engine); localhost inside a container is not another service.
 - Which PostgreSQL: the containers always use Compose's (`postgres:5432` inside the network). What runs on your machine with `uv run` (pytest, the seed) uses `DATABASE_URL` from `.env`: port 5432 for an installed PostgreSQL (the `.env.example` default) or 5433 for Compose's. With both installed, pytest talks to the one in `DATABASE_URL`, not to the one the stack writes to.
 - The cases API (`cases-api`, port 8003), the `consumers` and the `alerts` task create the case tables at startup; all three need `DATABASE_URL`.
+- `cache-loader` runs once after the seed and fills Valkey with accounts, merchants and the restricted list; the `decision-engine` waits for it and has no `DATABASE_URL`. Valkey has no persistence: after restarting it, run `docker compose up cache-loader` again (or `uv run python -m services.cache_loader`).
 - Tests that need "PostgreSQL down" use `shared/tests/isolated_db.down_sessions()` (it sets `connect_timeout`; on Windows port 1 waits forever without it). Tests against LocalStack create queues of their own subscribed to the topic: the Compose `consumers` container reads the real ones.
 - Never commit .env, tokens, generated files or downloaded Kaggle datasets.
 - The seed service uses SEED_RESET=true; do not run the stack against data that must be preserved.
