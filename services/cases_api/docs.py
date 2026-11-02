@@ -429,3 +429,37 @@ RESOLVE = {
         503: DB_DOWN,
     },
 }
+
+
+# --- Reconciliation runs (HU-37) --------------------------------------------
+
+_RUN = {
+    "run_day": "2026-10-05",
+    "status": "DONE",
+    "started_at": "2026-10-06T07:00:02.118000Z",
+    "finished_at": "2026-10-06T07:04:41.530000Z",
+    "files_read": 4,
+    "records_read": 11,
+    "rows_rejected": 2,
+    "matched": 8,
+    "differences": 6,
+    "error": None,
+}
+
+RECONCILIATION_RUNS = {
+    "summary": "List the reconciliation runs of a period (RN-10)",
+    "description": (
+        "One run per partners' day: the nightly reconciliation reads the "
+        "four partners' files, matches them with the approved transactions "
+        "by reference, amount (±0.01) and date (±1 day) and stores the "
+        "differences. A day run again updates its run.\n\n"
+        "Oldest day first. `from` and `to` are days (`YYYY-MM-DD`), both "
+        "inclusive, by `run_day`; without them, every run. A FAILED run "
+        "says the step and its error in `error`."
+    ),
+    "responses": {
+        200: _ok("The runs of the period, oldest day first.", {"items": [_RUN], "total": 1}),
+        400: _error("A day is not valid, or `from` is after `to`.", "The request contains invalid data."),
+        503: DB_DOWN,
+    },
+}
