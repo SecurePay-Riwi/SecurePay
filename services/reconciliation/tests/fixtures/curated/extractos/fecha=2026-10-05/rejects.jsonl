@@ -1,0 +1,2 @@
+{"partner": "cajeros_express", "file_name": "cajeros_express_20261005_v1.csv", "line_number": 4, "raw": "05/10/2026;17:15:00;CX000000004;fa390576-c755-5630-8066-20308be5dbf4;USD;N/A", "reason": "amount is not a number"}
+{"partner": "cajeros_express", "file_name": "cajeros_express_20261005_v1.csv", "line_number": 6, "raw": "CONTROL;4;124627,00", "reason": "control record does not add up: declares 4 records and total 124627.00"}
