@@ -14,7 +14,8 @@ window fires too, and each one opens its own case (one per transaction,
 HU-25); the analyst sees them together through the account.
 
 Amounts in the history are in the account's currency; each one is
-converted to USD (fixed 2026-10-01 rates until HU-42). By default the
+converted to USD at the rate of the day of the transaction being
+decided (HU-42), the same rate as its own amount_usd. By default the
 rule approves and opens a compliance case (score 40): RN-05 asks for a
 case, not for holding the money.
 
@@ -35,7 +36,7 @@ if history.OUT_HOURS < 24:
     raise ValueError("HISTORY_OUT_HOURS must cover the longest splitting window (24 h).")
 
 
-def below_limit(outgoing, tx_currency: str, t: int, window_hours: int,
+def below_limit(outgoing, rate: currency.Rate, t: int, window_hours: int,
                 limit_usd: Decimal) -> dict[str, Decimal]:
     """Amount in USD of each outgoing transaction below the limit in the
     `window_hours` hours up to t, by id. Those recorded with a later
@@ -44,7 +45,7 @@ def below_limit(outgoing, tx_currency: str, t: int, window_hours: int,
     amounts = {}
     for o in outgoing:
         if t - window < o.t <= t:
-            amount = currency.to_usd(Decimal(o.amount), tx_currency)
+            amount = currency.convert(Decimal(o.amount), rate)
             if amount < limit_usd:
                 amounts[o.id] = amount
     return amounts
@@ -52,7 +53,7 @@ def below_limit(outgoing, tx_currency: str, t: int, window_hours: int,
 
 def evaluate(ctx: RuleContext, rule: RuleEntry) -> TriggeredRule | None:
     p: SplittingParams = rule.typed_params()
-    amounts = below_limit(ctx.outgoing, ctx.payload.currency, ctx.t_ms,
+    amounts = below_limit(ctx.outgoing, ctx.rate, ctx.t_ms,
                           p.window_hours, p.daily_limit_usd)
 
     if str(ctx.payload.id) not in amounts:

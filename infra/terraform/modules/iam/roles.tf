@@ -21,7 +21,7 @@ locals {
       statements = [
         { Sid = "PublishDecisions", Effect = "Allow", Action = "sns:Publish", Resource = "${local.arn.topic}-decisions" },
         { Sid = "CacheWithIam", Effect = "Allow", Action = "elasticache:Connect", Resource = [local.arn.cache, "${local.arn.cache_user}-engine"] },
-        { Sid = "ReadExchangeRate", Effect = "Allow", Action = "dynamodb:GetItem", Resource = "${local.arn.table}-exchange-rates" },
+        { Sid = "ReadExchangeRates", Effect = "Allow", Action = "dynamodb:Query", Resource = "${local.arn.table}-exchange-rates" },
         { Sid = "SendTraces", Effect = "Allow", Action = ["xray:PutTraceSegments", "xray:PutTelemetryRecords", "xray:GetSamplingRules", "xray:GetSamplingTargets"], Resource = "*" }, # X-Ray does not scope by resource
       ]
     }

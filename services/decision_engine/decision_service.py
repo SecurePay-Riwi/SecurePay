@@ -167,11 +167,13 @@ def _decide(payload: TransactionRequest, snapshot: CatalogSnapshot) -> dict:
         payload.transaction_date,
     )
 
-    amount_usd = currency.to_usd(payload.amount, payload.currency)
+    rate = currency.rate_for(payload.currency, currency.utc_day(payload.transaction_date))
+    amount_usd = currency.convert(payload.amount, rate)
     ctx = RuleContext(
         payload=payload,
         t_ms=history.to_ms(payload.transaction_date),
         amount_usd=amount_usd,
+        rate=rate,
         outgoing=outgoing,
         documents=documents,
         device_accounts=device_accounts,
@@ -196,13 +198,17 @@ def _decide(payload: TransactionRequest, snapshot: CatalogSnapshot) -> dict:
         "opens_case": any(r.opens_case for r in triggered),
         # RN-11: the cases and the account history store it (sprint 4).
         "amount_usd": str(amount_usd),
-        # C4: the rate of the transaction's day, filled by HU-42.
-        "usd_rate": None,
-        "rate_date": None,
+        # HU-42: the rate behind amount_usd (the transaction's day, or the
+        # last earlier day with a rate).
+        **_rate_fields(rate),
         "risk_score": min(MAX_RISK_SCORE, sum(r.score for r in triggered)),
         "by_default": False,
         "processed_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def _rate_fields(rate: currency.Rate) -> dict:
+    return {"usd_rate": str(rate.per_usd), "rate_date": rate.rate_date.isoformat()}
 
 
 def default_decision(
@@ -219,7 +225,8 @@ def default_decision(
     """
     entry = snapshot.get(DEFAULT_RULE)
     params = entry.typed_params() if entry else DefaultTimeoutParams()
-    amount_usd = currency.to_usd(payload.amount, payload.currency)
+    rate = currency.rate_for(payload.currency, currency.utc_day(payload.transaction_date))
+    amount_usd = currency.convert(payload.amount, rate)
     why = why or f"the rules did not answer in {TIMEOUT_MS} ms"
 
     if amount_usd < params.limit_usd:
@@ -239,8 +246,7 @@ def default_decision(
         "rule_versions": {DEFAULT_RULE: entry.rule_version if entry else 1},
         "opens_case": False,
         "amount_usd": str(amount_usd),
-        "usd_rate": None,
-        "rate_date": None,
+        **_rate_fields(rate),
         "risk_score": 0,
         "by_default": True,
         "processed_at": datetime.now(timezone.utc).isoformat(),

@@ -483,9 +483,21 @@ Read this before adding or changing a rule in `services/decision_engine/`.
     different nodes. Write every history key through `history.record()`.
 - **Amounts in the history are in the account's currency, not USD.**
   `RuleContext.amount_usd` is the transaction in USD, computed once per
-  decision with `currency.to_usd()` (fixed 2026-10-01 rates until HU-42
-  reads the `pagoseguro-exchange-rates` table). Convert history amounts
-  with `currency.to_usd()` too.
+  decision at the rate of the transaction's day (HU-42, below), the
+  `RuleContext.rate`. Convert history amounts with
+  `currency.convert(amount, ctx.rate)`, so one decision uses one rate.
+- **Exchange rate of the day (HU-42, RN-11).** `currency.py` loads the
+  whole `pagoseguro-exchange-rates` table (`RATES_TABLE`, about 30 items)
+  into memory at startup (`currency.start()` in the lifespan) and reloads
+  it every `RATES_REFRESH_SECONDS` in a background thread: a decision
+  never calls DynamoDB. `rate_for(currency, day)` gives a `Rate`
+  (`per_usd`, `rate_date`, `fallback`); the day is `transaction_date` in
+  UTC (`utc_day()`); a day without a rate uses the last earlier one
+  (`fallback`, logged once per day); no earlier day, an empty table or
+  DynamoDB down at startup use the fixed 2026-10-01 `RATES_PER_USD`
+  with a warning; a failed reload keeps the last table. USD is 1. The
+  decision carries `usd_rate` and `rate_date`. Tests use the fixed rates
+  (conftest) unless they call `currency.load()`.
 - Rule names in `rules_triggered` are English snake_case (`restricted_list`,
   `velocity`); they are part of the `transaction.decided` event, so keep
   them stable. New code in this folder is in English.

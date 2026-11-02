@@ -412,14 +412,25 @@ def test_decision_carries_amount_usd(eventos_publicados):
     assert eventos_publicados[0]["decision"]["amount_usd"] == expected
 
 
-def test_decision_carries_the_rate_fields_empty_until_hu_42(eventos_publicados):
-    response = client.post("/transactions", json=_payload_normal())
+def test_decision_carries_the_rate_of_its_day(eventos_publicados):
+    """HU-42: amount_usd, usd_rate and rate_date come from the day's rate."""
+    payload = _payload_normal("100")
+    day = currency.utc_day(datetime.fromisoformat(payload["transaction_date"]))
+    # Every currency is 2 units per USD on the transaction's day, so the
+    # amount in USD is half of it (USD stays at 1).
+    currency.load({day: {"USD": Decimal(1), "COP": Decimal(2), "EUR": Decimal(2), "JPY": Decimal(2)}})
+
+    response = client.post("/transactions", json=payload)
 
     assert response.status_code == 200, response.text
-    assert response.json()["usd_rate"] is None
-    assert response.json()["rate_date"] is None
+    body = response.json()
+    if payload["currency"] == "USD":
+        assert (body["amount_usd"], body["usd_rate"]) == ("100.00", "1")
+    else:
+        assert (body["amount_usd"], body["usd_rate"]) == ("50.00", "2")
+    assert body["rate_date"] == day.isoformat()
     decision = eventos_publicados[0]["decision"]
-    assert decision["usd_rate"] is None and decision["rate_date"] is None
+    assert (decision["usd_rate"], decision["rate_date"]) == (body["usd_rate"], body["rate_date"])
 
 
 def test_engine_answers_when_sns_is_down(monkeypatch, caplog):

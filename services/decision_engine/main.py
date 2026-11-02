@@ -23,7 +23,7 @@ from services.decision_engine.decision_service import (
     InvalidReference,
     process_transaction,
 )
-from services.decision_engine import publisher, security_events
+from services.decision_engine import currency, publisher, security_events
 from services.decision_engine.idempotency import EnProceso, IdReutilizado
 from fastapi import Request
 from fastapi.encoders import jsonable_encoder
@@ -38,7 +38,10 @@ logging.basicConfig(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # HU-42: the day's exchange rates, in memory before the first decision.
+    currency.start()
     yield
+    currency.stop()
     # Al apagar: publica lo que quedó en memoria antes de salir.
     publisher.detener()
 

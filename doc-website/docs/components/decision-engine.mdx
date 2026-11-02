@@ -76,8 +76,8 @@ There is no `user_id`: the owner comes from the account.
   "rule_versions": {"velocity": 1},
   "opens_case": false,
   "amount_usd": "28.32",
-  "usd_rate": null,
-  "rate_date": null,
+  "usd_rate": "0.88284",
+  "rate_date": "2026-10-01",
   "risk_score": 0,
   "by_default": false,
   "processed_at": "2026-10-14T00:10:03.512+00:00",
@@ -89,8 +89,8 @@ There is no `user_id`: the owner comes from the account.
 - `rules_version` is the version of the [rule catalog](#rule-catalog) the decision used. `"0"` means the defaults in the code; the Rules API publishes a new version whenever a rule is created, modified, enabled or disabled. The rules, the default decision and this field all use the same catalog, read once per decision.
 - `rule_versions` gives the `rule_version` of each rule in `rules_triggered` (RN-08, HU-23). With `rules_version`, a past decision can be audited: `GET /rules/versions/{rules_version}` of the [Rules API](./rules-api.mdx#auditing-a-decision) returns the whole catalog that decided, and the entry of each rule there has that `rule_version`. The default decision records the version of `default_timeout`, whose limit it applied.
 - `opens_case` is `true` when a rule whose catalog entry says `opens_case` fired: by default mule account, splitting and restricted list ([Team decisions](../architecture/team-decisions.mdx)). Velocity and the default decision only hold; shared device only raises `risk_score`. The cases consumer reads this flag.
-- `amount_usd` is the transaction amount in USD, rounded to cents (RN-11), with the same rate the rules use (`currency.to_usd()`). The consumers store it with the [case](./cases.mdx) and the account history, so no other service imports `currency.py`. `null` in decisions stored before it existed.
-- `usd_rate` and `rate_date` are the exchange rate behind `amount_usd`: units of the transaction's currency per 1 USD and the day of that rate (RN-11). They are `null` until the engine reads the day's rate from DynamoDB (HU-42, Sprint 5); the consumers will store them with the case and the account history (HU-43). Optional fields: `EVENT_VERSION` does not change.
+- `amount_usd` is the transaction amount in USD, rounded to cents (RN-11), with the same rate the rules use (`usd_rate`, see [Exchange rate of the day](#exchange-rate-of-the-day)). The consumers store it with the [case](./cases.mdx) and the account history, so no other service imports `currency.py`. `null` in decisions stored before it existed.
+- `usd_rate` and `rate_date` are the exchange rate behind `amount_usd`: units of the transaction's currency per 1 USD and the day of that rate (RN-11). The engine fills them from the `pagoseguro-exchange-rates` table (HU-42, see [Exchange rate of the day](#exchange-rate-of-the-day)); the consumers will store them with the case and the account history (HU-43). `null` only in decisions stored before HU-42. Optional fields: `EVENT_VERSION` does not change.
 - `risk_score` is the sum of the `score` of the rules that fired, at most 100. Every rule of Sprint 2 has score 0; the shared device rule (HU-14) is the first that raises it (30).
 - `by_default` is `true` when RN-01's default decision was applied: the rules did not answer in time, or the cache did not have (or did not return) an account, the merchant or the restricted list (see [Default decision on timeout](#default-decision-on-timeout) and [Reference data in the cache](#reference-data-in-the-cache)). Then `rules_triggered` is `["default_timeout"]`.
 - `idempotent_replay` is `true` when the answer is a stored decision returned to a resend. A resend keeps the versions of the first decision even if the catalog changed since. A decision stored before `rules_version`, `rules_triggered` and `rule_versions` existed is replayed with `null`, `[]` and `{}`.
@@ -181,9 +181,25 @@ RN-01 asks for a decision in 200 ms, and for a default one when the engine canno
 
 - The default decision is stored in the idempotency key and published like any other, so a resend gets the same answer (CA-05).
 - A Python thread cannot be stopped, so the late evaluation ends in the background and its result is dropped. Its history writes stay, like any attempt.
-- The amount is converted to USD by `currency.to_usd()`. **For now it uses a fixed snapshot of the 2026-10-01 rates**; HU-42 replaces it with the rate of the transaction's day from the `pagoseguro-exchange-rates` table, without changing the callers.
+- The amount is converted to USD at the rate of the transaction's day, like every decision (see [Exchange rate of the day](#exchange-rate-of-the-day)).
 
 `tests/test_default_decision.py` covers CA-04 (USD 30 approved, USD 80 held), the limit at exactly USD 50, a rule answer in time, the conversion from COP, a resend after a timeout and that the late evaluation is not published.
+
+## Exchange rate of the day
+
+RN-11 asks for every amount in USD at the day's rate. The rates come from the `pagoseguro-exchange-rates` DynamoDB table that [securepay-apis](./exchange_rates.mdx) fills once a day from Frankfurter (HU-42, MAG-242).
+
+- **In memory, never on the request path.** The table is small (one item per day, about 30), so `currency.start()` loads all of it when the engine starts (a paginated `Query` on `base = "USD"`) and a background thread reloads it every `RATES_REFRESH_SECONDS` (3600). A decision only looks up a dictionary: the rate adds no latency to the 200 ms budget.
+- **Which day.** The transaction's `transaction_date` in UTC (`currency.utc_day()`). In production that is today; in a simulation it is the simulated day.
+- **A day without a rate** (Frankfurter did not publish, or the daily load has not run yet) uses the last earlier day that has one. The decision then carries that earlier `rate_date`, and the engine logs it once per day.
+- **Table empty or DynamoDB down.** At startup, with no earlier day, the engine uses the fixed 2026-10-01 snapshot in `RATES_PER_USD` and logs a warning; `rate_date` says `2026-10-01`. A reload that fails or finds the table empty keeps the last table that loaded. The engine never fails a decision for a missing rate.
+- **USD** is always 1.
+- **One rate per decision.** `_decide()` looks the rate up once and passes it to the rules as `RuleContext.rate`; the splitting rule converts the account's outgoing history with it (`currency.convert()`), so every amount of a decision uses the same day. The default decision on timeout uses the same lookup.
+- The decision carries the rate in `usd_rate` (units of the currency per 1 USD, a decimal string) and `rate_date`, next to `amount_usd`.
+
+In AWS the engine's role has `dynamodb:Query` on the table. Locally, load October into LocalStack once with securepay-apis (`RATES_OUTPUT=dynamodb RATES_FROM=2026-10-01 uv run python -m securepay_apis.exchange_rates`); without it the engine uses the fixed rates.
+
+`tests/test_currency.py` covers each currency, a day without a rate, a currency missing on a day, a day after the last one, the table down at startup and later, an empty table, bad items, the UTC day and the paginated load; `test_api.py` and `test_default_decision.py` check that the decision carries the rate it used.
 
 ## Request flow
 
@@ -378,7 +394,7 @@ if len(amounts) >= p.min_transactions and total > p.daily_limit_usd:
 - **A transaction at or above the limit is not a split.** It is left out of the count and the sum, and the rule does not fire on it (it is a single large transaction, not a split one).
 - **Every later transaction of the split fires too** while the window still holds the pattern, and each one opens its own case; the analyst sees them together through the account ([Cases](./cases.mdx#opening-a-case)).
 - **Out-of-order events.** A transaction recorded with a time after the one being decided does not count, like in the mule rule.
-- **USD.** Each amount is converted with `currency.to_usd()`, at the fixed 2026-10-01 rates until HU-42. The generator converts with the day's rate, so an amount within ~2 % of the limit could land on the other side; the generator's amounts (USD 3400 to 3900, control USD 2000 to 3000) stay far from it.
+- **USD.** Each amount is converted with `currency.to_usd()`, at the rate of the day of the transaction being decided (HU-42). The generator converts each one with its own day's rate, so an amount within ~2 % of the limit could land on the other side; the generator's amounts (USD 3400 to 3900, control USD 2000 to 3000) stay far from it.
 
 | Catalog parameter | Default | Meaning |
 | :--- | ---: | :--- |
@@ -465,5 +481,5 @@ Each new decision is published to SNS by a background thread without making the 
 | `security_events.py` | `sec:{account}` sorted set: device and password changes for the account takeover rule. |
 | `reference_data.py` | `acct:`, `merch:` and `{restricted}:docs` reads (HU-67): accounts, merchants and the restricted list from the cache, filled by `services/cache_loader/`. |
 | `rules/` | One module per rule type (`restricted_list.py`, `velocity.py`, `mule.py`, `shared_device.py`, `splitting.py`, `account_takeover.py`), `base.py` (`RuleContext`, `TriggeredRule`, `hit`) and `REGISTRY` in `__init__.py`. |
-| `currency.py` | Amounts in USD for the dollar thresholds (fixed 2026-10-01 rates until HU-42). |
+| `currency.py` | Amounts in USD at the rate of the transaction's day: the `pagoseguro-exchange-rates` table in memory, refreshed in the background (HU-42). |
 | `publisher.py` | Background SNS publisher. |

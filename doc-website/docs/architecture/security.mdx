@@ -160,7 +160,7 @@ Each table is the role's complete permission set. Actions are written as in the 
 | :--- | :--- | :--- |
 | `sns:Publish` | `tema:decisiones` | Publish each decision. The same action authorizes `PublishBatch`, which is what the engine uses |
 | `elasticache:Connect` | the cache and the cache user `motor` | Connect to the cache with IAM |
-| `dynamodb:GetItem` | table `tasas-cambio` | Read the day's exchange rate at startup |
+| `dynamodb:Query` | table `tasas-cambio` | Load the exchange rates table at startup and every hour (HU-42) |
 | `xray:PutTraceSegments`, `xray:PutTelemetryRecords`, `xray:GetSamplingRules`, `xray:GetSamplingTargets` | `*` (X-Ray does not scope by resource) | Send traces |
 
 The engine calls the list service over HTTPS only if the cache is unavailable; that call does not go through IAM. It has no permission at all on the database.
@@ -379,7 +379,7 @@ This is how they are written in Terraform. `<cuenta>` and the identifiers are pa
     {
       "Sid": "LeerTasaDelDia",
       "Effect": "Allow",
-      "Action": "dynamodb:GetItem",
+      "Action": "dynamodb:Query",
       "Resource": "arn:aws:dynamodb:us-east-2:<cuenta>:table/pagoseguro-prod-tasas-cambio"
     },
     {
