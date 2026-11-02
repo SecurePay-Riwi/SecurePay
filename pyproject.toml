@@ -19,6 +19,14 @@ dependencies = [
 dev = [
     "pytest>=9.1.1",
 ]
+spark = [
+    "pyspark>=4.3.0",
+]
+
+[tool.uv]
+# uv sync and uv run bring pyspark for the reconciliation match (HU-37);
+# the Docker image does not (Dockerfile: --no-default-groups).
+default-groups = ["dev", "spark"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
