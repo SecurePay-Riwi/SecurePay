@@ -533,11 +533,18 @@ Detalles: README de `securepay-csv` y la página
 
 ### Paso 13b --- Conciliar un día con los socios (Sprint 5)
 
-Cruza los extractos del paso 13 con las decisiones que el consumidor de
-analítica dejó en LocalStack (`raw/decisiones/`, paso 12) y guarda las
-diferencias en PostgreSQL. La lectura de los extractos ya funciona (HU-36);
-mientras se construye el sprint 5, el guardado de las diferencias todavía no
-hace nada.
+Matches the partner files of step 13 with the decisions the analytics
+consumer left in LocalStack (`raw/decisiones/`, step 12) and saves the
+differences (HU-38 to HU-40) in PostgreSQL, `reconciliation_differences`.
+Treasury reads them from the cases API (port 8003):
+
+``` bash
+curl http://localhost:8003/reconciliation/differences
+curl http://localhost:8003/reconciliation/differences/aging
+curl http://localhost:8003/reconciliation/runs
+```
+
+On Windows it is simpler from http://localhost:8003/docs ("Try it out").
 
 ``` bash
 uv run python -m services.reconciliation --day 2026-10-05

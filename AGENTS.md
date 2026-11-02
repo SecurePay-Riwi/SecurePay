@@ -390,6 +390,22 @@ Read this before touching `shared/reconciliation.py`,
 - **Treasury's routes** are in the cases API (`routes_reconciliation.py`,
   Yulianis; `GET /reconciliation/runs?from=&to=` is Habith's, HU-37, at
   the end of the file), which also creates the tables at startup.
+- **Differences and treasury (HU-38 to HU-41, Yulianis):**
+  `store.classify()` is pure (no database); `save()` is one session and
+  one commit, upserts the run of the day (creating it when nobody marked
+  it `RUNNING`) and keeps the first `detected_at`; `handler()` creates
+  the tables on its first call and reads `match_dir(RECON_DATA_DIR, day)`
+  (yesterday in Bogotá without `day`). Routes: `GET
+  /reconciliation/differences` (`PENDING` by default, by `run_day` then
+  partner; `type`, `partner`, `status`, `from`, `to`; `size` up to 200),
+  `GET /reconciliation/differences/aging` (always the three
+  `AGE_RANGES`, with `by_type`) and `POST
+  /reconciliation/differences/{id}/resolution` (`note` and `X-User`, row
+  locked, `409` once `RESOLVED`). `age_days` counts from `run_day` to
+  today in UTC (`routes_reconciliation.today()`, pinned in the tests);
+  amounts keep their currency's decimals (`in_currency()`). Tests:
+  `test_store.py` (against the answer key) and
+  `test_reconciliation_differences.py`.
 - **Reading the files (HU-36):** the readers of the four formats are in
   `services/reconciliation/parsers.py` (`READERS`, one class per partner);
   never import `securepay-csv`. A bad line raises `LineError` with its
