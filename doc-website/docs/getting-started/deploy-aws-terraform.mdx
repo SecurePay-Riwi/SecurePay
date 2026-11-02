@@ -6,7 +6,7 @@ description: Step by step, from an empty Windows machine to creating, checking a
 
 # Deploy to AWS with Terraform
 
-This page takes you from a machine without any AWS tools to a full test of the development environment in AWS: create it, check it, prove that the evidence bucket cannot be deleted, and destroy it. [Terraform](../architecture/terraform.mdx) explains what the code creates and why; this page is only the how.
+This page takes you from a machine without any AWS tools to a full test of the development environment in AWS: create it, check it, run the engine and the consumer Lambdas, prove that the evidence bucket cannot be deleted, and destroy it. [Terraform](../architecture/terraform.mdx) explains what the code creates and why; this page is only the how.
 
 A full session lasts about 40 minutes and costs less than USD 0.30 (the two NAT Gateways and RDS Multi-AZ cost about USD 0.15 an hour together). **Always finish with `terraform destroy`:** the NAT Gateways and RDS charge by the hour even with no traffic.
 
@@ -40,7 +40,7 @@ Terraform never uses the root account. Sign in to the [AWS console](https://cons
 
 1. **IAM → Users → Create user.** Name it `<your-name>-terraform` (for example `jorge-terraform`). Leave "Provide user access to the AWS Management Console" unchecked: this user only runs commands.
 2. **Set permissions → Attach policies directly**, and check **`PowerUserAccess`**. It allows everything except managing IAM. Create the user.
-3. Open the user → **Permissions → Add permissions → Create inline policy → JSON**. Paste the whole content of [`infra/terraform/terraform-user-policy.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/terraform-user-policy.json) and name the policy **`securepay-terraform-iam`**. It only lets the user create roles and users whose name starts with `securepay-`, the GitHub OIDC provider, and attach the one managed policy the Lambdas use.
+3. Open the user → **Permissions → Add permissions → Create inline policy → JSON**. Paste the whole content of [`infra/terraform/terraform-user-policy.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/terraform-user-policy.json) and name the policy **`securepay-terraform-iam`**. It only lets the user create roles and users whose name starts with `securepay-`, the GitHub OIDC provider, attach the one managed policy the Lambdas use, and hand those roles only to ECS tasks, Lambda and EventBridge Scheduler.
 
 The user must end with exactly these two: `PowerUserAccess` and `securepay-terraform-iam`. Other policies such as `AmazonEC2FullAccess` are already covered by `PowerUserAccess` and can be removed.
 
@@ -78,7 +78,7 @@ cd infra\terraform\envs\dev
    Copy-Item terraform.tfvars.example terraform.tfvars
    ```
 
-   Open `terraform.tfvars` and fill in `owner` (just your name, free text that goes in the `owner` tag) and `budget_emails` (your real email: the budget alerts arrive there). For a short test, `database_multi_az = false` halves the RDS cost and saves 10 minutes each way. Git ignores this file.
+   Open `terraform.tfvars` and fill in `owner` (just your name, free text that goes in the `owner` tag) and `budget_emails` (your real email: the budget alerts and the operational alarms arrive there). For [step 7](#7-run-the-consumers-and-the-alerts-task-as-lambdas) also fill in `supervisor_emails` and `compliance_emails`: two different addresses, so you can see that each one gets only its own e-mails (with Gmail, `you+supervisor@gmail.com` and `you+compliance@gmail.com` land in the same inbox). For a short test, `database_multi_az = false` halves the RDS cost and saves 10 minutes each way. Git ignores this file.
 
 2. Download the providers:
 
@@ -86,7 +86,7 @@ cd infra\terraform\envs\dev
    terraform init
    ```
 
-3. See what will be created. It must say `Plan: 159 to add, 0 to change, 0 to destroy`:
+3. See what will be created. It must say `Plan: 181 to add, 0 to change, 0 to destroy` with one budget e-mail and the two test e-mails (159 of the network, data and engine, plus 22 of the messaging: 3 topics, 3 queues and their 3 DLQs, their policies and subscriptions, the 3 e-mail subscriptions, the 3 DLQ alarms and the repository policy that lets Lambda pull the image):
 
    ```powershell
    terraform plan
@@ -98,7 +98,7 @@ cd infra\terraform\envs\dev
    terraform apply
    ```
 
-   It ends with `Apply complete! Resources: 159 added`. From this moment it costs money. The engine is not running yet: its service starts in [step 6](#6-deploy-the-engine-on-fargate), once its image is in ECR.
+   It ends with `Apply complete! Resources: 181 added`. AWS e-mails each address in `supervisor_emails`, `compliance_emails` and `budget_emails` a link "AWS Notification - Subscription Confirmation": **click Confirm subscription in each one.** `apply` does not wait for it, but until you click, SNS sends nothing to that address. Every new environment creates new subscriptions, so this happens after every `apply` from scratch. From this moment it costs money. The engine is not running yet: its service starts in [step 6](#6-deploy-the-engine-on-fargate), once its image is in ECR.
 
 **If `apply` fails,** Terraform stops and prints `Error:` with the resource and the AWS message. What it created before the error stays in the state: fix the cause and run `terraform apply` again (it only creates what is missing; a resource that failed halfway is replaced), or run `terraform destroy`.
 
@@ -122,7 +122,10 @@ terraform plan
 | S3 | 4 buckets `securepay-dev-*-<account>`; in the evidence bucket, Properties → Object Lock "Enabled" |
 | RDS → Databases | `securepay-dev-db`, Multi-AZ as in `database_multi_az`, "Publicly accessible: No" |
 | Systems Manager → Parameter Store | 8 parameters under `/securepay/dev/rds/` (the 7 passwords and `master-url`) |
-| ECR → Repositories | `securepay-dev-engine`, `-generator`, `-admin`, "Scan on push" on, tags immutable |
+| ECR → Repositories | `securepay-dev-engine`, `-generator`, `-admin`, "Scan on push" on, tags immutable; `-engine` has a repository policy for `lambda.amazonaws.com` |
+| SNS → Topics | `securepay-dev-decisions`, `-business-alerts`, `-ops-alarms`; in `-business-alerts` one subscription per e-mail, each with its filter policy (`audience`), "Confirmed" after the click |
+| SQS → Queues | `securepay-dev-cases`, `-history`, `-analytics` and their `-dlq` (6) |
+| CloudWatch → Alarms | 3 `securepay-dev-*-dlq-not-empty`, "OK" |
 | ElastiCache → Serverless caches | `securepay-dev-cache`, Valkey, "Available" |
 | EC2 → Load balancers | `securepay-dev-alb`, internet-facing, listener HTTPS:443 |
 | ECS → Clusters | `securepay-dev`, no services until step 6 |
@@ -153,9 +156,11 @@ The engine image goes to ECR tagged with the short git commit, the admin image (
    ```powershell
    cd ..\..\..\..
    $ENGINE_TAG = git rev-parse --short HEAD
-   docker build -t "$($REPOS.engine):$ENGINE_TAG" .
+   docker build --provenance=false -t "$($REPOS.engine):$ENGINE_TAG" .
    docker push "$($REPOS.engine):$ENGINE_TAG"
    ```
+
+   `--provenance=false` matters: without it Docker Desktop adds an attestation and pushes an image index, which Lambda rejects (`The image manifest, config or layer media type for the source image ... is not supported`). The Lambdas of step 7 run this same image.
 
 3. Build and push the seed from the root of the **securepay-seed** repository (it is the admin image):
 
@@ -198,7 +203,7 @@ The engine image goes to ECR tagged with the short git commit, the admin image (
    curl.exe -k "https://$ALB/health"
    ```
 
-   It answers `{"status":"ok", ...}`; `messaging` says SNS is not configured, which is expected until the consumers move to AWS. Now a transaction between two seeded accounts ([`smoke-transaction.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/envs/dev/smoke-transaction.json), the Swagger example):
+   It answers `{"status":"ok", ...}`, with the decisions topic in `messaging`. Now a transaction between two seeded accounts ([`smoke-transaction.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/envs/dev/smoke-transaction.json), the Swagger example):
 
    ```powershell
    curl.exe -k -X POST "https://$ALB/transactions" -H "Content-Type: application/json" --data-binary "@smoke-transaction.json"
@@ -221,7 +226,62 @@ The engine image goes to ECR tagged with the short git commit, the admin image (
 
 **Tested on AWS on October 31, 2026** (engine `5f38965`, seed `94745a5`, single-AZ RDS): the seed took about 4 seconds; `/health` answered `{"status":"ok", ...}`; the smoke transaction returned `APPROVE` with `amount_usd` `28.32`, and `"idempotent_replay":true` the second time; the two tasks ran in `us-east-2a` and `us-east-2b`; after `stop-task` the events showed `deregistered 1 targets`, `has begun draining connections on 1 tasks` and `has started 1 tasks`, while `/health` kept answering.
 
-## 7. Prove that evidence cannot be deleted
+## 7. Run the consumers and the alerts task as Lambdas
+
+The engine publishes every decision to `securepay-dev-decisions`, which copies it to three queues. Each queue has its Lambda: `securepay-dev-cases-consumer` and `-history-consumer` write to RDS from the application subnets, and `-analytics-consumer` writes the decisions to `raw/decisiones/` in the Data Lake from outside the VPC. `securepay-dev-alerts` runs every 5 minutes (EventBridge Scheduler): it escalates overdue cases to the supervisor, sends the restricted list summary to compliance, purges the 30-day history and retries the evidence. The four run the engine image of step 6 with another command (`python -m awslambdaric <handler>`), and create the case tables in RDS the first time they write.
+
+1. If your Terraform user was created before November 2026, paste again the whole [`terraform-user-policy.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/terraform-user-policy.json) in its inline policy `securepay-terraform-iam` (step 2.3): it now also lets Terraform hand the roles to Lambda and to EventBridge Scheduler (statement `PassRolesToServices`, which now names the three services; the policy must stay under the 2,048 characters IAM allows inline).
+
+2. Add the image tag to `terraform.tfvars` (the same as the engine's) and, **only for this test**, 2 minutes per case instead of 4 hours, so the escalation e-mail arrives during the session:
+
+   ```hcl
+   lambda_image_tag = "<ENGINE_TAG>"
+   case_due_minutes = 2
+   ```
+
+   ```powershell
+   terraform apply
+   ```
+
+   It must say `15 to add`: the 4 functions and their 4 log groups, the 3 queue mappings, the schedule, the alerts invoke settings, its error metric filter and its alarm. **Lambda → Functions** shows the four, "Image" package type.
+
+3. Send a withdrawal from an account whose owner is on the restricted list ([`restricted-transaction.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/envs/dev/restricted-transaction.json); the seed is deterministic, so the account is the same in every environment):
+
+   ```powershell
+   curl.exe -k -X POST "https://$ALB/transactions" -H "Content-Type: application/json" --data-binary "@restricted-transaction.json"
+   ```
+
+   It returns `"decision":"REJECT"`, `"rules_triggered":["restricted_list"]` and `"opens_case":true`.
+
+4. The cases Lambda opens the case and writes the compliance report within seconds:
+
+   ```powershell
+   aws logs tail /aws/lambda/securepay-dev-cases-consumer --since 10m
+   ```
+
+   It shows `Cases: case <id> opened for transaction 7a2d3b5f-... (restricted_list)` and `1 restricted list report(s)`. The history and analytics Lambdas log their own line (`History: 1 row(s) written`, `Analítica: 1 eventos en s3://...`).
+
+5. Within 5 minutes the alerts task sends the compliance summary, **only to the compliance address**. Within 5 more minutes (the case was due 2 minutes after it opened) it escalates the case and sends **one** summary, **only to the supervisor address**:
+
+   ```powershell
+   aws logs tail /aws/lambda/securepay-dev-alerts --since 15m
+   ```
+
+   Each run logs `Alerts: {'escalated': 1, 'notified': 0, ...}` with what it did. Check both inboxes: the supervisor never gets the restricted list summary and compliance never gets the escalation.
+
+6. Nothing must be in the DLQs (`0` for the three):
+
+   ```powershell
+   aws sqs get-queue-attributes --queue-url (terraform output -json dlq_urls | ConvertFrom-Json).cases --attribute-names ApproximateNumberOfMessages
+   ```
+
+**Tested on AWS on November 2, 2026** (engine and Lambdas from the MAG-351 branch, seed `94745a5`): the restricted withdrawal returned `REJECT`; 10 seconds later the cases Lambda opened the case and its compliance report, the history Lambda wrote its row and the analytics Lambda wrote `raw/decisiones/fecha=2026-11-02/...jsonl`. The next alerts run escalated the case and sent the compliance summary: one e-mail each, each only to its address. The three DLQs stayed at 0. The first alerts run logged `platform.initReport ... "status":"timeout"` (the image's cold start in the VPC took more than 10 seconds); Lambda retried by itself and the run worked. That run also logged `purged: 1`: `restricted-transaction.json` is dated October 1, so the 30-day purge deleted its history row.
+
+Remove `case_due_minutes = 2` from `terraform.tfvars` after the test: the default is the 4 hours of the business rule.
+
+**Cost.** The Lambdas, the queues, the topics and the schedule cost cents during a session (they charge per request); the session still costs what step 6 costs, about USD 0.22 an hour, mostly the NAT Gateways, RDS, the cache and the load balancer.
+
+## 8. Prove that evidence cannot be deleted
 
 The evidence bucket has Object Lock. In dev it has no default retention, so `destroy` works the same day; instead, you upload a test object locked for 5 minutes in COMPLIANCE mode. Decide the time before uploading: COMPLIANCE can be extended but never shortened.
 
@@ -261,7 +321,7 @@ The evidence bucket has Object Lock. In dev it has no default retention, so `des
 
 Delete the local `test.txt` so it does not end up in a commit.
 
-## 8. Destroy it
+## 9. Destroy it
 
 Once the lock of the last uploaded version has passed, destroy everything and type `yes`. RDS takes another 10 to 15 minutes:
 
@@ -269,7 +329,7 @@ Once the lock of the last uploaded version has passed, destroy everything and ty
 terraform destroy
 ```
 
-It ends with `Destroy complete! Resources: 164 destroyed` (159 if the image tags were never set). The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
+It ends with `Destroy complete! Resources: 201 destroyed` (181 if the image tags were never set; 186 without the Lambdas). The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
 
 **Check that nothing is left.** This must print nothing:
 
@@ -295,7 +355,10 @@ In the console, NAT gateways must show "Deleted", **EC2 → Elastic IPs** must b
 | `InvalidClientTokenId` | Access key copied wrong | `aws configure` again |
 | `FreeTierRestrictionError: backup retention period` | An account on the AWS free plan accepts at most 1 day of RDS backups | Already handled: dev uses `database_backup_retention_days = 1`. If a similar error mentions Multi-AZ, add `database_multi_az = false` to `terraform.tfvars` |
 | `docker login` fails with `400 Bad Request` | PowerShell altered the token piped to `--password-stdin` | Use the variable form of step 6.1 |
-| `not authorized to perform: iam:PassRole` on the task definition | The Terraform user lacks the statement `PassRolesToEcsTasks` | Paste again the whole `terraform-user-policy.json` in its inline policy |
+| `not authorized to perform: iam:PassRole` on the task definition | The Terraform user lacks the statement `PassRolesToServices` | Paste again the whole `terraform-user-policy.json` in its inline policy |
 | The engine service never gets healthy tasks; `aws logs tail /ecs/securepay-dev-engine` shows `ResourceNotFoundException` or no logs | The image tag does not exist in ECR | Check the tag in ECR and in `terraform.tfvars`. The circuit breaker rolls the deployment back on its own |
 | `curl` gets `503` with `idempotencia` | The engine cannot reach the cache | Check that `VALKEY_CLUSTER` is `true` in the task definition and the cache is "Available" |
+| `terraform apply` fails creating a Lambda with `image manifest, config or layer media type ... is not supported` | The image was built without `--provenance=false` | Build again with `--provenance=false` and a new commit (tags are immutable), set the new tag and apply |
+| `not authorized to perform: iam:PassRole` creating a Lambda or the schedule | The Terraform user lacks `lambda.amazonaws.com` or `scheduler.amazonaws.com` in `PassRolesToServices` | Paste again the whole `terraform-user-policy.json` (step 7.1) |
+| No e-mail arrives from the alerts task | The subscription is still "Pending confirmation" | Click the link of the confirmation e-mail (also check spam), or **SNS → Subscriptions → Request confirmation** |
 | `AccessDenied ... protected by object lock` on `destroy` | A test object is still locked | Wait until its retain-until date and run `destroy` again |

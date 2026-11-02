@@ -7,7 +7,7 @@ shortening is proven against LocalStack in test_evidence_localstack.py.
 
 import io
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -70,6 +70,7 @@ def _resolved_case(factory, status=CaseStatus.RESOLVED, evidence_key=None):
             decision_reason="Mule account pattern.", rules_triggered=["mule"],
             rules_version="3", rule_versions={"mule": 2}, risk_score=80,
             amount=Decimal("1250000.00"), currency="COP", amount_usd=Decimal("312.50"),
+            usd_rate=Decimal("4000"), rate_date=date(2026, 10, 13),
             transaction_date=CREATED, transaction={"transaction_id": "t-1", "amount": "1250000.00"},
             status=status.value, created_at=CREATED, due_at=CREATED + timedelta(hours=4),
             evidence_key=evidence_key,
@@ -147,6 +148,9 @@ def test_the_json_has_the_case_its_events_the_transaction_and_the_decision(sessi
     assert document["case"]["id"] == str(case_id)
     assert document["case"]["outcome"] == "FRAUD"
     assert document["case"]["amount"] == "1250000.00"
+    # HU-43: the rate behind amount_usd goes into the evidence too.
+    assert document["case"]["usd_rate"] == "4000.00000000"
+    assert document["case"]["rate_date"] == "2026-10-13"
     assert document["transaction"] == {"transaction_id": "t-1", "amount": "1250000.00"}
     assert document["decision"]["decision"] == "HOLD"
     assert document["decision"]["rules_triggered"] == ["mule"]

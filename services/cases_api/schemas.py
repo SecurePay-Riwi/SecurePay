@@ -9,9 +9,25 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from shared.cases import CaseOutcome
+from shared.cases import CaseOutcome, in_currency, plain_rate
+
+USD_RATE = "Units of the currency per 1 USD the engine used for amount_usd (1 for USD), as a decimal string (RN-11, HU-43); null for decisions older than Sprint 5."
+RATE_DATE = "Day of that rate: the transaction's day in UTC, or the last earlier day with a rate; null for decisions older than Sprint 5."
+
+
+class CurrencyDecimals(BaseModel):
+    """A model with amount, currency and usd_rate (HU-43): the amount
+    keeps its currency's decimals (JPY has none) although the column
+    keeps two, and the rate is answered as the engine gave it, without
+    the column's trailing zeros."""
+
+    @model_validator(mode="after")
+    def _currency_decimals(self):
+        self.amount = in_currency(self.amount, self.currency)
+        self.usd_rate = plain_rate(self.usd_rate)
+        return self
 
 
 class Health(BaseModel):
@@ -46,19 +62,21 @@ class RestrictedListReportPage(BaseModel):
 
 # --- Reports (HU-35) --------------------------------------------------------
 
-class SuspiciousCase(BaseModel):
+class SuspiciousCase(CurrencyDecimals):
     """One compliance case of the period (RN-03, RN-05, RN-06)."""
 
     case_id: UUID = Field(description="The case.")
     transaction_id: UUID = Field(description="The transaction that opened it.")
     account_id: UUID = Field(description="The main account: the source; in a top-up, the destination.")
     pattern: str = Field(description='The rules that fired, joined by "+" (e.g. mule, splitting+velocity).')
-    amount: Decimal = Field(description="Amount in the original currency, as a decimal string.")
+    amount: Decimal = Field(description="Amount in the original currency, as a decimal string with its decimals (JPY: none).")
     currency: str = Field(description="The original currency (COP, USD, EUR, JPY).")
     amount_usd: Decimal | None = Field(
         default=None,
         description="The engine's amount in USD (RN-11), as a decimal string; null for decisions older than Sprint 4.",
     )
+    usd_rate: Decimal | None = Field(default=None, description=USD_RATE)
+    rate_date: date | None = Field(default=None, description=RATE_DATE)
     status: str = Field(description="OPEN, ESCALATED or RESOLVED.")
     outcome: str | None = Field(default=None, description="FRAUD or LEGITIMATE once resolved; null before.")
     created_at: datetime = Field(description="When the case was opened, UTC.")
@@ -79,7 +97,7 @@ class SuspiciousReport(BaseModel):
 
 # --- Accounts (HU-28) --------------------------------------------------------
 
-class AccountTransactionItem(BaseModel):
+class AccountTransactionItem(CurrencyDecimals):
     """One transaction of the account (an account_transactions row).
 
     The nullable fields are always sent; their default only lets Swagger
@@ -96,12 +114,14 @@ class AccountTransactionItem(BaseModel):
     type: str = Field(description="P2P, QR, RECARGA or RETIRO.")
     channel: str = Field(description="Where the transaction was made (APP, WEB, ...).")
     merchant_id: UUID | None = Field(default=None, description="The merchant of a QR payment; null otherwise.")
-    amount: Decimal = Field(description="Amount in the account's currency, as a decimal string.")
+    amount: Decimal = Field(description="Amount in the account's currency, as a decimal string with its decimals (JPY: none).")
     currency: str = Field(description="The original currency (COP, USD, EUR, JPY).")
     amount_usd: Decimal | None = Field(
         default=None,
         description="The engine's amount in USD (RN-11), as a decimal string; null for decisions older than Sprint 4.",
     )
+    usd_rate: Decimal | None = Field(default=None, description=USD_RATE)
+    rate_date: date | None = Field(default=None, description=RATE_DATE)
     device_id: UUID | None = Field(
         default=None,
         description="The device, only on the main account's row (the source; in a top-up, the destination).",
@@ -147,7 +167,7 @@ class RelatedAccountList(BaseModel):
 
 # --- Cases (HU-26) -----------------------------------------------------------
 
-class CaseSummary(BaseModel):
+class CaseSummary(CurrencyDecimals):
     """One case of the inbox. The nullable fields are always sent."""
 
     id: UUID = Field(description="Case id.")
@@ -157,12 +177,14 @@ class CaseSummary(BaseModel):
     decision: str = Field(description="The engine's decision: APPROVE, HOLD or REJECT.")
     rules_triggered: list[str] = Field(description="The rules that fired, as in the transaction.decided event.")
     risk_score: int = Field(description="Sum of the fired rules' scores, 0 to 100.")
-    amount: Decimal = Field(description="Amount in the original currency, as a decimal string.")
+    amount: Decimal = Field(description="Amount in the original currency, as a decimal string with its decimals (JPY: none).")
     currency: str = Field(description="The original currency (COP, USD, EUR, JPY).")
     amount_usd: Decimal | None = Field(
         default=None,
         description="The engine's amount in USD (RN-11), as a decimal string; null for decisions older than Sprint 4.",
     )
+    usd_rate: Decimal | None = Field(default=None, description=USD_RATE)
+    rate_date: date | None = Field(default=None, description=RATE_DATE)
     assignee: str | None = Field(default=None, description="The analyst who owns it; null until assigned.")
     created_at: datetime = Field(description="When the case was opened, UTC.")
     due_at: datetime = Field(description="The 4-hour limit (RN-09): created_at + CASE_DUE_MINUTES, UTC.")
@@ -244,3 +266,27 @@ class Resolution(BaseModel):
         description="FRAUD (final_decision REJECT) or LEGITIMATE (final_decision APPROVE).",
     )
     note: str = Field(min_length=1, max_length=2000, description="Why, 1 to 2000 characters.")
+
+
+# --- Reconciliation runs (HU-37) --------------------------------------------
+
+class ReconciliationRunItem(BaseModel):
+    """One day reconciled (a reconciliation_runs row)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    run_day: date = Field(description="The partners' day reconciled (YYYY-MM-DD).")
+    status: str = Field(description="RUNNING, DONE or FAILED.")
+    started_at: datetime = Field(description="When the last run of the day started, UTC.")
+    finished_at: datetime | None = Field(default=None, description="When it finished, UTC; null while RUNNING.")
+    files_read: int = Field(description="Partner files read.")
+    records_read: int = Field(description="Detail lines read from them.")
+    rows_rejected: int = Field(description="Lines or files that could not be read.")
+    matched: int = Field(description="References that matched (RN-10).")
+    differences: int = Field(description="Differences the run found.")
+    error: str | None = Field(default=None, description="Why it FAILED: the step and its error; null otherwise.")
+
+
+class ReconciliationRunList(BaseModel):
+    items: list[ReconciliationRunItem] = Field(description="The runs of the period, oldest day first.")
+    total: int = Field(description="Runs in the period.")

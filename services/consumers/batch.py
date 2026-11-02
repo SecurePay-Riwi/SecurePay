@@ -7,9 +7,16 @@ intentos pasan a la cola de errores (bitácora sección 3).
 
 import logging
 
+from sqlalchemy.exc import SQLAlchemyError
+
+from shared.cases import create_schema
 from shared.events import EventoInvalido, leer_evento
 
 log = logging.getLogger(__name__)
+
+# Session factories whose case tables are already created (one per Lambda
+# container; tests use a new factory each).
+_schema_ready: set = set()
 
 
 def leer_lote(event: dict) -> tuple[list[tuple[str, dict]], list[str]]:
@@ -33,3 +40,24 @@ def leer_lote(event: dict) -> tuple[list[tuple[str, dict]], list[str]]:
 
 def respuesta(fallidos: list[str]) -> dict:
     return {"batchItemFailures": [{"itemIdentifier": i} for i in fallidos]}
+
+
+def ensure_schema(session_factory) -> None:
+    """Create the case tables (shared/cases.py) the first time a consumer
+    writes in this process.
+
+    Locally runner.py does it at startup; a Lambda has no startup step, so
+    the cases and history consumers call this before their first write.
+    create_schema() is idempotent and takes an advisory lock, so several
+    Lambdas starting together are safe. If PostgreSQL is down it only logs:
+    the write that follows fails too and the batch goes back to the queue.
+    """
+    if session_factory in _schema_ready:
+        return
+    try:
+        with session_factory() as session:
+            create_schema(session)
+    except SQLAlchemyError:
+        log.exception("Could not create the case tables; retrying on the next batch")
+        return
+    _schema_ready.add(session_factory)

@@ -36,7 +36,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 
-from services.consumers.batch import leer_lote, respuesta
+from services.consumers.batch import ensure_schema, leer_lote, respuesta
 from shared import db
 from shared.cases import (
     CASE_DUE_MINUTES,
@@ -47,6 +47,7 @@ from shared.cases import (
     CaseStatus,
     ComplianceReport,
     main_account,
+    rate_values,
 )
 from shared.models import Cuenta, ListaRestrictiva, Usuario
 
@@ -97,6 +98,7 @@ def case_values(event: dict, now: datetime) -> dict:
             "amount": Decimal(str(transaction["amount"])),
             "currency": str(transaction["currency"]),
             "amount_usd": None if amount_usd is None else Decimal(str(amount_usd)),
+            **rate_values(decision),
             "transaction_date": _datetime(transaction["transaction_date"]),
             "transaction": transaction,
             "status": CaseStatus.OPEN.value,
@@ -226,6 +228,7 @@ def handler(event, context=None):
     if not cases:
         return respuesta(failed)
 
+    ensure_schema(SessionLocal)
     try:
         with SessionLocal() as session:
             opened, reported = [], []

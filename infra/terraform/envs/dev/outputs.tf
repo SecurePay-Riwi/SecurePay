@@ -67,3 +67,17 @@ output "certificate_validation_records" {
   description = "With domain_name: the DNS record to add at the DNS provider."
   value       = module.ecs.certificate_validation_records
 }
+
+output "lambda_function_names" {
+  description = "The consumer and alerts Lambdas (once lambda_image_tag is set)."
+  value       = module.lambdas.function_names
+}
+
+output "dlq_urls" {
+  description = "Where a message lands after 5 failed attempts."
+  value       = module.messaging.dlq_urls
+}
+
+output "decisions_topic_arn" {
+  value = module.messaging.decisions_topic_arn
+}

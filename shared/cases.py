@@ -19,10 +19,13 @@ seed creates), as services/rules_api/models.py does.
 import enum
 import os
 import uuid
+from datetime import date
+from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
     Column,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -37,6 +40,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Session, declarative_base
+
+from shared.config import MONEDA_DECIMALES
 
 # RN-09: 4 hours. In minutes so a demo can shorten it.
 CASE_DUE_MINUTES = int(os.getenv("CASE_DUE_MINUTES", "240"))
@@ -97,6 +102,10 @@ class Case(Base):
     amount = Column(Numeric(18, 2), nullable=False)
     currency = Column(String(3), nullable=False)
     amount_usd = Column(Numeric(18, 2), nullable=True)
+    # HU-43 (RN-11): the engine's rate behind amount_usd (units of the
+    # currency per 1 USD) and its day; null for decisions before HU-42.
+    usd_rate = Column(Numeric(20, 8), nullable=True)
+    rate_date = Column(Date, nullable=True)
     transaction_date = Column(DateTime(timezone=True), nullable=False)
     # The event's transaction, as it came (evidence).
     transaction = Column(JSONB, nullable=False)
@@ -166,6 +175,10 @@ class AccountTransaction(Base):
     amount = Column(Numeric(18, 2), nullable=False)
     currency = Column(String(3), nullable=False)
     amount_usd = Column(Numeric(18, 2), nullable=True)
+    # HU-43 (RN-11): the engine's rate behind amount_usd (units of the
+    # currency per 1 USD) and its day; null for decisions before HU-42.
+    usd_rate = Column(Numeric(20, 8), nullable=True)
+    rate_date = Column(Date, nullable=True)
     # Only on the main account's row (the same rule as dev:{device}).
     device_id = Column(UUID(as_uuid=True), nullable=True)
     decision = Column(String(10), nullable=False)
@@ -222,6 +235,50 @@ def main_account(transaction: dict) -> str:
     return str(transaction.get("source_account_id") or transaction["destination_account_id"])
 
 
+# Columns added after the tables existed: create_all() does not add
+# columns to a table that is already there.
+ADDED_COLUMNS = [
+    text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column}")
+    for table in ("cases", "account_transactions")
+    for column in ("usd_rate NUMERIC(20, 8)", "rate_date DATE")
+]
+
+
+def in_currency(amount: Decimal, currency: str) -> Decimal:
+    """The amount with its currency's decimals (HU-43): JPY has none, the
+    others two. The columns keep two for every currency, so the readers
+    call this before answering."""
+    places = MONEDA_DECIMALES.get(currency)
+    if places is None:
+        return amount
+    return Decimal(amount).quantize(Decimal(1).scaleb(-places))
+
+
+def plain_rate(rate: Decimal | None) -> Decimal | None:
+    """A stored usd_rate without the column's trailing zeros (and never in
+    scientific notation): 4129.53000000 -> 4129.53, 1.00000000 -> 1."""
+    if rate is None:
+        return None
+    rate = Decimal(rate).normalize()
+    return rate.quantize(Decimal(1)) if rate.as_tuple().exponent > 0 else rate
+
+
+def rate_values(decision: dict) -> dict:
+    """usd_rate and rate_date of a transaction.decided decision, for the
+    consumers (HU-43). Both null in events before HU-42; raises
+    ValueError (or decimal.InvalidOperation) if they are malformed, so
+    the consumer fails that event alone."""
+    usd_rate = decision.get("usd_rate")
+    rate_date = decision.get("rate_date")
+    rate = None if usd_rate is None else Decimal(str(usd_rate))
+    if rate is not None and (not rate.is_finite() or rate <= 0):
+        raise ValueError(f"usd_rate must be positive: {usd_rate}")
+    return {
+        "usd_rate": rate,
+        "rate_date": None if rate_date is None else date.fromisoformat(str(rate_date)),
+    }
+
+
 def create_schema(session: Session) -> None:
     """Create the four tables and the append-only trigger if they are
     missing, and commit.
@@ -231,6 +288,6 @@ def create_schema(session: Session) -> None:
     """
     session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": SCHEMA_LOCK})
     Base.metadata.create_all(session.connection())
-    for statement in APPEND_ONLY_EVENTS:
+    for statement in ADDED_COLUMNS + APPEND_ONLY_EVENTS:
         session.execute(statement)
     session.commit()

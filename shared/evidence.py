@@ -27,7 +27,7 @@ import hashlib
 import json
 import logging
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -75,7 +75,7 @@ def evidence_key(case: Case) -> str:
 
 
 def _json_value(value):
-    if isinstance(value, datetime):
+    if isinstance(value, (datetime, date)):  # rate_date is a date (HU-43)
         return value.isoformat()
     if isinstance(value, (Decimal, UUID)):
         return str(value)
