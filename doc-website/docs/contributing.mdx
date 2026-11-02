@@ -40,8 +40,7 @@ SecurePay/
 ├── doc-website/           # this documentation site (Docusaurus)
 ├── docker-compose.yml     # PostgreSQL, Valkey and LocalStack for local development
 ├── pyproject.toml         # dependencies and pytest config (uv)
-├── uv.lock
-└── db/, generators/, sources/   # backup from before the split; do not edit
+└── uv.lock
 ```
 
 Coming later: `services/rules_api/` (the rules API, HU-19), `services/scheduled/`, `jobs/` (PySpark) and Terraform under `infra/`. Shared code that the engine and Spark must run identically, like the **rule interpreter**, goes in `shared/`.

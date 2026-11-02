@@ -28,10 +28,6 @@ SecurePay-Riwi/
 └── securepay-apis/
 ```
 
-> Las carpetas `db/`, `generators/` y `sources/` de este repo son solo un
-> **respaldo** de antes de la separación. No se editan: los cambios van en
-> el repo de cada fuente.
-
 ### Librería común: `securepay-shared`
 
 `shared/` se publica en PyPI como
@@ -368,9 +364,7 @@ uv run pytest
 
 Cada repo de fuentes corre sus propias pruebas con `uv run pytest` y
 ninguna necesita servicios, internet ni los CSV reales (las de integración
-con LocalStack se omiten si no está levantado). Aquí también corren las
-pruebas de las carpetas de respaldo (`db/`, `generators/`, `sources/`)
-mientras existan.
+con LocalStack se omiten si no está levantado).
 
 PostgreSQL: el proyecto instala **Psycopg 3** (`psycopg[binary]`) y
 `shared/db.py` fuerza ese controlador (`postgresql+psycopg://`) aunque tu
