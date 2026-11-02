@@ -5,7 +5,7 @@ tables and states are shared/cases.py; never redefine them.
 Money is Decimal (a decimal string in JSON), dates are UTC.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -42,6 +42,39 @@ class RestrictedListReportPage(BaseModel):
     total: int = Field(description="Reports in the period, all pages.")
     page: int = Field(description="Page number, from 1.")
     size: int = Field(description="Reports per page.")
+
+
+# --- Reports (HU-35) --------------------------------------------------------
+
+class SuspiciousCase(BaseModel):
+    """One compliance case of the period (RN-03, RN-05, RN-06)."""
+
+    case_id: UUID = Field(description="The case.")
+    transaction_id: UUID = Field(description="The transaction that opened it.")
+    account_id: UUID = Field(description="The main account: the source; in a top-up, the destination.")
+    pattern: str = Field(description='The rules that fired, joined by "+" (e.g. mule, splitting+velocity).')
+    amount: Decimal = Field(description="Amount in the original currency, as a decimal string.")
+    currency: str = Field(description="The original currency (COP, USD, EUR, JPY).")
+    amount_usd: Decimal | None = Field(
+        default=None,
+        description="The engine's amount in USD (RN-11), as a decimal string; null for decisions older than Sprint 4.",
+    )
+    status: str = Field(description="OPEN, ESCALATED or RESOLVED.")
+    outcome: str | None = Field(default=None, description="FRAUD or LEGITIMATE once resolved; null before.")
+    created_at: datetime = Field(description="When the case was opened, UTC.")
+
+
+class SuspiciousReport(BaseModel):
+    from_: date = Field(alias="from", description="First day of the period (inclusive), UTC.")
+    to: date = Field(description="Last day of the period (inclusive), UTC.")
+    items: list[SuspiciousCase] = Field(description="The cases opened in the period, oldest first.")
+    total: int = Field(description="Cases in the period.")
+    message: str | None = Field(
+        default=None,
+        description='"No compliance cases in the period." when it is empty; null otherwise.',
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # --- Accounts (HU-28) --------------------------------------------------------

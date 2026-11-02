@@ -82,6 +82,62 @@ RESTRICTED_LIST_REPORTS = {
 }
 
 
+# --- Reports (HU-35) --------------------------------------------------------
+
+_SUSPICIOUS_CASE = {
+    "case_id": "0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01",
+    "transaction_id": "a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21",
+    "account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+    "pattern": "mule",
+    "amount": "950000.00",
+    "currency": "COP",
+    "amount_usd": "230.05",
+    "status": "RESOLVED",
+    "outcome": "FRAUD",
+    "created_at": "2026-10-31T14:02:11.418000Z",
+}
+
+_SUSPICIOUS_CSV = (
+    "case_id,transaction_id,account_id,pattern,amount,currency,amount_usd,status,outcome,created_at\n"
+    "0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01,a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21,"
+    "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42,mule,950000.00,COP,230.05,RESOLVED,FRAUD,"
+    "2026-10-31T14:02:11.418000+00:00\n"
+)
+
+SUSPICIOUS_REPORT = {
+    "summary": "Report the suspicious operations of a period",
+    "description": (
+        "The compliance cases opened in the period: mule account (RN-03), "
+        "splitting (RN-05) and restricted list (RN-06), the decisions that "
+        "open a case. One row per case with its account, `pattern` (the "
+        "rules that fired, joined by `+`), the amount in the original "
+        "currency and in USD (RN-11), its state and its outcome, oldest "
+        "first.\n\n"
+        "`from` and `to` are days (`YYYY-MM-DD`, UTC), both inclusive, at "
+        "most 31 days apart. `format=csv` returns the same rows as a file to "
+        "download, `suspicious-report-<from>-<to>.csv`, with amounts as "
+        "decimal text. A period without cases is an empty list with "
+        "`message` (JSON) or only the header (CSV)."
+    ),
+    "responses": {
+        200: {
+            "description": "The cases of the period, as JSON or as a CSV file.",
+            "content": {
+                "application/json": {
+                    "example": {"from": "2026-10-31", "to": "2026-10-31",
+                                "items": [_SUSPICIOUS_CASE], "total": 1, "message": None},
+                },
+                "text/csv": {"example": _SUSPICIOUS_CSV},
+            },
+        },
+        400: _error("A date is missing or not valid, `from` is after `to`, the period has more "
+                    "than 31 days, or `format` is not json or csv.",
+                    "The period can have at most 31 days."),
+        503: DB_DOWN,
+    },
+}
+
+
 # --- Accounts (HU-28) --------------------------------------------------------
 
 _ACCOUNT = "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42"

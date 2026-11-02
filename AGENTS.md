@@ -263,6 +263,13 @@ Read this before touching `shared/cases.py`, `services/cases_api/`,
   account's `device_id`s in the window and the other accounts with rows
   on them in the window; one item per (account, device) with
   `last_seen` and `open_cases` (cases in `PENDING`).
+- **The suspicious operations report (HU-35)** is
+  `GET /reports/suspicious?from=&to=&format=json|csv` in
+  `routes_reports.py`: the cases with `created_at` in the period (both
+  days inclusive, UTC, at most 31), oldest first, `pattern` =
+  `rules_triggered` joined by `+`. Every case counts as a compliance case
+  (D1). An empty period is an empty list with `message` (JSON) or only
+  the header (CSV); amounts are written with `format(value, "f")`.
 - **`shared/evidence.archive(session, case)`** never raises and is
   idempotent. The cases API calls it after resolving; the alerts task
   retries it with `archive_pending(session)`. One JSON per case at
