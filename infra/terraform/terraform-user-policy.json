@@ -82,7 +82,7 @@
       "Resource": "arn:aws:iam::*:role/securepay-*",
       "Condition": {
         "StringEquals": {
-          "iam:PassedToService": ["ecs-tasks.amazonaws.com", "lambda.amazonaws.com", "scheduler.amazonaws.com"]
+          "iam:PassedToService": ["ecs-tasks.amazonaws.com", "lambda.amazonaws.com", "scheduler.amazonaws.com", "states.amazonaws.com", "glue.amazonaws.com"]
         }
       }
     }

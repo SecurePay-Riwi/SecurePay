@@ -119,3 +119,29 @@ def test_tables_not_created_are_retried_and_the_jobs_still_run(session, calls, m
 
     assert [name for name, _ in made] == ["escalate", "summary", "purge", "archive"]
     assert handler._schema_ready is False
+
+
+def test_the_reconciliation_check_event_runs_only_that(session, calls, monkeypatch):
+    from services.alerts import reconciliation_check
+
+    made = calls()
+    checked = []
+    monkeypatch.setattr(reconciliation_check, "check",
+                        lambda s, now: checked.append(now) or True)
+
+    result = handler.handler({"job": "reconciliation_check"}, None)
+
+    assert result == {"reconciliation_done": True}
+    assert len(checked) == 1 and checked[0].tzinfo is not None
+    assert made == []
+
+
+def test_a_failing_reconciliation_check_is_logged_not_raised(session, monkeypatch):
+    from services.alerts import reconciliation_check
+
+    def down(s, now):
+        raise RuntimeError("SNS down")
+
+    monkeypatch.setattr(reconciliation_check, "check", down)
+    assert handler.handler({"job": "reconciliation_check"}) == {"reconciliation_done": None}
+    assert session.rollbacks == 1

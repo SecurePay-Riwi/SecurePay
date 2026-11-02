@@ -32,7 +32,7 @@ partner files ──► 1. read ──► records.jsonl ──► 2. match ◄�
 | 3. Store | `services/reconciliation/store.py` | Turns each `MatchRow` into differences and saves them; closes the run | HU-38 to HU-40 |
 | 4. Query | `services/cases_api/routes_reconciliation.py` | Treasury lists the differences, sees their age and resolves them | HU-38 to HU-41 |
 
-Each step has a fixed input and output from step 0, so nobody waits for the step before: they test against the [fixtures](#fixtures). Locally `python -m services.reconciliation` runs steps 1 to 3 in order; in AWS, Step Functions does it at 02:00 in Bogotá (`cron(0 7 * * ? *)` UTC), with the match on EMR Serverless.
+Each step has a fixed input and output from step 0, so nobody waits for the step before: they test against the [fixtures](#fixtures). Locally `python -m services.reconciliation` runs steps 1 to 3 in order; in AWS, Step Functions does it at 02:00 in Bogotá (`cron(0 7 * * ? *)` UTC), with the match on AWS Glue.
 
 ## The shared contract
 
@@ -87,7 +87,7 @@ Each step has a fixed input and output from step 0, so nobody waits for the step
 
 A partner record whose reference is an `APPROVE` of the window but of another partner day still counts: its date decides. The output is one `MatchRow` per reference as JSON lines in `curated/conciliacion/fecha=<day>/part-*.json`, with every key (nulls included); running the day again replaces it.
 
-`reconcile()` runs in PySpark (HU-37): the decisions of the window and the day's records are read as JSON lines, deduplicated, and joined by reference (a left join of the records with our side, plus our transactions of the day that no record has). `match.session()` is `local[*]` in the tests and in Compose, and the cluster's session on EMR Serverless, where Step Functions starts `match.main`:
+`reconcile()` runs in PySpark (HU-37): the decisions of the window and the day's records are read as JSON lines, deduplicated, and joined by reference (a left join of the records with our side, plus our transactions of the day that no record has). `match.session()` is `local[*]` in the tests and in Compose, and the job's session on AWS Glue 6.0, where Step Functions starts `match.main` through `infra/spark/match_job.py`:
 
 ```bash
 spark-submit services/reconciliation/match.py --day 2026-10-05 \
@@ -96,7 +96,7 @@ spark-submit services/reconciliation/match.py --day 2026-10-05 \
   --output s3://<datalake>/curated/conciliacion/fecha=2026-10-05
 ```
 
-`--decisions` is the root of `raw/decisiones/`: the match adds `fecha=<day>` for each day of the window. On a cluster Spark reads and writes S3 itself; in local mode an `s3://` path (LocalStack) goes through `storage.py`. pyspark is pinned to 4.1.x, the version of EMR Serverless `emr-spark-8.1.0` (Spark 4.1.1, Python 3.12). `match_day()` keeps the same rules in plain Python: the tests run every edge case (0.01 and 0.02, 1 day and 1 day and 1 second, repeated lines, `P2P`, `HOLD` and `REJECT`, the Bogota day) on both, and check that the fixture day gives the answer key. The Spark tests need Java 17 or later and skip without it.
+`--decisions` is the root of `raw/decisiones/`: the match adds `fecha=<day>` for each day of the window. On Glue, Spark reads and writes S3 itself; in local mode an `s3://` path (LocalStack) goes through `storage.py`. pyspark is pinned to 4.1.x, the version of AWS Glue 6.0 (Spark 4.1.1, Python 3.13). `match_day()` keeps the same rules in plain Python: the tests run every edge case (0.01 and 0.02, 1 day and 1 day and 1 second, repeated lines, `P2P`, `HOLD` and `REJECT`, the Bogota day) on both, and check that the fixture day gives the answer key. The Spark tests need Java 17 or later and skip without it.
 
 ## 3. Differences (HU-38 to HU-40)
 
@@ -112,7 +112,7 @@ spark-submit services/reconciliation/match.py --day 2026-10-05 \
 
 `classify()` is pure (no database), so the end-to-end test and the other steps can call it. `store.load_rows(match_path)` reads every `part-*.json` of the day (local folder or `s3://`); a day without files is empty. `save()` uses one session and one commit: it upserts the run of the day (it also creates it when nobody marked it `RUNNING`, as in AWS), with `files_read`, `records_read`, `rows_rejected`, `matched` and `differences`, and keeps the first `detected_at` of a difference found again.
 
-`store.handler(event)` is step 3 of Step Functions: `event` is what ingest returned (`day`, `files_read`, `records`, `rejected`); without `day` it takes yesterday in Bogotá. It creates the tables on its first call (Lambda has no startup step), reads `match_dir(RECON_DATA_DIR, day)` and counts `matched` from the rows, because EMR's output does not reach Step Functions.
+`store.handler(event)` is step 3 of Step Functions: `event` is what ingest returned (`day`, `files_read`, `records`, `rejected`); without `day` it takes yesterday in Bogotá. It creates the tables on its first call (Lambda has no startup step), reads `match_dir(RECON_DATA_DIR, day)` and counts `matched` from the rows, because Glue's output does not reach Step Functions.
 
 ## 4. Treasury's routes (HU-38 to HU-41)
 
@@ -189,6 +189,10 @@ curl -X POST "http://localhost:8003/reconciliation/differences/3b9d1f57-2c4e-4a6
 ### `GET /reconciliation/runs` (HU-37)
 
 `GET /reconciliation/runs?from=&to=` lists the runs of a period, oldest day first: `run_day`, `status` (`RUNNING`, `DONE`, `FAILED`), `started_at`, `finished_at`, `files_read`, `records_read`, `rows_rejected`, `matched`, `differences` and `error` (the step and its error when it failed). `from` and `to` are days, both inclusive; without them, every run. `from` after `to` or an invalid day is `400`, PostgreSQL down is `503`.
+
+## In AWS (HU-36)
+
+Step Functions runs the same steps every night at 02:00 Bogotá (`infra/terraform/modules/reconciliation`): the Lambda `statement-reader` (`ingest.handler`), the AWS Glue Spark job (`infra/spark/match_job.py` → `match.main`), the Lambda `difference-writer` (`store.handler`) and an e-mail to treasury (`audience = treasury`) with the day's counts. Paths are `s3://<datalake>/raw/extractos`, `raw/decisiones` and `curated/`. The Spark job runs on AWS Glue 6.0 (Spark 4.1.1, Python 3.13), because EMR is not available on AWS's free account plan: Terraform zips `services/reconciliation` and `shared` for `--extra-py-files`, and Glue installs SQLAlchemy and python-dotenv (`--additional-python-modules`, the versions of `uv.lock`). The machine stops after 4 h 30 min, an alarm reports any failed run, and at 06:30 the alerts Lambda checks that yesterday is `DONE` in `reconciliation_runs` (`services/alerts/reconciliation_check.py`). The step by step, the test and the cost are in [Deploy to AWS, step 8](../getting-started/deploy-aws-terraform.mdx#8-run-the-nightly-reconciliation).
 
 ## Running it locally
 

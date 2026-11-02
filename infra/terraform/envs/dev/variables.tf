@@ -115,6 +115,24 @@ variable "compliance_emails" {
   default     = []
 }
 
+variable "treasury_emails" {
+  description = "Receive the nightly reconciliation result (audience = treasury)."
+  type        = list(string)
+  default     = []
+}
+
+variable "reconciliation_schedule" {
+  description = "When Step Functions reconciles yesterday (UTC; 07:00 UTC = 02:00 Bogota, which has no daylight saving)."
+  type        = string
+  default     = "cron(0 7 * * ? *)"
+}
+
+variable "reconciliation_check_schedule" {
+  description = "When the alerts Lambda checks that yesterday's reconciliation is DONE (UTC; 11:30 UTC = 06:30 Bogota, before the 07:00 deadline)."
+  type        = string
+  default     = "cron(30 11 * * ? *)"
+}
+
 variable "case_due_minutes" {
   description = "Minutes before a case is escalated (RN-09: 240). Set 2 for a test to see the escalation e-mail in minutes."
   type        = number

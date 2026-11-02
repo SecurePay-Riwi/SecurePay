@@ -39,6 +39,12 @@ variable "compliance_emails" {
   default     = []
 }
 
+variable "treasury_emails" {
+  description = "Receive the nightly reconciliation result (audience = treasury)."
+  type        = list(string)
+  default     = []
+}
+
 variable "alarm_emails" {
   description = "Receive the operational alarms (messages in a DLQ, failing alerts task)."
   type        = list(string)

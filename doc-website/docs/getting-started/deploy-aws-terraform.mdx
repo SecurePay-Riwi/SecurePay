@@ -86,7 +86,7 @@ cd infra\terraform\envs\dev
    terraform init
    ```
 
-3. See what will be created. It must say `Plan: 181 to add, 0 to change, 0 to destroy` with one budget e-mail and the two test e-mails (159 of the network, data and engine, plus 22 of the messaging: 3 topics, 3 queues and their 3 DLQs, their policies and subscriptions, the 3 e-mail subscriptions, the 3 DLQ alarms and the repository policy that lets Lambda pull the image):
+3. See what will be created. It must say `Plan: 183 to add, 0 to change, 0 to destroy` with one budget e-mail and the two test e-mails (161 of the network, data, roles and engine, plus 22 of the messaging: 3 topics, 3 queues and their 3 DLQs, their policies and subscriptions, the 3 e-mail subscriptions, the 3 DLQ alarms and the repository policy that lets Lambda pull the image):
 
    ```powershell
    terraform plan
@@ -98,7 +98,7 @@ cd infra\terraform\envs\dev
    terraform apply
    ```
 
-   It ends with `Apply complete! Resources: 181 added`. AWS e-mails each address in `supervisor_emails`, `compliance_emails` and `budget_emails` a link "AWS Notification - Subscription Confirmation": **click Confirm subscription in each one.** `apply` does not wait for it, but until you click, SNS sends nothing to that address. Every new environment creates new subscriptions, so this happens after every `apply` from scratch. From this moment it costs money. The engine is not running yet: its service starts in [step 6](#6-deploy-the-engine-on-fargate), once its image is in ECR.
+   It ends with `Apply complete! Resources: 183 added`. AWS e-mails each address in `supervisor_emails`, `compliance_emails` and `budget_emails` a link "AWS Notification - Subscription Confirmation": **click Confirm subscription in each one.** `apply` does not wait for it, but until you click, SNS sends nothing to that address. Every new environment creates new subscriptions, so this happens after every `apply` from scratch. From this moment it costs money. The engine is not running yet: its service starts in [step 6](#6-deploy-the-engine-on-fargate), once its image is in ECR.
 
 **If `apply` fails,** Terraform stops and prints `Error:` with the resource and the AWS message. What it created before the error stays in the state: fix the cause and run `terraform apply` again (it only creates what is missing; a resource that failed halfway is replaced), or run `terraform destroy`.
 
@@ -281,7 +281,86 @@ Remove `case_due_minutes = 2` from `terraform.tfvars` after the test: the defaul
 
 **Cost.** The Lambdas, the queues, the topics and the schedule cost cents during a session (they charge per request); the session still costs what step 6 costs, about USD 0.22 an hour, mostly the NAT Gateways, RDS, the cache and the load balancer.
 
-## 8. Prove that evidence cannot be deleted
+## 8. Run the nightly reconciliation
+
+Every night at 02:00 Bogotá (07:00 UTC), EventBridge Scheduler starts the state machine `securepay-dev-reconciliation`. It runs four steps, and each one retries by itself:
+
+1. **ReadStatements**: the Lambda `securepay-dev-statement-reader` reads the four partners' files of yesterday from `raw/extractos/` and writes `curated/extractos/fecha=<day>/`.
+2. **MatchWithSpark**: the AWS Glue 6.0 job `securepay-dev-reconciliation-match` (Spark 4.1.1 and Python 3.13) runs `match.main` and writes `curated/conciliacion/fecha=<day>/`.
+3. **SaveDifferences**: the Lambda `securepay-dev-difference-writer` runs `store.handler` against RDS.
+4. **NotifyTreasury**: an e-mail to `-business-alerts` with `audience = treasury`, with the counts of the day.
+
+The machine stops after 4 h 30 min. A run still going at 06:30 fails, and any failed, timed-out or aborted run triggers the alarm `securepay-dev-reconciliation-failed`. At 06:30 a second schedule also invokes the alerts Lambda with `{"job": "reconciliation_check"}`. If yesterday's run is not `DONE` in `reconciliation_runs`, it warns `-ops-alarms`; this also covers a run that never started. Everything goes to the team before the 07:00 deadline.
+
+The match runs on AWS Glue, not EMR Serverless: on AWS's free account plan EMR is not available ([supported services](https://docs.aws.amazon.com/accounts/latest/reference/supported-services-sign-up-new.html)) and Glue is. Terraform zips `services/reconciliation` and `shared` itself and uploads the zip and `infra/spark/match_job.py` to `jobs/reconciliation/` in the artifacts bucket: there is nothing to build. When a run starts, Glue installs SQLAlchemy and python-dotenv (`--additional-python-modules`, the versions of `uv.lock`); it brings boto3.
+
+1. If your Terraform user was created before November 2, 2026 (evening), paste the whole [`terraform-user-policy.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/terraform-user-policy.json) again. Statement `PassRolesToServices` now also names `states.amazonaws.com` and `glue.amazonaws.com`, so Terraform can hand the state machine and the Glue job their roles.
+
+2. The reconciliation needs the provider `hashicorp/archive` (it builds the code zip). In `infra/terraform/envs/dev`, once:
+
+   ```powershell
+   terraform init
+   ```
+
+3. Optionally add a treasury address to `terraform.tfvars` (`treasury_emails = ["you+treasury@example.com"]`). Then, in `infra/terraform/envs/dev`:
+
+   ```powershell
+   terraform apply
+   ```
+
+   With `lambda_image_tag` already set (step 7), it adds the two Lambdas and their log groups, the two job files, the Glue job, the state machine, the two schedules, the alarm and the treasury subscription. It also updates the role policies and the alerts function. Confirm the treasury subscription from its e-mail.
+
+4. Upload the test day: the reconciliation fixtures, 2026-10-05, with every case and defect:
+
+   ```powershell
+   $LAKE = (terraform output -json bucket_names | ConvertFrom-Json).datalake
+   ```
+
+   ```powershell
+   aws s3 cp ../../../../services/reconciliation/tests/fixtures/extractos "s3://$LAKE/raw/extractos" --recursive
+   ```
+
+   ```powershell
+   aws s3 cp ../../../../services/reconciliation/tests/fixtures/decisiones "s3://$LAKE/raw/decisiones" --recursive
+   ```
+
+5. Start that day by hand ([`reconciliation-day.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/envs/dev/reconciliation-day.json) is `{"day": "2026-10-05"}`):
+
+   ```powershell
+   aws stepfunctions start-execution --state-machine-arn (terraform output -raw reconciliation_state_machine_arn) --input file://reconciliation-day.json
+   ```
+
+   Follow it in **Step Functions → State machines → securepay-dev-reconciliation**. The Spark step takes a few minutes: Glue starts its workers and installs the libraries on every run. The execution must end `Succeeded`.
+
+6. Check what each step wrote:
+
+   ```powershell
+   aws s3 ls "s3://$LAKE/curated/" --recursive
+   ```
+
+   Expected: `curated/extractos/fecha=2026-10-05/records.jsonl` (11 lines) and `rejects.jsonl` (2), and `curated/conciliacion/fecha=2026-10-05/part-00000.json` (13 lines). The treasury e-mail says `Files read: 4. Records: 11. Rejected rows: 2. Matched: 8. New differences: 6.`, and `reconciliation_differences` in RDS has those 6 rows as `PENDING` (`GET /reconciliation/differences` in the cases API). The first line of the job's output says the Python version it ran with: **AWS Glue → ETL jobs → securepay-dev-reconciliation-match → Runs → the run → Output logs**.
+
+7. Test the 06:30 check now. The day it checks is yesterday in Bogotá, which has no run, so it must say so:
+
+   ```powershell
+   aws lambda invoke --function-name securepay-dev-alerts --payload file://reconciliation-check.json --cli-binary-format raw-in-base64-out check.json
+   ```
+
+   `check.json` says `{"reconciliation_done": false}` and the ops address gets `Reconciliation of <yesterday> not done ... it never started`. Delete `check.json` afterwards.
+
+8. Test the failure alarm with a day that is not a date ([`reconciliation-bad-day.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/envs/dev/reconciliation-bad-day.json)):
+
+   ```powershell
+   aws stepfunctions start-execution --state-machine-arn (terraform output -raw reconciliation_state_machine_arn) --input file://reconciliation-bad-day.json
+   ```
+
+   The first step fails and is retried twice, 1 and 2 minutes later. Then the execution ends `Failed` at `ReconciliationFailed`, and within 5 minutes the alarm e-mails the ops address.
+
+**Tested on AWS on November 2, 2026** (Lambdas from the MAG-236 branch, AWS free account plan): the fixture day ended `Succeeded` in about 70 seconds; `records.jsonl` (11 lines), `rejects.jsonl` (2) and `part-00000.json` (13) were byte for byte what the same code writes locally; treasury got "Reconciliation of 2026-10-05 done ... Files read: 4. Records: 11."; the 06:30 check returned `{"reconciliation_done": false}` and ops got "Reconciliation of 2026-11-01 not done"; the bad day failed at `ReadStatements` with `Invalid isoformat string: 'not-a-day'`, ended at `ReconciliationFailed` after its retries, and the alarm went to `ALARM` about 3 minutes later and e-mailed ops. EMR Serverless had been tried first: on the free account plan `CreateApplication` fails with `SubscriptionRequiredException`, which is why the match runs on Glue.
+
+**Cost.** Glue 6.0 charges USD 0.308 per DPU-hour, per second while the job runs, with a 1-minute minimum. The job uses two G.1X workers (1 DPU each, Glue's minimum), so a run of a few minutes costs about two cents. Nothing is charged between runs. Step Functions includes 4,000 free state transitions a month; a run uses about 10. The session still costs what step 6 costs.
+
+## 9. Prove that evidence cannot be deleted
 
 The evidence bucket has Object Lock. In dev it has no default retention, so `destroy` works the same day; instead, you upload a test object locked for 5 minutes in COMPLIANCE mode. Decide the time before uploading: COMPLIANCE can be extended but never shortened.
 
@@ -321,7 +400,7 @@ The evidence bucket has Object Lock. In dev it has no default retention, so `des
 
 Delete the local `test.txt` so it does not end up in a commit.
 
-## 9. Destroy it
+## 10. Destroy it
 
 Once the lock of the last uploaded version has passed, destroy everything and type `yes`. RDS takes another 10 to 15 minutes:
 
@@ -329,7 +408,7 @@ Once the lock of the last uploaded version has passed, destroy everything and ty
 terraform destroy
 ```
 
-It ends with `Destroy complete! Resources: 201 destroyed` (181 if the image tags were never set; 186 without the Lambdas). The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
+It ends with `Destroy complete! Resources: 210 destroyed` after step 8 with one treasury address (the 184 of the first `apply` plus the 26 of the Lambdas and the reconciliation). The Glue job and its files go with it. The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
 
 **Check that nothing is left.** This must print nothing:
 

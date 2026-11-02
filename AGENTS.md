@@ -45,7 +45,7 @@ SecurePay/                  ← this repo: the product (engine, consumers, infra
 │   └── consumers/          ← SNS/SQS consumers and analytics
 ├── tests/                  ← end-to-end tests that run more than one service
 │                             (test_rule_catalog_e2e.py: rules API + engine)
-├── infra/                  ← LocalStack setup (init scripts create the SNS/SQS
+├── infra/                  ← spark/ (build of the reconciliation's Spark job), LocalStack setup (init scripts create the SNS/SQS
 │                             messaging, S3 buckets and the exchange-rates DynamoDB
 │                             table; add the service to SERVICES in Compose), Docker Compose
 │   └── terraform/          ← AWS infrastructure: modules/ (network, security_groups,
@@ -365,9 +365,9 @@ Read this before touching `shared/reconciliation.py`,
   `raw/decisiones/fecha=<day-1..day+1>`. DATE_OFF (dates more than 1 day
   apart) is checked before AMOUNT_OFF; both limits are included.
   `match.reconcile()` is PySpark (HU-37): `match.session()` is local[*]
-  in tests and Compose, the cluster's under spark-submit (EMR Serverless
+  in tests and Compose, the job's on AWS Glue 6.0 (`infra/spark/match_job.py`
   runs `match.main --day --records --decisions --output`). Spark reads
-  and writes local folders, and `s3://` only on a cluster; in local mode
+  and writes local folders, and `s3://` only on Glue; in local mode
   `s3://` (LocalStack) goes through `storage.py`. Output keeps nulls
   (`ignoreNullFields=false`), one `part-*.json` per day, replaced on a
   re-run. `match.match_day()` is the plain-Python reference: the Spark
@@ -416,8 +416,8 @@ Read this before touching `shared/reconciliation.py`,
   file is a `RejectedRow` with `line_number = 0`. Tests:
   `tests/test_ingest.py`.
 - `pyspark` is in the `spark` dependency group (default for `uv sync`),
-  pinned to 4.1.x: EMR Serverless `emr-spark-8.1.0` runs Spark 4.1.1 with
-  Python 3.12, so never use an API newer than 4.1. The Docker image
+  pinned to 4.1.x: AWS Glue 6.0 runs Spark 4.1.1 with
+  Python 3.13, so never use an API newer than 4.1. The Docker image
   leaves it out (`--no-default-groups`).
 
 ## Decision engine: rules and account history
@@ -645,6 +645,7 @@ Read these before changing the design, not to work on the code:
 - ElastiCache Serverless only accepts cluster-protocol clients: `shared/cache.py` uses `valkey.ValkeyCluster` when `VALKEY_CLUSTER=true` (set by Terraform in AWS; false locally). New Valkey code must keep one key per command, or keys sharing a hash tag like `{rules}`.
 - Temporary (agreed 2026-10-31): `engine_reads_database = true` in dev opens 5432 from `sg-engine` to `sg-rds` and hands the engine `DATABASE_URL` from `/securepay/<env>/rds/master-url`, because the engine still reads accounts, merchants, owners and the restricted list from PostgreSQL. It is removed by HU-67 (MAG-352), which loads that data into the cache.
 - Consumers and alerts task as Lambdas (HU-68, MAG-351): `modules/messaging` (topics `decisions`, `business-alerts`, `ops-alarms`; queues `cases`, `history`, `analytics` with DLQs after 5 attempts; DLQ alarms) and `modules/lambdas` (created once `lambda_image_tag` is set). Every Lambda runs the engine image with `entry_point = ["python", "-m", "awslambdaric"]` and the existing handler as command; there is no Lambda-only code. **A Lambda is named like its role in `modules/iam`** (`securepay-<env>-cases-consumer`, `-history-consumer`, `-analytics-consumer`, `-alerts`, later `-list-loader`, `-statement-reader`, `-difference-writer`). The cases, history and alerts handlers create the case tables on their first write (`batch.ensure_schema()`, `handler.ensure_schema()`): Lambda has no startup step. Temporary in dev: those Lambdas get the master user's `DATABASE_URL` as an environment variable; one database user per component is pending. Push images with `docker build --provenance=false` (Lambda rejects image indexes).
+- Nightly reconciliation (HU-36, MAG-236): `modules/reconciliation` (AWS Glue 6.0 job `-reconciliation-match` = Spark 4.1.1 + Python 3.13, because EMR is not available on AWS's free account plan, the state machine `-reconciliation` ingest → Spark `.sync` → store → SNS `audience = treasury`, `TimeoutSeconds` 4 h 30 min, Scheduler 07:00 UTC, the 06:30 check and the failure alarm). Terraform zips `services/reconciliation` and `shared` (without tests, `archive_file`) for `--extra-py-files` and uploads `infra/spark/match_job.py` as the script; `match_job.py` keeps `--day --records --decisions --output` out of Glue's own arguments and calls `match.main`. Glue brings boto3; what else `match.py` imports goes in `python_modules` of the module (`--additional-python-modules`) at the versions of `uv.lock`, and `services/reconciliation/tests/test_glue_job.py` fails if they differ. The job runs with the `glue-jobs` role. The 06:30 check is `services/alerts/reconciliation_check.py`, run by the alerts handler with `{"job": "reconciliation_check"}`; it publishes to `OPS_ALARMS_TOPIC`.
 - Before a PR: `terraform fmt -check -recursive` in `infra/terraform/` and `terraform validate` in `envs/dev`. The page `doc-website/docs/architecture/terraform.mdx` changes with the code.
 
 ## Docker images and local ecosystem (MAG-31 / MAG-32)

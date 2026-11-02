@@ -86,6 +86,7 @@ locals {
   business_emails = merge(
     { for email in var.supervisor_emails : "supervisor:${email}" => { audience = "supervisor", email = email } },
     { for email in var.compliance_emails : "compliance:${email}" => { audience = "compliance", email = email } },
+    { for email in var.treasury_emails : "treasury:${email}" => { audience = "treasury", email = email } },
   )
 }
 

@@ -35,7 +35,7 @@ variable "queue_arns" {
 }
 
 variable "database_url" {
-  description = "DATABASE_URL of the cases, history and alerts Lambdas. Temporary: the master user in dev (security.mdx, Encryption and secrets)."
+  description = "DATABASE_URL of the cases, history, alerts and difference-writer Lambdas. Temporary: the master user in dev (security.mdx, Encryption and secrets)."
   type        = string
   sensitive   = true
 }

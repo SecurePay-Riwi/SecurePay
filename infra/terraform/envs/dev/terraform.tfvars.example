@@ -27,4 +27,5 @@ budget_emails = ["you@example.com"]
 # lambda_image_tag  = "<short commit of SecurePay>"
 # supervisor_emails = ["you+supervisor@example.com"]
 # compliance_emails = ["you+compliance@example.com"]
+# treasury_emails   = ["you+treasury@example.com"]
 # case_due_minutes  = 2   # test only: escalate after 2 minutes (default 240)

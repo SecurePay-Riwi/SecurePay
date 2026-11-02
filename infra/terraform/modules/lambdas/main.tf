@@ -38,10 +38,28 @@ locals {
       queue   = null
       environment = merge(local.database, {
         BUSINESS_ALERTS_TOPIC   = var.business_alerts_topic_arn
+        OPS_ALARMS_TOPIC        = var.ops_alarms_topic_arn
         EVIDENCE_BUCKET         = var.evidence_bucket
         EVIDENCE_RETENTION_DAYS = var.evidence_retention_days
         CASE_DUE_MINUTES        = tostring(var.case_due_minutes)
       })
+    }
+    # The two Lambda steps of the nightly reconciliation (HU-36); Step
+    # Functions invokes them (modules/reconciliation).
+    statement-reader = {
+      command = "services.reconciliation.ingest.handler"
+      in_vpc  = false
+      queue   = null
+      environment = {
+        STATEMENTS_SOURCE = "s3://${var.datalake_bucket}/raw/extractos"
+        RECON_DATA_DIR    = "s3://${var.datalake_bucket}"
+      }
+    }
+    difference-writer = {
+      command     = "services.reconciliation.store.handler"
+      in_vpc      = true
+      queue       = null
+      environment = merge(local.database, { RECON_DATA_DIR = "s3://${var.datalake_bucket}" })
     }
   }
 

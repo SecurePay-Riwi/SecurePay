@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.exc import SQLAlchemyError
 
-from services.alerts import account_history, compliance_summary, escalation
+from services.alerts import account_history, compliance_summary, escalation, reconciliation_check
 from shared import db, evidence
 from shared.cases import create_schema
 
@@ -54,7 +54,10 @@ def ensure_schema() -> None:
 
 def handler(event=None, context=None) -> dict:
     """Run every job and return how many items each one handled (None for
-    a job that failed)."""
+    a job that failed). {"job": "reconciliation_check"} (the 06:30 schedule,
+    HU-36) runs only that check."""
+    if (event or {}).get("job") == "reconciliation_check":
+        return run_reconciliation_check()
     ensure_schema()
     now = datetime.now(UTC)
     counts: dict[str, int | None] = {}
@@ -68,3 +71,16 @@ def handler(event=None, context=None) -> dict:
                 counts[name] = None
     log.info("Alerts: %s", counts)
     return counts
+
+
+def run_reconciliation_check() -> dict:
+    """{"reconciliation_done": True/False}, or None if the check failed
+    (logged as ERROR, which the alerts alarm counts)."""
+    with SessionLocal() as session:
+        try:
+            done = reconciliation_check.check(session, datetime.now(UTC))
+        except Exception:
+            log.exception("Alerts: reconciliation_check failed")
+            session.rollback()
+            done = None
+    return {"reconciliation_done": done}

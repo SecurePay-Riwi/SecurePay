@@ -175,6 +175,7 @@ module "messaging" {
   name_prefix       = local.name_prefix
   supervisor_emails = var.supervisor_emails
   compliance_emails = var.compliance_emails
+  treasury_emails   = var.treasury_emails
   alarm_emails      = var.budget_emails
 }
 
@@ -202,4 +203,30 @@ module "lambdas" {
   evidence_retention_days   = "0.0035"
   case_due_minutes          = var.case_due_minutes
   log_retention_days        = 7
+}
+
+# The nightly reconciliation (HU-36): Step Functions at 02:00 Bogota, the
+# match on AWS Glue (EMR is not on AWS's free account plan), the 06:30
+# check and the failure alarm. Created with the Lambdas (lambda_image_tag).
+module "reconciliation" {
+  source = "../../modules/reconciliation"
+
+  name_prefix = local.name_prefix
+  enabled     = var.lambda_image_tag != null
+
+  statement_reader_arn   = lookup(module.lambdas.function_arns, "statement-reader", "")
+  difference_writer_arn  = lookup(module.lambdas.function_arns, "difference-writer", "")
+  alerts_function_arn    = lookup(module.lambdas.function_arns, "alerts", "")
+  state_machine_role_arn = module.iam.role_arns["reconciliation"]
+  glue_job_role_arn      = module.iam.role_arns["glue-jobs"]
+  scheduler_role_arn     = module.iam.role_arns["scheduler"]
+
+  datalake_bucket           = module.storage.bucket_names["datalake"]
+  artifacts_bucket          = module.storage.bucket_names["artifacts"]
+  business_alerts_topic_arn = module.messaging.business_alerts_topic_arn
+  ops_alarms_topic_arn      = module.messaging.ops_alarms_topic_arn
+
+  repo_root      = "${path.root}/../../../.."
+  schedule       = var.reconciliation_schedule
+  check_schedule = var.reconciliation_check_schedule
 }
