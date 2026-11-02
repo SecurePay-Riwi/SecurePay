@@ -53,9 +53,9 @@ def _decision(decision, reason, rules, by_default=False, amount_usd="28.32") -> 
         "rule_versions": {rule: 1 for rule in rules},
         "opens_case": False,
         "amount_usd": amount_usd,
-        # Filled from HU-42 (the day's exchange rate).
-        "usd_rate": None,
-        "rate_date": None,
+        # HU-42: EUR per USD on the transaction's day.
+        "usd_rate": "0.88284",
+        "rate_date": "2026-10-01",
         "risk_score": 0,
         "by_default": by_default,
         "processed_at": "2026-10-14T00:10:03.512000Z",

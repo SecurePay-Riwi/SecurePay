@@ -13,7 +13,7 @@ from functools import cached_property
 
 from sqlalchemy.orm import Session
 
-from services.decision_engine import history
+from services.decision_engine import currency, history
 from services.decision_engine import security_events as security
 from services.decision_engine.schemas import Decision, TransactionRequest
 from shared.models import ListaRestrictiva
@@ -65,6 +65,17 @@ class RuleContext:
     # Every account that used the transaction's device, after recording
     # the main account (dev:{device}).
     device_accounts: list[history.DeviceUse] = field(default_factory=list)
+    # The exchange rate behind amount_usd (HU-42). Rules convert history
+    # amounts with it, so every amount of one decision uses the same
+    # day. Looked up from the transaction's day when not given.
+    rate: currency.Rate | None = None
+
+    def __post_init__(self):
+        if self.rate is None:
+            self.rate = currency.rate_for(
+                self.payload.currency,
+                currency.utc_day(self.payload.transaction_date),
+            )
 
     @cached_property
     def on_restricted_list(self) -> bool:

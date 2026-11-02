@@ -167,3 +167,18 @@ def test_default_decision_records_the_version_of_its_rule():
 
     assert result["rules_version"] == "7"
     assert result["rule_versions"] == {ds.DEFAULT_RULE: 3}
+
+
+def test_default_decision_uses_the_rate_of_the_day():
+    """HU-42: the USD 50 limit is compared at the day's rate, and the
+    decision says which rate it used."""
+    payload = _payload("100000.00", "COP")
+    day = currency.utc_day(payload.transaction_date)
+    # At 1000 COP per USD, 100,000 COP is USD 100: above the limit.
+    currency.load({day: {"USD": Decimal(1), "COP": Decimal("1000")}})
+
+    result = ds.default_decision(payload, catalog.current())
+
+    assert result["decision"] == "HOLD"
+    assert result["amount_usd"] == "100.00"
+    assert (result["usd_rate"], result["rate_date"]) == ("1000", day.isoformat())

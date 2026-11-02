@@ -170,11 +170,11 @@ class TransactionResponse(BaseModel):
     )
     usd_rate: Decimal | None = Field(
         default=None,
-        description="Units of the transaction's currency per 1 USD used for amount_usd (1 for USD), as a decimal string. null until the engine reads the day's rate (HU-42) and in decisions stored before it existed.",
+        description="Units of the transaction's currency per 1 USD used for amount_usd (1 for USD), as a decimal string: the rate of rate_date from the pagoseguro-exchange-rates table (RN-11). null in decisions stored before it existed.",
     )
     rate_date: date | None = Field(
         default=None,
-        description="Day of the exchange rate used for amount_usd: the transaction's day, or the last earlier day with a rate. null until the engine reads the day's rate (HU-42) and in decisions stored before it existed.",
+        description="Day of the exchange rate used for amount_usd: the transaction's day in UTC, or the last earlier day with a rate; 2026-10-01 when the engine fell back to its fixed rates. null in decisions stored before it existed.",
     )
     risk_score: int = Field(
         default=0,

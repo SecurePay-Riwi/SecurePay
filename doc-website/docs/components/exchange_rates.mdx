@@ -99,7 +99,7 @@ Frankfurter API
     ↓
 DynamoDB (pagoseguro-exchange-rates)
     ↓
-Decision engine (loads the table at startup, refreshes daily)
+Decision engine (loads the table at startup, refreshes it every hour)
 ```
 
 The Lambda always writes today's rates to DynamoDB. If Frankfurter fails or answers with
