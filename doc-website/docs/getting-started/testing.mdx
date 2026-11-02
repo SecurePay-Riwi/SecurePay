@@ -16,8 +16,6 @@ Each repository runs its own tests with `uv run pytest` from its root:
 | `securepay-csv` | 46 | `tests/kaggle_datasets/`, `tests/partner_statements/` | Nothing (one test uses LocalStack and is skipped without it) |
 | `securepay-apis` | 38 | `tests/restricted_list/`, `tests/exchange_rates/` | Nothing (two tests use LocalStack and are skipped without it) |
 
-While the backup folders `db/`, `generators/` and `sources/` stay in `SecurePay`, its `uv run pytest` also runs their old copies of the source tests.
-
 ## How to run the tests
 
 **1. Start the local services**, so that no test is skipped (see [Local setup](./local-setup.mdx)):

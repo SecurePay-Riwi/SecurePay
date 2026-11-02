@@ -52,10 +52,7 @@ SecurePay/                  ← this repo: the product (engine, consumers, infra
 │                             iam, storage, database, ecr, cache, ecs, messaging,
 │                             lambdas) and envs/dev; local state,
 │                             never committed
-├── doc-website/            ← Docusaurus documentation site
-├── db/                     ← BACKUP only: now in securepay-seed
-├── generators/             ← BACKUP only: now in securepay-generator
-└── sources/                ← BACKUP only: now in securepay-csv and securepay-apis
+└── doc-website/            ← Docusaurus documentation site
 ```
 
 ### Satellite repositories (SecurePay-Riwi org)
@@ -92,8 +89,9 @@ used by `services/` and stay in this repo.
 Follow these rules for every change. If a change seems to need breaking one,
 stop and ask instead of working around it.
 
-1. `db/`, `generators/` and `sources/` are a **backup** from before the split.
-   Never edit them: changes to a data source go to its own repository.
+1. Data source code lives in its own repository (`securepay-seed`,
+   `securepay-generator`, `securepay-csv`, `securepay-apis`). Never add it
+   back here: changes to a data source go to its repository.
 2. New product code goes under `services/<component>/` (one folder per piece
    that is deployed on its own), with its tests in `services/<component>/tests/`.
 3. Code shared by the services lives in `shared/`. What the source repos also
