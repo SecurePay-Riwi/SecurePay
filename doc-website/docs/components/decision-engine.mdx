@@ -92,7 +92,7 @@ There is no `user_id`: the owner comes from the account.
 - `amount_usd` is the transaction amount in USD, rounded to cents (RN-11), with the same rate the rules use (`currency.to_usd()`). The consumers store it with the [case](./cases.mdx) and the account history, so no other service imports `currency.py`. `null` in decisions stored before it existed.
 - `usd_rate` and `rate_date` are the exchange rate behind `amount_usd`: units of the transaction's currency per 1 USD and the day of that rate (RN-11). They are `null` until the engine reads the day's rate from DynamoDB (HU-42, Sprint 5); the consumers will store them with the case and the account history (HU-43). Optional fields: `EVENT_VERSION` does not change.
 - `risk_score` is the sum of the `score` of the rules that fired, at most 100. Every rule of Sprint 2 has score 0; the shared device rule (HU-14) is the first that raises it (30).
-- `by_default` is `true` when the rules did not answer in time and the default decision was applied (see [Default decision on timeout](#default-decision-on-timeout)). Then `rules_triggered` is `["default_timeout"]`.
+- `by_default` is `true` when RN-01's default decision was applied: the rules did not answer in time, or the cache did not have (or did not return) an account, the merchant or the restricted list (see [Default decision on timeout](#default-decision-on-timeout) and [Reference data in the cache](#reference-data-in-the-cache)). Then `rules_triggered` is `["default_timeout"]`.
 - `idempotent_replay` is `true` when the answer is a stored decision returned to a resend. A resend keeps the versions of the first decision even if the catalog changed since. A decision stored before `rules_version`, `rules_triggered` and `rule_versions` existed is replayed with `null`, `[]` and `{}`.
 
 ## Status codes
@@ -102,9 +102,8 @@ There is no `user_id`: the owner comes from the account.
 | `200` | Decided (or a resend of an already decided id). |
 | `400` | Invalid body: missing fields, wrong types, wrong accounts for the type, too many decimals. Includes the validator's `errors`. |
 | `409` | The same id is still being decided by another request, or the same id arrived with a different body. |
-| `422` | The body is valid but references something unusable: an account or merchant that does not exist, or a currency that is not the account's. |
+| `422` | The body is valid but its currency is not the account's. An account or merchant the cache does not have gets the default decision instead (`200`, `by_default: true`). |
 | `503` | Valkey (idempotency) is not available. |
-| `500` | Database error. |
 
 ## Rules running today
 
@@ -112,13 +111,14 @@ Thresholds below are the catalog defaults.
 
 | Rule | Decision | How |
 | :--- | :--- | :--- |
-| Restricted list | `REJECT` | The owner's document, normalized to digits only, is in `listas_restrictivas`. |
+| Restricted list | `REJECT` | The document of an owner of any account involved, digits only, is in `{restricted}:docs` (the cache copy of `listas_restrictivas`). |
 | Velocity | `HOLD` | More than 5 outgoing **P2P** transfers in 10 minutes from the same account, measured by event time. |
 | Mule account | `HOLD` and opens a case | A **withdrawal** of 80 % or more of the balance, after `P2P` transfers from 3 or more different accounts, all in less than 30 minutes. |
 | Shared device | `APPROVE`, `risk_score` +30 | The transaction's device was used by more than 3 accounts in the last 30 days. |
 | Splitting | `APPROVE`, opens a case, `risk_score` +40 | 3 or more outgoing transactions (`P2P`, `QR`, `RETIRO`) from the same account in 24 hours, each below USD 10000, adding up to more than USD 10000. |
 | Account takeover | `HOLD` | A device change and a password change of the source account in the 60 minutes before a `P2P`, `QR` or withdrawal of more than USD 200. See [Account takeover](#account-takeover). |
-| Default decision | `APPROVE` below USD 50, `HOLD` from USD 50 | The rules did not answer in 120 ms. Never `REJECT`. |
+| Default decision | `APPROVE` below USD 50, `HOLD` from USD 50 | The rules did not answer in 120 ms, or an account or the merchant is not in the cache, or the cache does not answer. Never `REJECT`. |
+| Restricted list not loaded | `HOLD` whatever the amount | `{restricted}:loaded_at` is missing and the restricted list rule is enabled. |
 | Anything else | `APPROVE` | "The transaction did not trigger any configured rule." |
 
 Every enabled rule of the catalog is evaluated, in catalog order, even when one already rejects, and each one that fires adds a `TriggeredRule` (rule code, decision, reason, score, whether it opens a case) to a list. `choose_decision()` turns the list into one decision: **the most severe wins** (`REJECT`, then `HOLD`); with none, `APPROVE`. So an owner on the restricted list who also makes six transfers in a row gets `REJECT` with `rules_triggered: ["restricted_list", "velocity"]`.
@@ -180,16 +180,16 @@ def evaluate(ctx: RuleContext, rule: RuleEntry) -> TriggeredRule | None:
 RN-01 asks for a decision in 200 ms, and for a default one when the engine cannot make it: `APPROVE` below USD 50, `HOLD` from USD 50 up (the `limit_usd` of the catalog's `default_timeout` entry). `process_transaction()` runs the rules in a thread pool and waits `DECISION_TIMEOUT_MS` (120 ms) for them; past that it answers with `default_decision()`. It never rejects: being slow is not a reason to turn a customer down.
 
 - The default decision is stored in the idempotency key and published like any other, so a resend gets the same answer (CA-05).
-- A Python thread cannot be stopped, so the late evaluation ends in the background and its result is dropped. It keeps the database session and closes it itself; `get_db()` skips closing a session marked that way. Its history writes stay, like any attempt.
+- A Python thread cannot be stopped, so the late evaluation ends in the background and its result is dropped. Its history writes stay, like any attempt.
 - The amount is converted to USD by `currency.to_usd()`. **For now it uses a fixed snapshot of the 2026-10-01 rates**; HU-42 replaces it with the rate of the transaction's day from the `pagoseguro-exchange-rates` table, without changing the callers.
 
-`tests/test_default_decision.py` covers CA-04 (USD 30 approved, USD 80 held), the limit at exactly USD 50, a rule answer in time, the conversion from COP, a resend after a timeout and the late session.
+`tests/test_default_decision.py` covers CA-04 (USD 30 approved, USD 80 held), the limit at exactly USD 50, a rule answer in time, the conversion from COP, a resend after a timeout and that the late evaluation is not published.
 
 ## Request flow
 
 ```python
 # services/decision_engine/decision_service.py (simplified)
-def process_transaction(session, payload):
+def process_transaction(payload):
     transaction = payload.model_dump(mode="json")
     fingerprint = idem.huella(transaction)          # SHA-256 of the normalized body
 
@@ -198,7 +198,7 @@ def process_transaction(session, payload):
         return previous, True                    # resend: same decision, not published again
 
     try:
-        result = _decide_in_time(session, payload)  # rules, or the default after 120 ms
+        result = _decide_in_time(payload)  # rules, or the default after 120 ms
     except Exception:
         idem.liberar(payload.id)               # no decision: let the retry decide
         raise
@@ -208,7 +208,39 @@ def process_transaction(session, payload):
     return result, False
 ```
 
-The engine **does not write to PostgreSQL**. It only reads accounts, merchants, users and the restricted list. The decision is stored in Valkey and published; the [consumers](./consumers.mdx) store what needs storing.
+The engine **does not open a connection to PostgreSQL**: it reads accounts, merchants and the restricted list from the cache (see below). The decision is stored in Valkey and published; the [consumers](./consumers.mdx) store what needs storing.
+
+## Reference data in the cache
+
+HU-67 (MAG-352). The engine reads what it needs of accounts, merchants and the restricted list from Valkey, never from PostgreSQL (contract C5, key names in `shared/refdata.py`). The [cache loader](#cache-loader) writes them:
+
+| Key | Type | Content | Kept |
+| :--- | :--- | :--- | :--- |
+| `acct:<account_id>` | hash | `currency`, `user_id`, `document` (the owner's, digits only), `status` | `REFDATA_TTL_HOURS` (48), renewed by every load |
+| `merch:<merchant_id>` | hash | `status`, `category` | `REFDATA_TTL_HOURS`, renewed by every load |
+| `{restricted}:docs` | set | Listed documents, digits only | Replaced by every load |
+| `{restricted}:loaded_at`, `refdata:loaded_at` | string | ISO time of the last load | — |
+
+`services/decision_engine/reference_data.py` has the reads, each one command on one key: `get_account(id)` (`HGETALL`, `None` if missing), `merchant_exists(id)` (`EXISTS`) and `on_restricted_list(documents)` (`SMISMEMBER`; `None` when `{restricted}:loaded_at` is missing, because an empty set is not a key in Valkey). A Valkey error becomes `CacheUnavailable`.
+
+What is missing is decided as sprint 5's D2 says, always within the 200 ms:
+
+| Situation | Decision |
+| :--- | :--- |
+| An account or the merchant is not in the cache | RN-01 default: `APPROVE` below USD 50, `HOLD` from there, `by_default: true`, the reason names what is missing. |
+| The cache does not answer a reference read (`CacheUnavailable`) | The same default, reason "the cache did not answer". |
+| The restricted list is not loaded and its rule is enabled | `HOLD` whatever the amount, `by_default: true`. |
+| The currency is not the account's (account in the cache) | `422`. |
+
+If Valkey is down altogether, the idempotency reservation fails first and the answer is `503`, as before.
+
+### Cache loader
+
+**Folder:** `services/cache_loader/` · **Run:** `uv run python -m services.cache_loader`
+
+Reads PostgreSQL with `SessionLocal` and writes the keys above: accounts joined with their owner's document and merchants with a pipeline without transaction, 5000 keys per round trip, each with its TTL; the restricted list into `{restricted}:docs:next`, then `RENAME` over `{restricted}:docs` (same `{restricted}` hash tag, valid in cluster mode), so the engine never sees half a list and a document taken off the list disappears with the next load. An empty list deletes the set and still sets `{restricted}:loaded_at`. In Compose it runs once after the seed and before the engine; in AWS it is a daily Lambda (`handler(event, context)`, deployed by Terraform).
+
+Tests: `services/cache_loader/tests/test_loader.py` (in a scratch Valkey database), `services/decision_engine/tests/test_reference_data.py` (reads, D2 and that the engine does not import `shared.db`) and `tests/test_reference_data_e2e.py` (a document taken off the list stops rejecting after the reload; without the list, `HOLD`). The engine's tests load the cache from the seed once per run (`conftest.py`).
 
 ## Idempotency
 
@@ -431,6 +463,7 @@ Each new decision is published to SNS by a background thread without making the 
 | `idempotency.py` | `idem:{id}` keys in Valkey. |
 | `history.py` | `out:{account}`, `in:{account}` and `dev:{device}` sorted sets: the history every rule reads. `record()` writes any history key. |
 | `security_events.py` | `sec:{account}` sorted set: device and password changes for the account takeover rule. |
+| `reference_data.py` | `acct:`, `merch:` and `{restricted}:docs` reads (HU-67): accounts, merchants and the restricted list from the cache, filled by `services/cache_loader/`. |
 | `rules/` | One module per rule type (`restricted_list.py`, `velocity.py`, `mule.py`, `shared_device.py`, `splitting.py`, `account_takeover.py`), `base.py` (`RuleContext`, `TriggeredRule`, `hit`) and `REGISTRY` in `__init__.py`. |
 | `currency.py` | Amounts in USD for the dollar thresholds (fixed 2026-10-01 rates until HU-42). |
 | `publisher.py` | Background SNS publisher. |

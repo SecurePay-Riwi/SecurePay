@@ -74,11 +74,27 @@ services:
       postgres: {condition: service_healthy}
     restart: "no"
 
+  # HU-67: copies accounts, merchants and the restricted list from
+  # PostgreSQL into Valkey once, after the seed. In AWS it is a daily Lambda.
+  cache-loader:
+    build: {context: ., dockerfile: Dockerfile}
+    command: ["python", "-m", "services.cache_loader"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-pagoseguro}:${POSTGRES_PASSWORD:-pagoseguro}@postgres:5432/${POSTGRES_DB:-pagoseguro}
+      VALKEY_URL: redis://valkey:6379/0
+      VALKEY_CLUSTER: ${VALKEY_CLUSTER:-false}
+      REFDATA_TTL_HOURS: ${REFDATA_TTL_HOURS:-48}
+    depends_on:
+      postgres: {condition: service_healthy}
+      valkey: {condition: service_healthy}
+      seed: {condition: service_completed_successfully}
+    restart: "no"
+
   decision-engine:
     build: {context: ., dockerfile: Dockerfile}
     command: ["uvicorn", "services.decision_engine.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    # No DATABASE_URL: the engine reads its reference data from Valkey (HU-67).
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-pagoseguro}:${POSTGRES_PASSWORD:-pagoseguro}@postgres:5432/${POSTGRES_DB:-pagoseguro}
       VALKEY_URL: redis://valkey:6379/0
       VALKEY_CLUSTER: ${VALKEY_CLUSTER:-false}
       AWS_ENDPOINT_URL: http://localstack:4566
@@ -102,10 +118,9 @@ services:
       REFDATA_TTL_HOURS: ${REFDATA_TTL_HOURS:-48}
     ports: ["8000:8000"]
     depends_on:
-      postgres: {condition: service_healthy}
       valkey: {condition: service_healthy}
       localstack: {condition: service_healthy}
-      seed: {condition: service_completed_successfully}
+      cache-loader: {condition: service_completed_successfully}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
       interval: 10s
