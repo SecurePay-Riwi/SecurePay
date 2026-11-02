@@ -56,7 +56,7 @@ El repositorio reúne los componentes trabajados hasta el momento:
 
 - Motor antifraude con API FastAPI y reglas de decisión.
 - API independiente para crear, modificar, activar/desactivar y consultar versiones de reglas antifraude (`services/rules_api/`, puerto 8002).
-- Sprint 4 (en curso): tablas de casos (`shared/cases.py`), API de casos (`services/cases_api/`, puerto 8003) y tarea de alertas (`services/alerts/`). Hechos: crear casos (HU-25), reportes de lista restrictiva (HU-34), historial de 30 días por cuenta (HU-28, `GET /accounts/{account_id}/transactions`) cuentas relacionadas por dispositivo (HU-29, `GET /accounts/{account_id}/related-accounts`) y escalamiento al supervisor de los casos abiertos más de 4 horas (HU-31: la tarea de alertas, cada 5 minutos, manda un resumen por corrida; con `CASE_DUE_MINUTES=2` se ve en local en pocos minutos).
+- Sprint 4 (in progress): case tables (`shared/cases.py`), cases API (`services/cases_api/`, port 8003) and alerts task (`services/alerts/`). Done: opening cases (HU-25), restricted list reports (HU-34), the 30-day history of each account (HU-28, `GET /accounts/{account_id}/transactions`), the accounts related through a device (HU-29, `GET /accounts/{account_id}/related-accounts`) and the analyst's work: the inbox (HU-26, `GET /cases`), assigning (HU-27, `PUT /cases/{case_id}/assignee`) and resolving (HU-30, `POST /cases/{case_id}/resolution`), and the escalation to the supervisor of the cases open over 4 hours (HU-31: every 5 minutes the alerts task sends one summary per run; with `CASE_DUE_MINUTES=2` it shows locally in a few minutes).
 - Seed de datos maestros para PostgreSQL y generador de transacciones de prueba.
 - Pruebas automatizadas para los componentes del proyecto.
 - Simulación local de mensajería con SNS/SQS y almacenamiento en S3 mediante LocalStack.
@@ -573,6 +573,14 @@ Compose coordina PostgreSQL, Valkey, LocalStack, el seed, el motor antifraude, l
 - API de casos: http://localhost:8003/health y http://localhost:8003/docs
 - API de listas restrictivas: http://localhost:8001/health
 - PostgreSQL: puerto 5433; Valkey: 6379; LocalStack: 4566.
+
+To try the case inbox, the generator already leaves open cases (the mule account, splitting and restricted list decisions). From bash:
+
+    curl http://localhost:8003/cases
+    curl -X PUT http://localhost:8003/cases/<case_id>/assignee -H "X-User: supervisor" -H "Content-Type: application/json" -d '{"assignee": "ana"}'
+    curl -X POST http://localhost:8003/cases/<case_id>/resolution -H "X-User: ana" -H "Content-Type: application/json" -d '{"outcome": "FRAUD", "note": "Linked senders."}'
+
+On Windows it is simpler from http://localhost:8003/docs ("Try it out"), because PowerShell changes the quotes of the JSON. If the inbox is empty, run the generator again with `docker compose run --rm generator`. Every endpoint has examples at http://localhost:8003/docs and in `doc-website/docs/components/cases.mdx`.
 
 Valkey arranca vacío en cada `up` (sin persistencia), así que no hace falta `FLUSHDB` entre corridas. Las variables del motor (historial, timeout, mula) se toman del `.env` con los mismos valores por defecto que `.env.example`.
 

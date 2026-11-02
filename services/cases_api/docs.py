@@ -170,3 +170,206 @@ RELATED_ACCOUNTS = {
         503: DB_DOWN,
     },
 }
+
+
+# --- Cases (HU-26) -----------------------------------------------------------
+
+_CASE_ID = "0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01"
+
+_CASE_SUMMARY = {
+    "id": _CASE_ID,
+    "transaction_id": "a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21",
+    "account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+    "status": "OPEN",
+    "decision": "HOLD",
+    "rules_triggered": ["mule"],
+    "risk_score": 50,
+    "amount": "950000.00",
+    "currency": "COP",
+    "amount_usd": "230.05",
+    "assignee": None,
+    "created_at": "2026-10-31T14:02:11.418000Z",
+    "due_at": "2026-10-31T18:02:11.418000Z",
+    "minutes_left": 87,
+}
+
+_CASE_DETAIL = {
+    **_CASE_SUMMARY,
+    "decision_reason": "The account received 3 transfers from different senders and withdrew 95% of its balance.",
+    "rules_version": "3",
+    "rule_versions": {"mule": 1},
+    "transaction_date": "2026-10-31T14:02:10Z",
+    "transaction": {
+        "id": "a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21",
+        "type": "RETIRO",
+        "source_account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+        "destination_account_id": None,
+        "amount": "950000.00",
+        "currency": "COP",
+        "transaction_date": "2026-10-31T14:02:10Z",
+    },
+    "escalated_at": None,
+    "resolved_at": None,
+    "resolved_by": None,
+    "outcome": None,
+    "final_decision": None,
+    "resolution_note": None,
+    "evidence_key": None,
+    "events": [{
+        "id": 1,
+        "type": "CREATED",
+        "actor": "system",
+        "at": "2026-10-31T14:02:11.418000Z",
+        "data": {},
+    }],
+}
+
+CASE_NOT_FOUND = _error("There is no case with that id.", "Case not found.")
+
+CASES = {
+    "summary": "List the case inbox",
+    "description": (
+        "The cases an analyst has to work on. Without `status`, the pending "
+        "ones: `OPEN` and `ESCALATED` (still open after the 4-hour limit, "
+        "RN-09). `status` asks for one state (`RESOLVED` too) and "
+        "`assignee` for one analyst's cases.\n\n"
+        "Highest `risk_score` first and, with the same risk, the closest to "
+        "`due_at`. `minutes_left` is the whole minutes until `due_at`, "
+        "negative once it is overdue, and null for a resolved case. "
+        "Paginated with `page` and `size` (default 20, at most 100)."
+    ),
+    "responses": {
+        200: _ok(
+            "The cases of the page, by risk and then by time left.",
+            {"items": [_CASE_SUMMARY], "total": 1, "page": 1, "size": 20},
+        ),
+        400: _error("`status` is not a case state, or `assignee`, `page` or `size` is out of range.",
+                    "The request contains invalid data."),
+        503: DB_DOWN,
+    },
+}
+
+CASE = {
+    "summary": "Read a case with its events",
+    "description": (
+        "Everything the case stores (the engine's decision, the transaction "
+        "as it came, the resolution and the evidence key) and its events, "
+        "oldest first: `CREATED`, `ASSIGNED`, `ESCALATED`, `RESOLVED`, "
+        "`EVIDENCE_ARCHIVED`."
+    ),
+    "responses": {
+        200: _ok("The case and its events.", _CASE_DETAIL),
+        400: _error("The case id is not a UUID.", "The request contains invalid data."),
+        404: CASE_NOT_FOUND,
+        503: DB_DOWN,
+    },
+}
+
+
+# --- Cases (HU-27) -----------------------------------------------------------
+
+CASE_RESOLVED = _error("The case is RESOLVED, which is final.",
+                       "The case is resolved; it can no longer change.")
+
+_ASSIGNED_CASE = {
+    **_CASE_DETAIL,
+    "assignee": "ana",
+    "events": [
+        *_CASE_DETAIL["events"],
+        {
+            "id": 2,
+            "type": "ASSIGNED",
+            "actor": "supervisor.luis",
+            "at": "2026-10-31T14:10:45.002000Z",
+            "data": {"from": None, "to": "ana"},
+        },
+    ],
+}
+
+ASSIGN = {
+    "summary": "Assign or reassign a case",
+    "description": (
+        "Sets the analyst who owns the case and writes an `ASSIGNED` event "
+        "with the previous and the new owner (`from` is null the first "
+        "time), with `X-User` as its actor. Assigning the owner it already "
+        "has changes nothing and writes no event. An `ESCALATED` case can "
+        "still be assigned; a `RESOLVED` one cannot (`409`).\n\n"
+        "`X-User` is required. Returns the case with its events."
+    ),
+    "responses": {
+        200: _ok("The case with its new owner and events.", _ASSIGNED_CASE),
+        400: _error("`X-User` is missing, the id is not a UUID, or `assignee` is not 1 to 100 characters.",
+                    "X-User must have 1 to 100 characters."),
+        404: CASE_NOT_FOUND,
+        409: CASE_RESOLVED,
+        503: DB_DOWN,
+    },
+}
+
+
+# --- Cases (HU-30) -----------------------------------------------------------
+
+_RESOLVED_CASE = {
+    **_ASSIGNED_CASE,
+    "status": "RESOLVED",
+    "minutes_left": None,
+    "resolved_at": "2026-10-31T15:31:02.540000Z",
+    "resolved_by": "ana",
+    "outcome": "FRAUD",
+    "final_decision": "REJECT",
+    "resolution_note": "The three senders are linked accounts; the customer did not recognise the withdrawal.",
+    "evidence_key": f"cases/2026/10/{_CASE_ID}.json",
+    "events": [
+        *_ASSIGNED_CASE["events"],
+        {
+            "id": 3,
+            "type": "RESOLVED",
+            "actor": "ana",
+            "at": "2026-10-31T15:31:02.540000Z",
+            "data": {
+                "outcome": "FRAUD",
+                "final_decision": "REJECT",
+                "note": "The three senders are linked accounts; the customer did not recognise the withdrawal.",
+            },
+        },
+        {
+            "id": 4,
+            "type": "EVIDENCE_ARCHIVED",
+            "actor": "system",
+            "at": "2026-10-31T15:31:02.871000Z",
+            "data": {
+                "bucket": "pagoseguro-evidence",
+                "key": f"cases/2026/10/{_CASE_ID}.json",
+                "retain_until": "2036-10-28T15:31:02.871000+00:00",
+            },
+        },
+    ],
+}
+
+RESOLVE = {
+    "summary": "Resolve a case with its outcome",
+    "description": (
+        "Closes the case: `FRAUD` sets `final_decision` to `REJECT` and "
+        "`LEGITIMATE` to `APPROVE`. That is how the held transaction is "
+        "rejected or released: there is no core to call (team decision "
+        "D4), so the core reads `final_decision` from the case. Stores the "
+        "outcome, the note, `resolved_at` and `resolved_by` (`X-User`) and "
+        "writes a `RESOLVED` event, all in one transaction. The outcome "
+        "feeds the rule precision and false-positive metrics.\n\n"
+        "Then the evidence is archived for 10 years (RN-12) and its key is "
+        "`evidence_key`. If archiving fails the case stays resolved, "
+        "`evidence_key` is null and the alerts task retries it.\n\n"
+        "An `OPEN` or `ESCALATED` case can be resolved, with or without an "
+        "owner; a `RESOLVED` one cannot (`409`). `X-User` is required. "
+        "Returns the case with its events."
+    ),
+    "responses": {
+        200: _ok("The resolved case with its events.", _RESOLVED_CASE),
+        400: _error("`X-User` is missing, the id is not a UUID, `outcome` is not FRAUD or "
+                    "LEGITIMATE, or `note` is not 1 to 2000 characters.",
+                    "X-User must have 1 to 100 characters."),
+        404: CASE_NOT_FOUND,
+        409: CASE_RESOLVED,
+        503: DB_DOWN,
+    },
+}
