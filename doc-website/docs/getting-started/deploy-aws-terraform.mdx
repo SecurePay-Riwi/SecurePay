@@ -356,6 +356,8 @@ The match runs on AWS Glue, not EMR Serverless: on AWS's free account plan EMR i
 
    The first step fails and is retried twice, 1 and 2 minutes later. Then the execution ends `Failed` at `ReconciliationFailed`, and within 5 minutes the alarm e-mails the ops address.
 
+**Tested on AWS on November 2, 2026** (Lambdas from the MAG-236 branch, AWS free account plan): the fixture day ended `Succeeded` in about 70 seconds; `records.jsonl` (11 lines), `rejects.jsonl` (2) and `part-00000.json` (13) were byte for byte what the same code writes locally; treasury got "Reconciliation of 2026-10-05 done ... Files read: 4. Records: 11."; the 06:30 check returned `{"reconciliation_done": false}` and ops got "Reconciliation of 2026-11-01 not done"; the bad day failed at `ReadStatements` with `Invalid isoformat string: 'not-a-day'`, ended at `ReconciliationFailed` after its retries, and the alarm went to `ALARM` about 3 minutes later and e-mailed ops. EMR Serverless had been tried first: on the free account plan `CreateApplication` fails with `SubscriptionRequiredException`, which is why the match runs on Glue.
+
 **Cost.** Glue 6.0 charges USD 0.308 per DPU-hour, per second while the job runs, with a 1-minute minimum. The job uses two G.1X workers (1 DPU each, Glue's minimum), so a run of a few minutes costs about two cents. Nothing is charged between runs. Step Functions includes 4,000 free state transitions a month; a run uses about 10. The session still costs what step 6 costs.
 
 ## 9. Prove that evidence cannot be deleted
@@ -406,7 +408,7 @@ Once the lock of the last uploaded version has passed, destroy everything and ty
 terraform destroy
 ```
 
-It ends with `Destroy complete! Resources: 215 destroyed` with one treasury address (183 if the image tags were never set; 188 without the Lambdas). The Glue job and its files go with it. The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
+It ends with `Destroy complete! Resources: 210 destroyed` after step 8 with one treasury address (the 184 of the first `apply` plus the 26 of the Lambdas and the reconciliation). The Glue job and its files go with it. The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
 
 **Check that nothing is left.** This must print nothing:
 
