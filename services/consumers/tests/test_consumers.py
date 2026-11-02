@@ -165,3 +165,28 @@ def test_runner_creates_the_case_tables_before_reading():
         with factory() as session:
             assert "cases" in inspect(session.connection()).get_table_names()
     assert len(attempts) == 2
+
+
+def test_ensure_schema_creates_the_tables_once_per_session_factory(monkeypatch):
+    from services.consumers import batch
+
+    created = []
+    monkeypatch.setattr(batch, "create_schema", lambda session: created.append(session))
+    monkeypatch.setattr(batch, "_schema_ready", set())
+
+    class Factory:
+        def __call__(self):
+            return self
+
+        def __enter__(self):
+            return "session"
+
+        def __exit__(self, *exc):
+            return False
+
+    first, second = Factory(), Factory()
+    batch.ensure_schema(first)
+    batch.ensure_schema(first)
+    batch.ensure_schema(second)
+
+    assert created == ["session", "session"]

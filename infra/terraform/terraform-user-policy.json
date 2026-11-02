@@ -76,13 +76,13 @@
       "Resource": "arn:aws:iam::aws:policy/*"
     },
     {
-      "Sid": "PassRolesToEcsTasks",
+      "Sid": "PassRolesToServices",
       "Effect": "Allow",
       "Action": "iam:PassRole",
       "Resource": "arn:aws:iam::*:role/securepay-*",
       "Condition": {
         "StringEquals": {
-          "iam:PassedToService": "ecs-tasks.amazonaws.com"
+          "iam:PassedToService": ["ecs-tasks.amazonaws.com", "lambda.amazonaws.com", "scheduler.amazonaws.com"]
         }
       }
     }

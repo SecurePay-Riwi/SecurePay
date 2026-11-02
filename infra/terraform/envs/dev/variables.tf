@@ -96,3 +96,27 @@ variable "engine_reads_database" {
   type        = bool
   default     = true
 }
+
+variable "lambda_image_tag" {
+  description = "Tag of the engine image the Lambdas run (usually the same as engine_image_tag). Unset: no Lambda yet."
+  type        = string
+  default     = null
+}
+
+variable "supervisor_emails" {
+  description = "Receive the case escalations (audience = supervisor). Confirm the subscription from AWS's e-mail after each apply."
+  type        = list(string)
+  default     = []
+}
+
+variable "compliance_emails" {
+  description = "Receive the restricted list summaries (audience = compliance)."
+  type        = list(string)
+  default     = []
+}
+
+variable "case_due_minutes" {
+  description = "Minutes before a case is escalated (RN-09: 240). Set 2 for a test to see the escalation e-mail in minutes."
+  type        = number
+  default     = 240
+}
