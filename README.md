@@ -56,7 +56,7 @@ El repositorio reúne los componentes trabajados hasta el momento:
 
 - Motor antifraude con API FastAPI y reglas de decisión.
 - API independiente para crear, modificar, activar/desactivar y consultar versiones de reglas antifraude (`services/rules_api/`, puerto 8002).
-- Sprint 4 (en curso): tablas de casos (`shared/cases.py`), API de casos (`services/cases_api/`, puerto 8003) y tarea de alertas (`services/alerts/`). Hechos: crear casos (HU-25), reportes de lista restrictiva (HU-34), historial de 30 días por cuenta (HU-28, `GET /accounts/{account_id}/transactions`) y cuentas relacionadas por dispositivo (HU-29, `GET /accounts/{account_id}/related-accounts`).
+- Sprint 4 (en curso): tablas de casos (`shared/cases.py`), API de casos (`services/cases_api/`, puerto 8003) y tarea de alertas (`services/alerts/`). Hechos: crear casos (HU-25), reportes de lista restrictiva (HU-34), historial de 30 días por cuenta (HU-28, `GET /accounts/{account_id}/transactions`) cuentas relacionadas por dispositivo (HU-29, `GET /accounts/{account_id}/related-accounts`) y escalamiento al supervisor de los casos abiertos más de 4 horas (HU-31: la tarea de alertas, cada 5 minutos, manda un resumen por corrida; con `CASE_DUE_MINUTES=2` se ve en local en pocos minutos).
 - Seed de datos maestros para PostgreSQL y generador de transacciones de prueba.
 - Pruebas automatizadas para los componentes del proyecto.
 - Simulación local de mensajería con SNS/SQS y almacenamiento en S3 mediante LocalStack.
@@ -232,7 +232,10 @@ cp .env.example .env
 ```
 
 Ajustar `DATABASE_URL` según la opción que elegiste en el paso 3 y pegar tu
-token de LocalStack. El resto de variables de `.env.example` tienen valores
+token de LocalStack. `DATABASE_URL` solo lo usa lo que corres en tu máquina
+con `uv run` (pytest, el seed); los contenedores de Compose siempre usan el
+PostgreSQL de Compose. Si tienes los dos, las pruebas van al del puerto que
+pongas aquí, no al que usa el stack. El resto de variables de `.env.example` tienen valores
 por defecto válidos para desarrollo.
 
 ``` env

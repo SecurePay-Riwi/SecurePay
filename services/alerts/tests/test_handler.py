@@ -78,9 +78,11 @@ def test_a_failing_job_does_not_stop_the_others(session, calls):
     assert session.rollbacks == 1
 
 
-def test_the_skeleton_jobs_do_nothing(session, monkeypatch):
-    # send_summary (HU-34) and purge (HU-28) are built and read PostgreSQL:
-    # test_compliance_summary.py and test_account_history.py cover them.
+def test_no_work_gives_zero_counts(session, monkeypatch):
+    # Every job is built and reads PostgreSQL: test_escalation.py,
+    # test_compliance_summary.py, test_account_history.py and
+    # shared/tests/test_evidence.py cover them.
+    monkeypatch.setattr(escalation, "escalate_overdue", lambda session, now: 0)
     monkeypatch.setattr(compliance_summary, "send_summary", lambda session, now: 0)
     monkeypatch.setattr(account_history, "purge", lambda session, now: 0)
     monkeypatch.setattr(evidence, "archive_pending", lambda session: 0)

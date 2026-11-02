@@ -230,6 +230,20 @@ Read this before touching `shared/cases.py`, `services/cases_api/`,
   `escalation.escalate_overdue`, `compliance_summary.send_summary` and
   `account_history.purge` with one `now`, each in its own try. Locally,
   `python -m services.alerts` loops every `ALERTS_INTERVAL_SECONDS`.
+- **Escalation (HU-31, RN-09):** `escalate_overdue()` takes up to 100
+  `OPEN` cases with `due_at <= now` (most overdue first, `FOR UPDATE SKIP
+  LOCKED`), sets `ESCALATED`, `escalated_at` and the `ESCALATED` event,
+  and publishes ONE summary with `audience = "supervisor"` BEFORE the
+  commit (contract v2, 2026-11-01): SNS down → rollback, the cases stay
+  `OPEN` for the next run. Its tests: `test_escalation.py`. Locally,
+  `CASE_DUE_MINUTES=2` shows it in minutes (the text says the limit with
+  `limit_text()`). Times in the summary and the event go through `_utc()`:
+  PostgreSQL returns `timestamptz` in the session's time zone.
+- **`services/alerts/notify.py`** is the only SNS code of the alerts jobs:
+  `TOPIC` (`BUSINESS_ALERTS_TOPIC`), `topic_arn()` and
+  `publish(subject, body, audience)`. `escalation.py` and
+  `compliance_summary.py` use it; tests replace `notify._client` and
+  reset `notify._topic_arn`.
 - **The 30-day account history is PostgreSQL `account_transactions`**
   (D3), not DynamoDB. The history consumer (`services/consumers/history.py`,
   HU-28) writes one row per account of every event, whatever the
@@ -420,7 +434,7 @@ every repository in the SecurePay-Riwi organization.
 git clone https://github.com/SecurePay-Riwi/SecurePay.git
 git clone https://github.com/SecurePay-Riwi/securepay-seed.git   # side by side
 cd SecurePay
-cp .env.example .env   # fill in credentials; Compose PostgreSQL is port 5433
+cp .env.example .env   # DATABASE_URL: 5432 installed PostgreSQL (default), 5433 Compose's
 docker compose up -d
 uv sync
 (cd ../securepay-seed && cp .env.example .env && uv sync && uv run python -m securepay_seed.seed)
@@ -466,6 +480,7 @@ Read these before changing the design, not to work on the code:
 - Dockerfile builds the product image with Python 3.12 and uv; the same image runs the decision engine and consumers with different commands.
 - docker-compose.yml orchestrates the local stack. Satellite repositories must be cloned beside this repository because Compose builds from sibling directories.
 - Use service hostnames inside containers (postgres, valkey, localstack, decision-engine); localhost inside a container is not another service.
+- Which PostgreSQL: the containers always use Compose's (`postgres:5432` inside the network). What runs on your machine with `uv run` (pytest, the seed) uses `DATABASE_URL` from `.env`: port 5432 for an installed PostgreSQL (the `.env.example` default) or 5433 for Compose's. With both installed, pytest talks to the one in `DATABASE_URL`, not to the one the stack writes to.
 - The cases API (`cases-api`, port 8003), the `consumers` and the `alerts` task create the case tables at startup; all three need `DATABASE_URL`.
 - Tests that need "PostgreSQL down" use `shared/tests/isolated_db.down_sessions()` (it sets `connect_timeout`; on Windows port 1 waits forever without it). Tests against LocalStack create queues of their own subscribed to the topic: the Compose `consumers` container reads the real ones.
 - Never commit .env, tokens, generated files or downloaded Kaggle datasets.

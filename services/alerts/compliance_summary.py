@@ -3,7 +3,7 @@
 The cases consumer writes a ``compliance_reports`` row the moment a
 restricted list decision arrives. Every run of the alerts task (5
 minutes in AWS) sends the ones not notified yet in ONE message to the
-SNS topic ``BUSINESS_ALERTS_TOPIC``, with the message attribute
+SNS topic ``BUSINESS_ALERTS_TOPIC`` (through ``notify.py``), with the message attribute
 ``audience = "compliance"`` so the compliance e-mail subscription can
 filter it (team decision of 2026-10-14, SNS filters per recipient).
 With no new reports, nothing is published.
@@ -16,38 +16,17 @@ zero times.
 """
 
 import logging
-import os
 from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from shared.aws import cliente
+from services.alerts import notify
 from shared.cases import ComplianceReport
 
 log = logging.getLogger(__name__)
 
-# A topic name (LocalStack: created by infra/localstack/init/01_messaging.py)
-# or its ARN (AWS: securepay-<env>-business-alerts).
-TOPIC = os.getenv("BUSINESS_ALERTS_TOPIC", "business-alerts")
 AUDIENCE = "compliance"
-
-_topic_arn: str | None = None
-
-
-def _client():
-    return cliente("sns")
-
-
-def topic_arn(sns) -> str:
-    """The ARN as given, or the ARN of the topic with that name
-    (create_topic is idempotent: it returns the existing topic)."""
-    global _topic_arn
-    if TOPIC.startswith("arn:"):
-        return TOPIC
-    if _topic_arn is None:
-        _topic_arn = sns.create_topic(Name=TOPIC)["TopicArn"]
-    return _topic_arn
 
 
 def subject(count: int) -> str:
@@ -93,15 +72,7 @@ def send_summary(session: Session, now: datetime) -> int:
         report.notified_at = now
     session.flush()
 
-    sns = _client()
-    sns.publish(
-        TopicArn=topic_arn(sns),
-        Subject=subject(len(reports)),
-        Message=body(reports),
-        MessageAttributes={
-            "audience": {"DataType": "String", "StringValue": AUDIENCE},
-        },
-    )
+    notify.publish(subject(len(reports)), body(reports), AUDIENCE)
     session.commit()
     log.info("Alerts: %d restricted list report(s) sent to compliance", len(reports))
     return len(reports)

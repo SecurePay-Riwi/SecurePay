@@ -22,7 +22,7 @@ The AWS variables (`AWS_ENDPOINT_URL`, `AWS_DEFAULT_REGION` and the fake keys) a
 
 | Variable | Example | What it does |
 | :--- | :--- | :--- |
-| `DATABASE_URL` | `postgresql://pagoseguro:pagoseguro@localhost:5433/pagoseguro` | PostgreSQL connection. Port 5433 for the Compose database, 5432 for an installed one. |
+| `DATABASE_URL` | `postgresql://pagoseguro:pagoseguro@localhost:5433/pagoseguro` | PostgreSQL connection for what runs on your machine (pytest, the seed). Port 5433 for the Compose database, 5432 for an installed one (the `.env.example` default). The containers ignore it and use `postgres:5432`. |
 
 ## Seed
 

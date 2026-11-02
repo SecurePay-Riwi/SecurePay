@@ -10,7 +10,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import select
 
-from services.alerts import compliance_summary
+from services.alerts import compliance_summary, notify
 from shared.cases import Case, ComplianceReport, create_schema
 from shared.tests.isolated_db import isolated_sessions
 
@@ -42,8 +42,8 @@ def sessions():
 @pytest.fixture
 def sns(monkeypatch):
     fake = FakeSNS()
-    monkeypatch.setattr(compliance_summary, "_client", lambda: fake)
-    monkeypatch.setattr(compliance_summary, "_topic_arn", None)
+    monkeypatch.setattr(notify, "_client", lambda: fake)
+    monkeypatch.setattr(notify, "_topic_arn", None)
     return fake
 
 
@@ -119,7 +119,7 @@ def test_without_reports_nothing_is_published(sessions, sns):
 
 def test_sns_down_leaves_the_reports_for_the_next_run(sessions, monkeypatch):
     _report(sessions)
-    monkeypatch.setattr(compliance_summary, "_client", lambda: FakeSNS(fail=True))
+    monkeypatch.setattr(notify, "_client", lambda: FakeSNS(fail=True))
 
     with sessions() as session:
         with pytest.raises(RuntimeError):
@@ -131,7 +131,7 @@ def test_sns_down_leaves_the_reports_for_the_next_run(sessions, monkeypatch):
 
 def test_a_topic_arn_is_used_as_is(sessions, sns, monkeypatch):
     arn = "arn:aws:sns:us-east-2:123456789012:securepay-dev-business-alerts"
-    monkeypatch.setattr(compliance_summary, "TOPIC", arn)
+    monkeypatch.setattr(notify, "TOPIC", arn)
     _report(sessions)
 
     with sessions() as session:
@@ -150,10 +150,10 @@ def test_against_localstack_only_compliance_gets_it(sessions, monkeypatch):
 
     try:
         sns, sqs = cliente("sns"), cliente("sqs")
-        arn = sns.create_topic(Name=compliance_summary.TOPIC)["TopicArn"]
+        arn = sns.create_topic(Name=notify.TOPIC)["TopicArn"]
     except (BotoCoreError, ClientError):
         pytest.skip("LocalStack is not available (docker compose up -d)")
-    monkeypatch.setattr(compliance_summary, "_topic_arn", None)
+    monkeypatch.setattr(notify, "_topic_arn", None)
 
     def subscribe(audience):
         name = f"compliance-summary-test-{audience}-{uuid4().hex[:8]}"
