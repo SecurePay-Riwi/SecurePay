@@ -104,6 +104,8 @@ s3.create_bucket(
 )
 
 sns.create_topic(Name=BUSINESS_ALERTS_TOPIC)
+# Technical team's alarms (the 06:30 reconciliation check, HU-36).
+sns.create_topic(Name="ops-alarms")
 
 print(
     f"Mensajería lista: tema {TEMA}, colas {COLAS}, bucket {BUCKET} "

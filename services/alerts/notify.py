@@ -14,6 +14,9 @@ from shared.aws import cliente
 # A topic name (LocalStack: created by infra/localstack/init/01_messaging.py)
 # or its ARN (AWS: securepay-<env>-business-alerts).
 TOPIC = os.getenv("BUSINESS_ALERTS_TOPIC", "business-alerts")
+# The technical team's alarms (AWS: securepay-<env>-ops-alarms). Only the
+# reconciliation check publishes here; CloudWatch alarms do the rest.
+OPS_TOPIC = os.getenv("OPS_ALARMS_TOPIC", "ops-alarms")
 
 _topic_arn: str | None = None
 
@@ -45,3 +48,11 @@ def publish(subject: str, body: str, audience: str) -> None:
             "audience": {"DataType": "String", "StringValue": audience},
         },
     )
+
+
+def publish_ops(subject: str, body: str) -> None:
+    """Publish one message to OPS_ALARMS_TOPIC (a name or an ARN), no
+    audience: everyone subscribed there is the technical team."""
+    sns = _client()
+    arn = OPS_TOPIC if OPS_TOPIC.startswith("arn:") else sns.create_topic(Name=OPS_TOPIC)["TopicArn"]
+    sns.publish(TopicArn=arn, Subject=subject, Message=body)
