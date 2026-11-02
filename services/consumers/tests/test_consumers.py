@@ -2,13 +2,12 @@
 
 import json
 
-from sqlalchemy import create_engine, inspect
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import inspect
 
 from services.consumers import analytics, cases, history
 from services.consumers.runner import atender_lote, prepare_database
 from shared.events import evento_decision
-from shared.tests.isolated_db import isolated_sessions
+from shared.tests.isolated_db import down_sessions, isolated_sessions
 
 
 def _evento(n, decision="APPROVE"):
@@ -153,7 +152,7 @@ def test_decision_without_required_fields_is_rejected():
 
 
 def test_runner_creates_the_case_tables_before_reading():
-    down = sessionmaker(bind=create_engine("postgresql+psycopg://x:x@127.0.0.1:1/x"))
+    down = down_sessions()
     with isolated_sessions("consumers_runner_test") as factory:
         attempts = []
 

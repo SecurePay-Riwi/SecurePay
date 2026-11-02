@@ -1,7 +1,7 @@
-from sqlalchemy import create_engine, inspect
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import inspect
 
 from services.cases_api import deps
+from shared.tests.isolated_db import down_sessions
 
 
 def test_health(client):
@@ -18,8 +18,7 @@ def test_startup_creates_the_case_tables(client, sessions):
 
 
 def test_health_without_postgresql_is_503(client):
-    down = create_engine("postgresql+psycopg://x:x@127.0.0.1:1/x")
-    deps.bind(sessionmaker(bind=down))
+    deps.bind(down_sessions())
 
     response = client.get("/health")
 

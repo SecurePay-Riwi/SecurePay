@@ -30,3 +30,12 @@ def isolated_sessions(schema: str) -> Iterator[sessionmaker]:
         engine.dispose()
         with dev_engine.begin() as conn:
             conn.execute(text(f"DROP SCHEMA IF EXISTS {schema} CASCADE"))
+
+
+def down_sessions() -> sessionmaker:
+    """A session factory for a PostgreSQL that is down. ``connect_timeout``
+    matters: on Linux port 1 refuses at once, but on Windows the connection
+    waits forever without it."""
+    return sessionmaker(
+        bind=create_engine("postgresql+psycopg://x:x@127.0.0.1:1/x", connect_args={"connect_timeout": 1})
+    )

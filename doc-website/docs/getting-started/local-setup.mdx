@@ -44,8 +44,8 @@ VALKEY_URL=redis://localhost:6379/0
 LOCALSTACK_AUTH_TOKEN=ls-...
 ```
 
-:::tip[Port 5433]
-The Compose PostgreSQL listens on **5433** on your machine so it does not collide with an installed PostgreSQL. If you use your own PostgreSQL instead, keep port 5432 in `DATABASE_URL`.
+:::tip[Port 5433 or 5432]
+The Compose PostgreSQL listens on **5433** on your machine so it does not collide with an installed PostgreSQL; `.env.example` comes with 5432, the installed one, so change it if you use Compose's. The containers of the stack always use Compose's database (`postgres:5432` inside the Docker network). What you run on your machine with `uv run` (pytest, the seed) uses `DATABASE_URL`: if you have both, the tests go to the one in `DATABASE_URL`, not to the one the stack writes to.
 :::
 
 The `AWS_*` variables point to LocalStack with fake credentials (`test`) on purpose. In AWS they are not set: the engine and the Lambdas use their IAM role. Every variable is explained in [Configuration](../reference/configuration.mdx).
