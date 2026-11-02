@@ -57,7 +57,7 @@ El repositorio reúne los componentes trabajados hasta el momento:
 
 - Motor antifraude con API FastAPI y reglas de decisión.
 - API independiente para crear, modificar, activar/desactivar y consultar versiones de reglas antifraude (`services/rules_api/`, puerto 8002).
-- Sprint 4 (closed): case tables (`shared/cases.py`), cases API (`services/cases_api/`, port 8003) and alerts task (`services/alerts/`). Done: opening cases (HU-25), restricted list reports (HU-34), the 30-day history of each account (HU-28, `GET /accounts/{account_id}/transactions`), the accounts related through a device (HU-29, `GET /accounts/{account_id}/related-accounts`) and the analyst's work: the inbox (HU-26, `GET /cases`), assigning (HU-27, `PUT /cases/{case_id}/assignee`) and resolving (HU-30, `POST /cases/{case_id}/resolution`), and the escalation to the supervisor of the cases open over 4 hours (HU-31: every 5 minutes the alerts task sends one summary per run; with `CASE_DUE_MINUTES=2` it shows locally in a few minutes), the suspicious operations report (HU-35, `GET /reports/suspicious`), the immutable case evidence (HU-32) and the engine on ECS/Fargate (HU-57). Running the consumers and the alerts task as Lambdas in AWS is HU-68 (Sprint 5).
+- Sprint 4 (closed): case tables (`shared/cases.py`), cases API (`services/cases_api/`, port 8003) and alerts task (`services/alerts/`). Done: opening cases (HU-25), restricted list reports (HU-34), the 30-day history of each account (HU-28, `GET /accounts/{account_id}/transactions`), the accounts related through a device (HU-29, `GET /accounts/{account_id}/related-accounts`) and the analyst's work: the inbox (HU-26, `GET /cases`), assigning (HU-27, `PUT /cases/{case_id}/assignee`) and resolving (HU-30, `POST /cases/{case_id}/resolution`), and the escalation to the supervisor of the cases open over 4 hours (HU-31: every 5 minutes the alerts task sends one summary per run; with `CASE_DUE_MINUTES=2` it shows locally in a few minutes), the suspicious operations report (HU-35, `GET /reports/suspicious`), the immutable case evidence (HU-32) and the engine on ECS/Fargate (HU-57). Running the consumers and the alerts task as Lambdas in AWS is HU-68 (Sprint 5, see "Infraestructura en AWS").
 - Sprint 5 (in progress): nightly reconciliation with the payment partners (`shared/reconciliation.py`, `services/reconciliation/`, `uv run python -m services.reconciliation --day 2026-10-05`). Step 0 is in place: the shared contract, a reference match in plain Python and a fixture day in `services/reconciliation/tests/fixtures/`.
 - Seed de datos maestros para PostgreSQL y generador de transacciones de prueba.
 - Pruebas automatizadas para los componentes del proyecto.
@@ -95,7 +95,8 @@ levanta por separado:
 | Subir los CSV de Kaggle al Data Lake | `uv run python -m securepay_csv.kaggle_datasets` (en `securepay-csv`) | LocalStack (y el token de Kaggle si faltan los CSV); no usa PostgreSQL | 8c |
 | Generar transacciones de prueba | `uv run python -m securepay_generator` (en `securepay-generator`) | Seed hecho | 9 |
 | Correr las pruebas | `uv run pytest` | Seed hecho; Valkey y LocalStack para algunas | 10 |
-| Levantar el motor de decisión | `uv run uvicorn services.decision_engine.main:app --reload` | PostgreSQL y Valkey (y LocalStack para publicar) | 11 |
+| Cargar la caché del motor (cuentas, comercios, lista restrictiva) | `uv run python -m services.cache_loader` | Seed hecho y Valkey | 11 |
+| Levantar el motor de decisión | `uv run uvicorn services.decision_engine.main:app --reload` | Valkey con la caché cargada (y LocalStack para publicar); no usa PostgreSQL | 11 |
 | Levantar los consumidores | `uv run python -m services.consumers` | LocalStack | 11b |
 | Generar los extractos de los socios | `uv run python -m securepay_csv.partner_statements` (en `securepay-csv`) | Salida del generador (paso 9 o 12) | 13 |
 | Conciliar un día con los socios | `uv run python -m services.reconciliation --day 2026-10-05` | PostgreSQL; los extractos (paso 13) y las decisiones en LocalStack | 13b |
@@ -353,7 +354,7 @@ Con la semilla 42 y los valores de `.env.example`, debería terminar en
 ### Paso 10 --- Ejecutar las pruebas
 
 Requiere haber ejecutado el seed, porque las pruebas de la API leen
-cuentas y comercios de la base, y tener Valkey y LocalStack encendidos
+cuentas y comercios de la base (y las del motor las cargan antes en la caché, como el `cache-loader`), y tener Valkey y LocalStack encendidos
 (paso 5). Si Valkey está apagado, las pruebas de idempotencia y de
 velocidad salen como omitidas (`s`) y las de la API fallan con 503. Si
 LocalStack está apagado, las dos pruebas de punta a punta de la
@@ -377,9 +378,17 @@ PostgreSQL: el proyecto instala **Psycopg 3** (`psycopg[binary]`) y
 
 ### Paso 11 --- Levantar la API
 
+El motor lee las cuentas, los comercios y la lista restrictiva de Valkey,
+no de PostgreSQL (HU-67). Primero se cargan en la caché desde el seed
+(cada vez que Valkey se reinicia, porque no guarda nada):
+
 ``` bash
+uv run python -m services.cache_loader
 uv run uvicorn services.decision_engine.main:app --reload
 ```
+
+Sin la caché cargada el motor responde igual, con la decisión por defecto
+de RN-01 (`by_default: true`) y `HOLD` si falta la lista restrictiva.
 
 En otra terminal, la API de reglas (necesita PostgreSQL y Valkey; crea
 sus tablas al arrancar y publica el catálogo en Valkey):
@@ -399,7 +408,7 @@ uv run python -m services.alerts
 La API queda en http://localhost:8000 y la documentación interactiva
 en http://localhost:8000/docs.
 
-Necesita PostgreSQL y Valkey encendidos. Sin Valkey, `POST /transactions`
+El motor necesita Valkey encendido. Sin Valkey, `POST /transactions`
 responde 503 ("El servicio de idempotencia no está disponible").
 
 `POST /security-events` stores device and password changes for the
@@ -526,8 +535,9 @@ Detalles: README de `securepay-csv` y la página
 
 Cruza los extractos del paso 13 con las decisiones que el consumidor de
 analítica dejó en LocalStack (`raw/decisiones/`, paso 12) y guarda las
-diferencias en PostgreSQL. Mientras se construye el sprint 5, la lectura de
-los extractos y el guardado de las diferencias todavía no hacen nada.
+diferencias en PostgreSQL. La lectura de los extractos ya funciona (HU-36);
+mientras se construye el sprint 5, el guardado de las diferencias todavía no
+hace nada.
 
 ``` bash
 uv run python -m services.reconciliation --day 2026-10-05
@@ -620,10 +630,12 @@ Necesitas Terraform 1.9 o más reciente, la CLI de AWS y un usuario IAM (nunca r
 
     cp terraform.tfvars.example terraform.tfvars   # tu nombre y tu correo
     terraform init
-    terraform plan       # la primera vez: 159 to add
+    terraform plan       # la primera vez: 181 to add (con un correo de presupuesto y los dos de prueba)
     terraform apply
     terraform destroy    # siempre al terminar de probar: los NAT y RDS cobran aunque no haya tráfico
 
 Para levantar el motor: subir las imágenes a ECR con el commit corto como tag, poner `engine_image_tag` y `admin_image_tag` en `terraform.tfvars`, `terraform apply` otra vez, sembrar con la tarea admin y probar con `curl.exe -k` contra el balanceador. Los comandos exactos están en la sección 6 de `deploy-aws-terraform.mdx`.
+
+**Consumers and alerts task as Lambdas (HU-68, Sprint 5).** Terraform also creates the decisions topic, the `cases`, `history` and `analytics` queues with their DLQs, the `business-alerts` topic (one e-mail per audience: `supervisor_emails`, `compliance_emails`) and the `ops-alarms` topic. With `lambda_image_tag` (the engine's image, built with `docker build --provenance=false`) it adds the Lambdas `securepay-dev-cases-consumer`, `-history-consumer`, `-analytics-consumer` and `-alerts` (every 5 minutes). Confirm the subscription e-mail AWS sends to each address after `apply`. The test (a restricted list withdrawal with `restricted-transaction.json` and `case_due_minutes = 2`) is section 7 of `deploy-aws-terraform.mdx`. Locally nothing changes: `python -m services.consumers` and `python -m services.alerts` run the same handlers.
 
 El estado (`terraform.tfstate`) y `terraform.tfvars` quedan en tu equipo y git los ignora. El estado guarda las contraseñas de RDS, así que no se comparte. Corre `apply` y `destroy` siempre desde el mismo equipo.

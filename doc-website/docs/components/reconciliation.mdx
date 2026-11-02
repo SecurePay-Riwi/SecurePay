@@ -11,7 +11,7 @@ description: The nightly reconciliation with the four payment partners, from the
 Every night PagoSeguro compares what the engine approved with the files the four [payment partners](./partner-statements.mdx) send, and treasury sees what is missing at the partner, what is missing at PagoSeguro and which amounts do not agree, with their age. RN-10: a transaction matches when the **reference** is the same, the **amount** differs by at most **0.01** and the **dates** by at most **1 day** (both limits included). The daily run has to finish before 07:00.
 
 :::info Status
-Sprint 5, step 0: the shared contract is in place (the records, the tables, the signatures of every step), with a reference match in plain Python and a small fixture day. Each story fills in its step: reading the files (HU-36), the match in Spark (HU-37), the differences (HU-38 to HU-40) and treasury's routes (HU-38 to HU-41).
+Sprint 5: the shared contract is in place (the records, the tables, the signatures of every step) with a small fixture day, and the match runs in Spark (HU-37) with `GET /reconciliation/runs`. Still to come: reading the files (HU-36), the differences (HU-38 to HU-40) and treasury's other routes (HU-38 to HU-41).
 :::
 
 ## The flow
@@ -49,7 +49,29 @@ Each step has a fixed input and output from step 0, so nobody waits for the step
 
 ## 1. Read (HU-36)
 
-`ingest.read_day(day, source)` reads the day's files from a folder laid out like `generated/extractos/` (`STATEMENTS_SOURCE`) or from `s3://<datalake>/raw/extractos`. Only the latest version of each partner (`_v2` over `_v1`). A malformed row and a control record that does not add up go to the rejected list with their reason, and the rest of the file is still read; a missing file is a rejected row with reason `file missing`. `ingest.run()` writes `curated/extractos/fecha=<day>/records.jsonl` and `rejects.jsonl` under `RECON_DATA_DIR`. The readers of the four formats are written in this repo: `securepay-csv`'s are never imported (structure rule 4).
+`ingest.read_day(day, source)` reads the day's files from a folder laid out like `generated/extractos/` (`STATEMENTS_SOURCE`) or from `s3://<datalake>/raw/extractos`: `<source>/<partner>/fecha=YYYY-MM-DD/<partner>_YYYYMMDD_vN.<ext>`. For each partner it takes only the highest version (`_v2` over `_v1`, `_v10` over `_v9`). `ingest.run()` writes `curated/extractos/fecha=<day>/records.jsonl` and `rejects.jsonl` under `RECON_DATA_DIR` and returns the counts; `files_read` counts every file read, an empty one too.
+
+**The readers** (`services/reconciliation/parsers.py`, one class per partner in `READERS`) are written in this repo: `securepay-csv`'s are never imported (structure rule 4). Each turns its format into `StatementRecord`s with the amount at its currency's precision (`MONEDA_DECIMALES`: `88.910` → `88.91`, JPY without decimals) and the time in UTC (`PARTNER_UTC_OFFSET`: `red_corresponsales` and `cajeros_express` write Bogotá time).
+
+| Partner | What the reader expects |
+| :--- | :--- |
+| `banco_andino` | Header, CSV with commas, `fecha_hora_utc` with `Z`, type `RECARGA`, last row `TOTAL,<count>,<total>` |
+| `red_corresponsales` | `H` header, `D` details of exactly 88 characters (amount in minor units), `T` trailer with count and total in minor units |
+| `cajeros_express` | Header, CSV with `;`, comma decimals, `dd/mm/yyyy` + `HH:MM:SS`, always `RETIRO`, last row `CONTROL;<count>;<total>` |
+| `qr_pagos` | `#CTRL\|day\|count\|total` first (minor units), a header, then `\|`-separated details, always `QR`, UTC |
+
+**What is rejected** (one `RejectedRow` with the line, its raw text and an English reason; the rest of the file is still read):
+
+| Case | `reason` |
+| :--- | :--- |
+| Wrong number of fields, or a fixed-width line that is not 88 characters | `expected 6 fields, found 5` / `detail record has 32 characters, expected 88` |
+| Amount that is not a number, zero or negative, or with more decimals than its currency allows | `amount is not a number` / `amount is not positive` / `amount has more decimals than USD allows` |
+| Invalid date | `date is not valid` |
+| Currency other than COP, USD, EUR, JPY | `unknown currency 'GBP'` |
+| Empty reference, or a type the partner does not handle | `pagoseguro reference is missing` / `unknown transaction type 'RETIRO'` |
+| Control record that does not match | `control record does not match: declares ...`. It compares the count with **every** detail line (rejected ones too) and the total with the sum of the amounts that could be read, in the partner's units. The records are still read. |
+| Control record missing or unreadable | `control record is missing` / `control record is not readable` |
+| No file of that partner for the day | `file missing` (line 0) |
 
 ## 2. Match (HU-37)
 
@@ -63,7 +85,18 @@ Each step has a fixed input and output from step 0, so nobody waits for the step
 | `ONLY_PAGOSEGURO` | Ours, not in the partner's file. |
 | `ONLY_PARTNER` | In the file, and not an `APPROVE` of the window. |
 
-A partner record whose reference is an `APPROVE` of the window but of another partner day still counts: its date decides. The output is one `MatchRow` per reference as JSON lines in `curated/conciliacion/fecha=<day>/part-*.json`. Step 0 leaves `match_day()`, the same rules in plain Python, which `reconcile()` uses until HU-37 moves it to PySpark (local mode in the tests, EMR Serverless in AWS).
+A partner record whose reference is an `APPROVE` of the window but of another partner day still counts: its date decides. The output is one `MatchRow` per reference as JSON lines in `curated/conciliacion/fecha=<day>/part-*.json`, with every key (nulls included); running the day again replaces it.
+
+`reconcile()` runs in PySpark (HU-37): the decisions of the window and the day's records are read as JSON lines, deduplicated, and joined by reference (a left join of the records with our side, plus our transactions of the day that no record has). `match.session()` is `local[*]` in the tests and in Compose, and the cluster's session on EMR Serverless, where Step Functions starts `match.main`:
+
+```bash
+spark-submit services/reconciliation/match.py --day 2026-10-05 \
+  --records s3://<datalake>/curated/extractos/fecha=2026-10-05/records.jsonl \
+  --decisions s3://<datalake>/raw/decisiones \
+  --output s3://<datalake>/curated/conciliacion/fecha=2026-10-05
+```
+
+`--decisions` is the root of `raw/decisiones/`: the match adds `fecha=<day>` for each day of the window. On a cluster Spark reads and writes S3 itself; in local mode an `s3://` path (LocalStack) goes through `storage.py`. pyspark is pinned to 4.1.x, the version of EMR Serverless `emr-spark-8.1.0` (Spark 4.1.1, Python 3.12). `match_day()` keeps the same rules in plain Python: the tests run every edge case (0.01 and 0.02, 1 day and 1 day and 1 second, repeated lines, `P2P`, `HOLD` and `REJECT`, the Bogota day) on both, and check that the fixture day gives the answer key. The Spark tests need Java 17 or later and skip without it.
 
 ## 3. Differences (HU-38 to HU-40)
 
@@ -72,6 +105,8 @@ A partner record whose reference is an `APPROVE` of the window but of another pa
 ## 4. Treasury's routes (HU-38 to HU-41)
 
 Routes of the [cases API](./cases.mdx) in `routes_reconciliation.py` (empty at step 0): `GET /reconciliation/differences`, `GET /reconciliation/differences/aging`, `POST /reconciliation/differences/{difference_id}/resolution` and `GET /reconciliation/runs`.
+
+`GET /reconciliation/runs?from=&to=` (HU-37) lists the runs of a period, oldest day first: `run_day`, `status` (`RUNNING`, `DONE`, `FAILED`), `started_at`, `finished_at`, `files_read`, `records_read`, `rows_rejected`, `matched`, `differences` and `error` (the step and its error when it failed). `from` and `to` are days, both inclusive; without them, every run. `from` after `to` or an invalid day is `400`, PostgreSQL down is `503`.
 
 ## Running it locally
 
@@ -84,7 +119,7 @@ uv run python -m services.reconciliation --from 2026-10-01 --to 2026-10-07
 
 ## Fixtures
 
-`services/reconciliation/tests/fixtures/` holds one small hand-made day, 2026-10-05, with at least one case of every status and defect: the four partners' files, the decisions of the window, what steps 1 and 2 must write and the answer key `extracts_report.json` (same keys as `securepay-csv`'s, plus `expected_run` with the counts). Its `README.md` lists the day transaction by transaction. `test_fixtures.py` checks that they agree with each other and `test_match.py` that the reference match gives exactly the expected rows.
+`services/reconciliation/tests/fixtures/` holds one small hand-made day, 2026-10-05, with at least one case of every status and defect: the four partners' files, the decisions of the window, what steps 1 and 2 must write and the answer key `extracts_report.json` (same keys as `securepay-csv`'s, plus `expected_run` with the counts). Its `README.md` lists the day transaction by transaction. `test_fixtures.py` checks that they agree with each other, `test_ingest.py` that reading the files gives exactly the expected records and rejections, and `test_match.py` that the reference match gives exactly the expected rows.
 
 ## Tests
 

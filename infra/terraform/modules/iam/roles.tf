@@ -37,9 +37,10 @@ locals {
     history-consumer = {
       service = "lambda.amazonaws.com"
       statements = [
+        # The 30-day history is PostgreSQL account_transactions (team
+        # decision D3, Sprint 4), not DynamoDB and the cache: it only needs
+        # its queue and RDS through sg-lambda.
         { Sid = "ReadHistoryQueue", Effect = "Allow", Action = local.sqs_read, Resource = "${local.arn.queue}-history" },
-        { Sid = "StoreDeviceAccount", Effect = "Allow", Action = "dynamodb:PutItem", Resource = "${local.arn.table}-device-account" },
-        { Sid = "CacheWithIam", Effect = "Allow", Action = "elasticache:Connect", Resource = [local.arn.cache, "${local.arn.cache_user}-history"] },
       ]
     }
 
@@ -47,7 +48,9 @@ locals {
       service = "lambda.amazonaws.com"
       statements = [
         { Sid = "ReadAnalyticsQueue", Effect = "Allow", Action = local.sqs_read, Resource = "${local.arn.queue}-analytics" },
-        { Sid = "DeliverToFirehose", Effect = "Allow", Action = "firehose:PutRecordBatch", Resource = "${local.arn.firehose}-decisions-raw" },
+        # One JSON Lines object per batch, as services/consumers/analytics.py
+        # writes it. Firehose (firehose-raw below) waits for the load test.
+        { Sid = "WriteRawDecisions", Effect = "Allow", Action = "s3:PutObject", Resource = "${local.bucket.datalake}/raw/decisiones/*" },
       ]
     }
 
@@ -76,7 +79,8 @@ locals {
       service = "lambda.amazonaws.com"
       statements = [
         { Sid = "DatabasePassword", Effect = "Allow", Action = "ssm:GetParameter", Resource = "${local.arn.parameter}/rds/cases_api" },
-        { Sid = "StoreAndReadEvidence", Effect = "Allow", Action = ["s3:PutObject", "s3:GetObject"], Resource = "${local.bucket.evidence}/*" },
+        # PutObjectRetention: archive() sets each object's own retain-until date.
+        { Sid = "StoreAndReadEvidence", Effect = "Allow", Action = ["s3:PutObject", "s3:PutObjectRetention", "s3:GetObject"], Resource = "${local.bucket.evidence}/*" },
       ]
     }
 
@@ -93,6 +97,8 @@ locals {
       statements = [
         { Sid = "DatabasePassword", Effect = "Allow", Action = "ssm:GetParameter", Resource = "${local.arn.parameter}/rds/alerts" },
         { Sid = "BusinessAlerts", Effect = "Allow", Action = "sns:Publish", Resource = "${local.arn.topic}-business-alerts" },
+        # archive_pending() retries the evidence of resolved cases (HU-32).
+        { Sid = "ArchiveEvidence", Effect = "Allow", Action = ["s3:PutObject", "s3:PutObjectRetention", "s3:GetObject"], Resource = "${local.bucket.evidence}/*" },
       ]
     }
 

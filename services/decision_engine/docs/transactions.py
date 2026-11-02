@@ -37,7 +37,13 @@ Accounts by type: `P2P` source and destination, `QR` source and
 account present brings its balance before and after. Amounts use the
 account's currency, with at most 2 decimals (`JPY`: none).
 
-The example answers `200` on a seeded database. Running it twice returns
+Accounts, merchants and the restricted list are read from the cache,
+which the cache loader fills from PostgreSQL. What the cache does not
+have, or a cache that does not answer, gets RN-01's default decision
+(`by_default: true`); without the restricted list the transaction is
+held whatever the amount.
+
+The example answers `200` on a seeded database with the cache loaded. Running it twice returns
 the stored decision with `idempotent_replay: true`; change the `id` to
 evaluate it again.
 """.strip()
@@ -101,6 +107,29 @@ EVALUATE = {
                                 amount_usd="30.00",
                             ),
                         },
+                        "default_not_in_cache": {
+                            "summary": "Account not in the cache, default decision",
+                            "value": _decision(
+                                "APPROVE",
+                                "Default decision: account "
+                                "9b71c3d2-5e4f-4a6b-8c7d-0e1f2a3b4c5d is not in the cache "
+                                "(USD 30.00, limit USD 50).",
+                                ["default_timeout"],
+                                by_default=True,
+                                amount_usd="30.00",
+                            ),
+                        },
+                        "restricted_list_not_loaded": {
+                            "summary": "Restricted list not in the cache, held",
+                            "value": _decision(
+                                "HOLD",
+                                "Default decision: the restricted list is not loaded "
+                                "in the cache, held whatever the amount (USD 30.00).",
+                                ["default_timeout"],
+                                by_default=True,
+                                amount_usd="30.00",
+                            ),
+                        },
                     }
                 }
             },
@@ -124,22 +153,15 @@ EVALUATE = {
             },
         ),
         422: error(
-            "The body is valid but references something unusable: an account or "
-            "merchant that does not exist, or a currency that is not the account's.",
+            "The body is valid but its currency is not the account's. An account "
+            "or merchant the cache does not have is not a 422: it gets the "
+            "default decision (200 with `by_default: true`).",
             {
-                "unknown_account": (
-                    "Unknown account",
-                    "Account 9b71c3d2-5e4f-4a6b-8c7d-0e1f2a3b4c5d does not exist.",
-                ),
                 "wrong_currency": (
                     "Currency is not the account's",
                     "The transaction currency is not the account currency.",
                 ),
             },
-        ),
-        500: error(
-            "Database error.",
-            {"database": ("Database error", "Error interno al procesar la transacción.")},
         ),
         503: error(
             "Valkey (idempotency store) is not available.",

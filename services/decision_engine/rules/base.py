@@ -11,12 +11,9 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from functools import cached_property
 
-from sqlalchemy.orm import Session
-
-from services.decision_engine import currency, history
+from services.decision_engine import currency, history, reference_data
 from services.decision_engine import security_events as security
 from services.decision_engine.schemas import Decision, TransactionRequest
-from shared.models import ListaRestrictiva
 from shared.rule_catalog import RuleEntry
 
 
@@ -54,7 +51,6 @@ class RuleContext:
     """
 
     payload: TransactionRequest
-    session: Session
     t_ms: int
     amount_usd: Decimal
     # The source account's outgoing history after recording this
@@ -78,14 +74,11 @@ class RuleContext:
             )
 
     @cached_property
-    def on_restricted_list(self) -> bool:
-        if not self.documents:
-            return False
-        return (
-            self.session.query(ListaRestrictiva.id)
-            .filter(ListaRestrictiva.documento.in_(self.documents))
-            .first()
-        ) is not None
+    def on_restricted_list(self) -> bool | None:
+        """One read of {restricted}:docs in the cache (HU-67). None when
+        the list is not loaded: _decide() then holds the transaction
+        before evaluating the rules (D2)."""
+        return reference_data.on_restricted_list(self.documents)
 
     @cached_property
     def incoming(self) -> list[history.Incoming]:

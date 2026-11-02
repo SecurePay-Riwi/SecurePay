@@ -20,3 +20,9 @@ variable "force_delete" {
   type        = bool
   default     = false
 }
+
+variable "lambda_repositories" {
+  description = "Repositories whose images Lambda functions of this environment may pull (securepay-<env>-* functions only)."
+  type        = list(string)
+  default     = []
+}

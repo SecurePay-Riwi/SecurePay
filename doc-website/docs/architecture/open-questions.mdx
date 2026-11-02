@@ -23,10 +23,11 @@ ElastiCache Serverless for Valkey was chosen ([ADR-03](./decisions.mdx#adr-03)),
 | Idempotency | 18 MB (1 h TTL) to 430 MB (24 h TTL) | The TTL |
 | 10–30 min windows | ~15 MB | Accounts active in the window |
 | Account history (`out:` 24 h, `in:` 60 min) | ~260 MB of entries plus ~100 MB of keys | Measured at ~70 bytes per entry in Valkey: ~3.7 million live outgoing entries at 50 tx/s. Replaces the earlier 100–200 MB of 24-hour sums and ~100 MB of velocity history |
-| Restricted list cache | ~5 MB | 50 thousand records |
+| Accounts and merchants (`acct:`, `merch:`, HU-67) | **~605 MB, measured** | ~261 bytes per account hash (currency, owner id, document, status, with its TTL) × 2.3 million accounts, plus ~1 MB for 5,000 merchants. Measured on 2026-11-02 by loading 200 thousand synthetic accounts with the cache loader into a local Valkey 7 and extrapolating to the full-mode seed |
+| Restricted list cache (`{restricted}:docs`) | **~3.3 MB, measured** | 50 thousand documents in one set |
 | Active rules | A few KB | — |
 
-With the account history the cache would be ~400–450 MB (~$8 more per month); the cost table does not change until the load test confirms it. To be measured with the full-mode seed (2.3 million users) and the load test. Also pending: the real latency of the serverless layer and the operations it consumes per transaction.
+With the account history and the reference data of HU-67 the cache would be **~1 GB**. At $0.084 per GB-hour that is about $61 a month of memory, some $40 more than the ~$23 of the cost table (which assumes 300 MB); the cost table does not change until the load test confirms the history part. Ways to bring it down if needed: keep only the accounts with recent activity, or drop `user_id` from `acct:` (the engine does not read it today). To be confirmed with the load test. Also pending: the real latency of the serverless layer and the operations it consumes per transaction.
 
 ## 🔵 Cases consumer: Lambda or Fargate
 

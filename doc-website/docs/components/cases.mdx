@@ -55,10 +55,10 @@ OPEN ──(alerts task, due_at passed)──> ESCALATED ──(analyst)──> 
 The cases consumer (`services/consumers/cases.py`, queue `casos`) reads each `transaction.decided` event:
 
 - **`opens_case: false`:** acknowledged, nothing is written.
-- **`opens_case: true`:** one case `OPEN` with the decision as it came (`decision`, `decision_reason`, `rules_triggered`, `rules_version`, `rule_versions`, `risk_score`, `amount_usd`), the amount and currency of the transaction, its date, the whole transaction as evidence, `account_id` = `main_account()` and `due_at` = now + `CASE_DUE_MINUTES`; and its `CREATED` event, actor `system`. A splitting `APPROVE` opens its compliance case the same way (RN-05).
+- **`opens_case: true`:** one case `OPEN` with the decision as it came (`decision`, `decision_reason`, `rules_triggered`, `rules_version`, `rule_versions`, `risk_score`, `amount_usd`, `usd_rate`, `rate_date`), the amount and currency of the transaction, its date, the whole transaction as evidence, `account_id` = `main_account()` and `due_at` = now + `CASE_DUE_MINUTES`; and its `CREATED` event, actor `system`. A splitting `APPROVE` opens its compliance case the same way (RN-05).
 - **The same transaction again** (SNS and SQS deliver at least once): `INSERT ... ON CONFLICT (transaction_id) DO NOTHING`, and `CREATED` is written only when the case was inserted. No second case, no second `CREATED`.
 
-One session and one database transaction per batch of up to 10 messages. A message that cannot be a case (not JSON, no amount, an id that is not a UUID, a date without time zone) is checked before writing and fails alone in `batchItemFailures`. If PostgreSQL fails, nothing is committed and every message that opens a case goes back to the queue; after 5 attempts it lands in the DLQ `casos-dlq`. An event without `amount_usd` (older than Sprint 4) still opens a case, with `amount_usd` null.
+One session and one database transaction per batch of up to 10 messages. A message that cannot be a case (not JSON, no amount, an id that is not a UUID, a date without time zone) is checked before writing and fails alone in `batchItemFailures`. If PostgreSQL fails, nothing is committed and every message that opens a case goes back to the queue; after 5 attempts it lands in the DLQ `casos-dlq`. An event without `amount_usd` (older than Sprint 4) still opens a case, with `amount_usd` null; one without `usd_rate` and `rate_date` (older than Sprint 5) has them null, and a malformed rate (not a positive number, a date that is not `YYYY-MM-DD`) fails alone like any broken event.
 
 Each transaction opens its own case: when a split goes on, every later transaction that fires `splitting` opens another one. The analyst sees them together through the account (`account_id`, HU-28 and HU-29).
 
@@ -78,7 +78,7 @@ A report belongs to a case. If the catalog turns off `opens_case` for `restricte
 
 The analyst needs the last 30 days of an account to judge a case (D3: in PostgreSQL, not DynamoDB):
 
-1. **The rows.** The history consumer (`services/consumers/history.py`, queue `historial`) writes, for **every** `transaction.decided` event (APPROVE, HOLD or REJECT), one `account_transactions` row per account of the transaction: `OUT` for the source and `IN` for the destination, each with the other as `counterparty_account_id`. A QR payment or a withdrawal has only `OUT`; a top-up only `IN`. Each row keeps the type, channel, merchant, amount and currency, the engine's `amount_usd`, the decision, its reason, `rules_triggered`, `risk_score`, `transaction_date` and `processed_at`. `device_id` is only on the main account's row (`main_account()`: the source; in a top-up, the destination), the same rule as the engine's `dev:{device}`; HU-29 reads it.
+1. **The rows.** The history consumer (`services/consumers/history.py`, queue `historial`) writes, for **every** `transaction.decided` event (APPROVE, HOLD or REJECT), one `account_transactions` row per account of the transaction: `OUT` for the source and `IN` for the destination, each with the other as `counterparty_account_id`. A QR payment or a withdrawal has only `OUT`; a top-up only `IN`. Each row keeps the type, channel, merchant, amount and currency, the engine's `amount_usd` with `usd_rate` and `rate_date`, the decision, its reason, `rules_triggered`, `risk_score`, `transaction_date` and `processed_at`. `device_id` is only on the main account's row (`main_account()`: the source; in a top-up, the destination), the same rule as the engine's `dev:{device}`; HU-29 reads it.
 2. **Once.** `ON CONFLICT (transaction_id, account_id) DO NOTHING`: a repeated event writes nothing again. Each event is checked before writing (a broken one fails alone in `batchItemFailures`), one database transaction per batch, and if PostgreSQL fails the whole batch goes back to the queue.
 3. **30 days.** Every run of the alerts task, `account_history.purge()` deletes the rows whose `transaction_date` is older than `now - ACCOUNT_HISTORY_DAYS` (30).
 4. **The query.** `GET /accounts/{account_id}/transactions` on the cases API.
@@ -98,7 +98,9 @@ The columns of the four tables are in [Data model](../reference/data-model.mdx#c
 
 ## Amounts
 
-The case and the account history keep the amount in the account's currency and `amount_usd`, which the engine adds to every decision (RN-11). Amounts are `Numeric`, never float, and decimal strings in JSON (`"12450.00"`). Dates are UTC.
+The case and the account history keep the amount in the account's currency and `amount_usd`, which the engine adds to every decision (RN-11), and, from HU-43, the rate behind it: `usd_rate` (units of the currency per 1 USD, `NUMERIC(20, 8)`) and `rate_date` (the day of that rate, which is the transaction's day or the last earlier day with a rate; see [Exchange rate of the day](./decision-engine.mdx)). The consumers copy the three values from the `transaction.decided` event, so no service outside the engine imports `currency.py` and a report never converts again: the suspicious operations report and the evidence use the stored `amount_usd`. Decisions older than Sprint 5 have `usd_rate` and `rate_date` null; `create_schema()` adds both columns to a database created before them (`ADD COLUMN IF NOT EXISTS`).
+
+Amounts are `Numeric`, never float, and decimal strings in JSON. The columns keep two decimals for every currency, and the API answers each amount with its currency's decimals (`in_currency()`): `"12450.00"` in COP, USD and EUR, `"15000"` in JPY, which has none. `usd_rate` is answered without the column's trailing zeros (`"4129.53"`). Dates are UTC.
 
 ## Calls between parts
 
@@ -203,6 +205,8 @@ curl "http://localhost:8003/cases?status=ESCALATED&assignee=ana&page=1&size=20"
       "amount": "950000.00",
       "currency": "COP",
       "amount_usd": "230.05",
+      "usd_rate": "4129.53",
+      "rate_date": "2026-10-31",
       "assignee": null,
       "created_at": "2026-10-31T14:02:11.418000Z",
       "due_at": "2026-10-31T18:02:11.418000Z",
@@ -300,6 +304,8 @@ curl "http://localhost:8003/accounts/5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42/transa
       "amount": "950000.00",
       "currency": "COP",
       "amount_usd": "230.05",
+      "usd_rate": "4129.53",
+      "rate_date": "2026-10-31",
       "device_id": "c7e9a1b3-5d7f-4a9c-9e1b-3d5f7a9c1e86",
       "decision": "HOLD",
       "decision_reason": "More than 5 outgoing transfers in 10 minutes.",
@@ -341,7 +347,7 @@ curl "http://localhost:8003/accounts/5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42/relate
 
 ### `GET /reports/suspicious`
 
-The suspicious operations report for compliance (HU-35): the cases opened in a period. Every case is a compliance case, because only mule account (RN-03), splitting (RN-05) and restricted list (RN-06) open one. One row per case, oldest first, with `case_id`, `transaction_id`, `account_id`, `pattern` (the rules that fired, joined by `+`), `amount` and `currency` (original), `amount_usd` (RN-11), `status`, `outcome` and `created_at`.
+The suspicious operations report for compliance (HU-35): the cases opened in a period. Every case is a compliance case, because only mule account (RN-03), splitting (RN-05) and restricted list (RN-06) open one. One row per case, oldest first, with `case_id`, `transaction_id`, `account_id`, `pattern` (the rules that fired, joined by `+`), `amount` and `currency` (original, with its decimals), `amount_usd` (RN-11), `status`, `outcome`, `created_at` and the rate the engine used, `usd_rate` and `rate_date` (HU-43, the last columns of the CSV).
 
 `from` and `to` are days (`YYYY-MM-DD`, UTC), both inclusive and required, at most 31 days apart. `format=json` (default) answers the rows with `total`; a period without cases is `200` with an empty list and `"message": "No compliance cases in the period."`. `format=csv` answers the same rows as a file to download, `suspicious-report-<from>-<to>.csv` (`text/csv`), with amounts as decimal text and an empty value for null; a period without cases is only the header. `400` for a missing or invalid date, `from` after `to`, a period of more than 31 days or a `format` that is not `json` or `csv`; `503` without PostgreSQL.
 
@@ -363,6 +369,8 @@ curl -o report.csv "http://localhost:8003/reports/suspicious?from=2026-10-01&to=
       "amount": "950000.00",
       "currency": "COP",
       "amount_usd": "230.05",
+      "usd_rate": "4129.53",
+      "rate_date": "2026-10-31",
       "status": "RESOLVED",
       "outcome": "FRAUD",
       "created_at": "2026-10-31T14:02:11.418000Z"
@@ -374,8 +382,8 @@ curl -o report.csv "http://localhost:8003/reports/suspicious?from=2026-10-01&to=
 ```
 
 ```text
-case_id,transaction_id,account_id,pattern,amount,currency,amount_usd,status,outcome,created_at
-0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01,a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21,5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42,mule,950000.00,COP,230.05,RESOLVED,FRAUD,2026-10-31T14:02:11.418000+00:00
+case_id,transaction_id,account_id,pattern,amount,currency,amount_usd,status,outcome,created_at,usd_rate,rate_date
+0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01,a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21,5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42,mule,950000.00,COP,230.05,RESOLVED,FRAUD,2026-10-31T14:02:11.418000+00:00,4129.53,2026-10-31
 ```
 
 Variables: [Configuration](../reference/configuration.mdx#cases).

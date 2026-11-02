@@ -436,3 +436,57 @@ def test_a_restricted_list_event_with_a_bad_account_fails_alone(sessions):
 
     assert result == {"batchItemFailures": [{"itemIdentifier": "m1"}]}
     assert len(_reports(sessions)) == 1
+
+
+# --- HU-43: original amount, USD and the rate used ---------------------------
+
+def _in(event, amount, currency_code):
+    event["transaction"]["amount"] = amount
+    event["transaction"]["currency"] = currency_code
+    return event
+
+
+@pytest.mark.parametrize(
+    ("amount", "currency_code", "amount_usd", "usd_rate"),
+    [
+        ("950000.00", "COP", "230.05", "4129.53"),
+        ("230.05", "USD", "230.05", "1"),
+        ("200.00", "EUR", "230.05", "0.86937"),
+        ("34500", "JPY", "230.05", "149.968"),
+    ],
+)
+def test_a_case_keeps_the_original_amount_usd_and_the_rate(
+    sessions, amount, currency_code, amount_usd, usd_rate
+):
+    event = _in(_event(amount_usd=amount_usd, usd_rate=usd_rate, rate_date="2026-10-13"),
+                amount, currency_code)
+
+    assert cases.handler(_batch(event)) == {"batchItemFailures": []}
+
+    [case] = _cases(sessions)
+    assert (case.amount, case.currency) == (Decimal(amount), currency_code)
+    assert case.amount_usd == Decimal(amount_usd)
+    assert case.usd_rate == Decimal(usd_rate)
+    assert case.rate_date == date(2026, 10, 13)
+
+
+def test_an_event_before_hu_42_has_no_rate(sessions):
+    event = _event()  # no usd_rate or rate_date, as before Sprint 5
+
+    assert cases.handler(_batch(event)) == {"batchItemFailures": []}
+
+    [case] = _cases(sessions)
+    assert case.usd_rate is None and case.rate_date is None
+
+
+@pytest.mark.parametrize(
+    "fields", [{"usd_rate": "abc"}, {"usd_rate": "0"}, {"rate_date": "13/10/2026"}]
+)
+def test_a_malformed_rate_fails_alone(sessions, fields):
+    good = _event(usd_rate="4129.53", rate_date="2026-10-13")
+    bad = _event(**fields)
+
+    result = cases.handler(_batch(good, bad))
+
+    assert result == {"batchItemFailures": [{"itemIdentifier": "m1"}]}
+    assert len(_cases(sessions)) == 1

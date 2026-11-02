@@ -207,14 +207,18 @@ def test_owner_on_restricted_list_is_rejected():
     )
 
 
-def test_nonexistent_account_returns_422():
+def test_account_missing_in_the_cache_gets_the_default_decision():
+    # D2 (HU-67): an account the cache does not have is decided by RN-01,
+    # not refused: USD 10 is approved.
     payload = _payload_normal()
     payload["source_account_id"] = str(uuid4())
 
     response = client.post("/transactions", json=payload)
 
-    assert response.status_code == 422, response.text
-    assert "does not exist" in response.json()["detail"]
+    assert response.status_code == 200, response.text
+    assert response.json()["by_default"] is True
+    assert response.json()["decision"] == "APPROVE"
+    assert "is not in the cache" in response.json()["decision_reason"]
 
 
 def test_amount_with_too_many_decimals_returns_400():
@@ -263,44 +267,24 @@ def test_transaction_response_time():
     print(f"Solicitud repetida: {replay_ms:.2f} ms")
 
 
-def test_database_error_returns_500_and_releases_reservation():
-    from sqlalchemy.exc import SQLAlchemyError
-    from services.decision_engine.main import get_db
+def test_cache_down_gets_the_default_decision_in_time(monkeypatch):
+    # D2: the reference data cannot be read, RN-01 decides in < 200 ms.
+    from services.decision_engine import reference_data
 
-    class FailingSession:
-        rolled_back = False
+    def down(_account_id):
+        raise reference_data.CacheUnavailable("simulated")
 
-        def get(self, *args, **kwargs):
-            raise SQLAlchemyError("Fallo simulado de base de datos")
-
-        def rollback(self):
-            self.rolled_back = True
-
-    fake_session = FailingSession()
-
-    def override_get_db():
-        yield fake_session
-
-    app.dependency_overrides[get_db] = override_get_db
-
+    monkeypatch.setattr(reference_data, "get_account", down)
     payload = _payload_normal()
 
-    try:
-        response = client.post("/transactions", json=payload)
-    finally:
-        app.dependency_overrides.pop(get_db, None)
+    start = perf_counter()
+    response = client.post("/transactions", json=payload)
+    elapsed_ms = (perf_counter() - start) * 1000
 
-    assert response.status_code == 500
-    assert response.json()["detail"] == (
-        "Error interno al procesar la transacción."
-    )
-    assert fake_session.rolled_back is True
-
-    # La reserva se liberó: el reintento decide en vez de recibir 409.
-    retry = client.post("/transactions", json=payload)
-
-    assert retry.status_code == 200, retry.text
-    assert retry.json()["idempotent_replay"] is False
+    assert response.status_code == 200, response.text
+    assert response.json()["by_default"] is True
+    assert "the cache did not answer" in response.json()["decision_reason"]
+    assert elapsed_ms < 200
 
 
 def _payloads_p2p(fechas: list[datetime], en_lista: bool = False) -> list[dict]:
@@ -656,57 +640,35 @@ def test_resend_does_not_write_history_twice():
 
 
 def test_restricted_list_precheck_covers_all_parties_before_velocity(monkeypatch):
-    from types import SimpleNamespace
-
-    from services.decision_engine import decision_service
+    from services.decision_engine import decision_service, reference_data
     from services.decision_engine.rules import velocity
     from services.decision_engine.schemas import TransactionRequest
-    from shared.models import ListaRestrictiva
 
     source_id, destination_id = uuid4(), uuid4()
-    source_user_id, destination_user_id = uuid4(), uuid4()
     source_document = "11122333"
     destination_document = "99988777"
     accounts = {
-        source_id: SimpleNamespace(
-            id=source_id, user_id=source_user_id, moneda="COP"
-        ),
-        destination_id: SimpleNamespace(
-            id=destination_id, user_id=destination_user_id, moneda="COP"
-        ),
-    }
-    users = {
-        source_user_id: SimpleNamespace(documento=source_document),
-        destination_user_id: SimpleNamespace(documento=destination_document),
+        str(account_id): reference_data.Account(
+            id=str(account_id), currency="COP", user_id=str(uuid4()),
+            document=document, status="activa",
+        )
+        for account_id, document in (
+            (source_id, source_document),
+            (destination_id, destination_document),
+        )
     }
     events = []
     queried_documents = []
 
-    class FakeQuery:
-        def filter(self, expression):
-            assert expression.left == ListaRestrictiva.documento
-            queried_documents.extend(expression.right.value)
-            events.append("restricted_list_query_started")
-            return self
-
-        def first(self):
-            events.append("restricted_list_query_completed")
-            return object() if destination_document in queried_documents else None
-
-    class FakeSession:
-        def get(self, model, key):
-            if model.__name__ == "Usuario":
-                return users[key]
-            return None
-
-        def query(self, _column):
-            return FakeQuery()
+    def on_restricted_list(documents):
+        queried_documents.extend(documents)
+        events.append("restricted_list_read")
+        return destination_document in documents
 
     monkeypatch.setattr(
-        decision_service,
-        "_load_account",
-        lambda _session, account_id: accounts[account_id],
+        reference_data, "get_account", lambda account_id: accounts[str(account_id)]
     )
+    monkeypatch.setattr(reference_data, "on_restricted_list", on_restricted_list)
     monkeypatch.setattr(
         decision_service.history, "record_outgoing", lambda *args, **kwargs: []
     )
@@ -737,11 +699,11 @@ def test_restricted_list_precheck_covers_all_parties_before_velocity(monkeypatch
         transaction_date=datetime.now(timezone.utc),
     )
 
-    result = decision_service._decide(FakeSession(), payload, catalog.current())
+    result = decision_service._decide(payload, catalog.current())
 
     assert set(queried_documents) == {source_document, destination_document}
     assert result["decision"] == "REJECT"
     assert "restricted_list" in result["rules_triggered"]
-    assert events.index("restricted_list_query_completed") < events.index(
+    assert events.index("restricted_list_read") < events.index(
         "velocity_rule_evaluated"
     )

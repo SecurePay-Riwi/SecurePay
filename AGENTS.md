@@ -33,13 +33,15 @@ SecurePay/                  ← this repo: the product (engine, consumers, infra
 │   ├── rule_catalog.py     ← rule catalog models and defaults (used only by services/)
 │   ├── cases.py            ← case tables, states and create_schema() (used only by services/)
 │   ├── evidence.py         ← case evidence archive, archive() (used only by services/)
-│   └── reconciliation.py   ← reconciliation records, tables and create_schema() (used only by services/)
+│   ├── reconciliation.py   ← reconciliation records, tables and create_schema() (used only by services/)
+│   └── refdata.py          ← cache keys of accounts, merchants and the restricted list (used only by services/)
 ├── services/
 │   ├── decision_engine/    ← FastAPI antifraud engine (rules in rules/, catalog in catalog.py)
 │   ├── rules_api/           ← FastAPI rules management and catalog versioning
 │   ├── cases_api/          ← FastAPI cases API for analysts (port 8003, Sprint 4)
 │   ├── alerts/             ← alerts task: escalation, compliance summary, history purge
 │   ├── reconciliation/     ← nightly reconciliation: ingest, match (Spark), store (Sprint 5)
+│   ├── cache_loader/       ← loads accounts, merchants and the restricted list into Valkey (HU-67)
 │   └── consumers/          ← SNS/SQS consumers and analytics
 ├── tests/                  ← end-to-end tests that run more than one service
 │                             (test_rule_catalog_e2e.py: rules API + engine)
@@ -47,7 +49,8 @@ SecurePay/                  ← this repo: the product (engine, consumers, infra
 │                             messaging, S3 buckets and the exchange-rates DynamoDB
 │                             table; add the service to SERVICES in Compose), Docker Compose
 │   └── terraform/          ← AWS infrastructure: modules/ (network, security_groups,
-│                             iam, storage, database, ecr, cache, ecs) and envs/dev; local state,
+│                             iam, storage, database, ecr, cache, ecs, messaging,
+│                             lambdas) and envs/dev; local state,
 │                             never committed
 ├── doc-website/            ← Docusaurus documentation site
 ├── db/                     ← BACKUP only: now in securepay-seed
@@ -79,7 +82,7 @@ files, never imports: each one finds the others' output in `../securepay-<repo>/
 dependencies = ["securepay-shared>=0.1.0"]
 ```
 
-`cache.py`, `events.py`, `rule_catalog.py`, `cases.py`, `evidence.py` and `reconciliation.py` are **not** part of the published package — they are only
+`cache.py`, `events.py`, `rule_catalog.py`, `cases.py`, `evidence.py`, `reconciliation.py` and `refdata.py` are **not** part of the published package — they are only
 used by `services/` and stay in this repo.
 
 ---
@@ -322,6 +325,16 @@ Read this before touching `shared/cases.py`, `services/cases_api/`,
 - Amounts are `Numeric` (decimal strings in JSON) and the case keeps the
   engine's `amount_usd`; no service outside the engine imports
   `currency.py`.
+- **Original amount, USD and the rate used (HU-43, RN-11):** `cases` and
+  `account_transactions` also keep `usd_rate` and `rate_date`, copied by
+  the consumers from the event with `rate_values()` (null before HU-42;
+  a malformed one fails that event alone). `create_schema()` adds the two
+  columns to an older database (`ADDED_COLUMNS`). The API answers each
+  amount with its currency's decimals (`in_currency()`, JPY none) and
+  `usd_rate` without trailing zeros (`plain_rate()`), through
+  `CurrencyDecimals` in `schemas.py`. Reports use the stored
+  `amount_usd`, never convert again. The suspicious CSV adds `usd_rate`
+  and `rate_date` as its last columns.
 
 ---
 
@@ -351,8 +364,15 @@ Read this before touching `shared/reconciliation.py`,
   once per transaction id, `partner_day()` == the day, read from
   `raw/decisiones/fecha=<day-1..day+1>`. DATE_OFF (dates more than 1 day
   apart) is checked before AMOUNT_OFF; both limits are included.
-  `match.match_day()` is the plain-Python reference; HU-37 moves
-  `reconcile()` to PySpark and keeps it for the tests.
+  `match.reconcile()` is PySpark (HU-37): `match.session()` is local[*]
+  in tests and Compose, the cluster's under spark-submit (EMR Serverless
+  runs `match.main --day --records --decisions --output`). Spark reads
+  and writes local folders, and `s3://` only on a cluster; in local mode
+  `s3://` (LocalStack) goes through `storage.py`. Output keeps nulls
+  (`ignoreNullFields=false`), one `part-*.json` per day, replaced on a
+  re-run. `match.match_day()` is the plain-Python reference: the Spark
+  tests run every edge case on both. pyspark is imported inside the
+  Spark functions only. Spark tests skip without Java (17 or later).
 - **D4:** `DATE_OFF` gives one `MISSING_IN_PARTNER` and one
   `MISSING_IN_PAGOSEGURO`. A difference is unique per (`run_day`,
   `partner`, `type`, `reference`) and inserted with `ON CONFLICT DO
@@ -368,14 +388,45 @@ Read this before touching `shared/reconciliation.py`,
   against them; do not edit them without Habith (three people's tests
   depend on them). Its `README.md` lists the day.
 - **Treasury's routes** are in the cases API (`routes_reconciliation.py`,
-  Yulianis), which also creates the tables at startup. The readers of the
-  four formats are written in this repo; never import `securepay-csv`.
-- `pyspark` is in the `spark` dependency group (default for `uv sync`);
-  the Docker image leaves it out (`--no-default-groups`).
+  Yulianis; `GET /reconciliation/runs?from=&to=` is Habith's, HU-37, at
+  the end of the file), which also creates the tables at startup.
+- **Reading the files (HU-36):** the readers of the four formats are in
+  `services/reconciliation/parsers.py` (`READERS`, one class per partner);
+  never import `securepay-csv`. A bad line raises `LineError` with its
+  English reason and becomes a `RejectedRow`; the rest of the file is still
+  read. The control record is checked against every detail line and the sum
+  of the readable amounts (in the partner's units); a mismatch is one
+  `RejectedRow` on the control line and the records still count. A missing
+  file is a `RejectedRow` with `line_number = 0`. Tests:
+  `tests/test_ingest.py`.
+- `pyspark` is in the `spark` dependency group (default for `uv sync`),
+  pinned to 4.1.x: EMR Serverless `emr-spark-8.1.0` runs Spark 4.1.1 with
+  Python 3.12, so never use an API newer than 4.1. The Docker image
+  leaves it out (`--no-default-groups`).
 
 ## Decision engine: rules and account history
 
 Read this before adding or changing a rule in `services/decision_engine/`.
+
+- **The engine never reads PostgreSQL** (HU-67, contract C5). Accounts,
+  merchants and the restricted list come from Valkey through
+  `reference_data.py`: `get_account()` (`acct:<id>` hash: `currency`,
+  `user_id`, `document` digits only, `status`), `merchant_exists()`
+  (`merch:<id>`) and `on_restricted_list()` (`{restricted}:docs`, `None`
+  when `{restricted}:loaded_at` is missing); a Valkey error is
+  `CacheUnavailable`. Key names live in `shared/refdata.py`.
+  `services/cache_loader/` (`python -m services.cache_loader`, or
+  `handler()` as a daily Lambda) writes them from PostgreSQL: hashes with
+  a pipeline without transaction and `REFDATA_TTL_HOURS` (48) renewed by
+  every load, the list into `{restricted}:docs:next` and `RENAME` over
+  `{restricted}:docs`. D2: an account or merchant missing in the cache,
+  or `CacheUnavailable`, gets RN-01's default decision (`by_default`);
+  the list not loaded with its rule enabled → `HOLD` whatever the
+  amount; `422` only for a currency that is not the account's. The
+  engine's tests load the cache from the seed once per run
+  (`tests/conftest.py`); `test_reference_data.py` checks that the engine
+  does not import `shared.db`. No session reaches `_decide()` or
+  `RuleContext`.
 
 - **Rules are configured by the catalog, not by code or variables**
   (RF-03, RN-08, CA-06). `shared/rule_catalog.py` holds the models
@@ -577,6 +628,7 @@ Read these before changing the design, not to work on the code:
 - Engine on Fargate (MAG-191): images in ECR tagged with the short git commit (immutable tags, never only `latest`); the engine service and the admin task exist only once `engine_image_tag` / `admin_image_tag` are set. The admin task is the `securepay-seed` image and seeds RDS on demand (`terraform output -raw admin_run_task_command`). The load balancer listens on 443 with a self-signed certificate unless `domain_name` is set.
 - ElastiCache Serverless only accepts cluster-protocol clients: `shared/cache.py` uses `valkey.ValkeyCluster` when `VALKEY_CLUSTER=true` (set by Terraform in AWS; false locally). New Valkey code must keep one key per command, or keys sharing a hash tag like `{rules}`.
 - Temporary (agreed 2026-10-31): `engine_reads_database = true` in dev opens 5432 from `sg-engine` to `sg-rds` and hands the engine `DATABASE_URL` from `/securepay/<env>/rds/master-url`, because the engine still reads accounts, merchants, owners and the restricted list from PostgreSQL. It is removed by HU-67 (MAG-352), which loads that data into the cache.
+- Consumers and alerts task as Lambdas (HU-68, MAG-351): `modules/messaging` (topics `decisions`, `business-alerts`, `ops-alarms`; queues `cases`, `history`, `analytics` with DLQs after 5 attempts; DLQ alarms) and `modules/lambdas` (created once `lambda_image_tag` is set). Every Lambda runs the engine image with `entry_point = ["python", "-m", "awslambdaric"]` and the existing handler as command; there is no Lambda-only code. **A Lambda is named like its role in `modules/iam`** (`securepay-<env>-cases-consumer`, `-history-consumer`, `-analytics-consumer`, `-alerts`, later `-list-loader`, `-statement-reader`, `-difference-writer`). The cases, history and alerts handlers create the case tables on their first write (`batch.ensure_schema()`, `handler.ensure_schema()`): Lambda has no startup step. Temporary in dev: those Lambdas get the master user's `DATABASE_URL` as an environment variable; one database user per component is pending. Push images with `docker build --provenance=false` (Lambda rejects image indexes).
 - Before a PR: `terraform fmt -check -recursive` in `infra/terraform/` and `terraform validate` in `envs/dev`. The page `doc-website/docs/architecture/terraform.mdx` changes with the code.
 
 ## Docker images and local ecosystem (MAG-31 / MAG-32)
@@ -586,6 +638,7 @@ Read these before changing the design, not to work on the code:
 - Use service hostnames inside containers (postgres, valkey, localstack, decision-engine); localhost inside a container is not another service.
 - Which PostgreSQL: the containers always use Compose's (`postgres:5432` inside the network). What runs on your machine with `uv run` (pytest, the seed) uses `DATABASE_URL` from `.env`: port 5432 for an installed PostgreSQL (the `.env.example` default) or 5433 for Compose's. With both installed, pytest talks to the one in `DATABASE_URL`, not to the one the stack writes to.
 - The cases API (`cases-api`, port 8003), the `consumers` and the `alerts` task create the case tables at startup; all three need `DATABASE_URL`.
+- `cache-loader` runs once after the seed and fills Valkey with accounts, merchants and the restricted list; the `decision-engine` waits for it and has no `DATABASE_URL`. Valkey has no persistence: after restarting it, run `docker compose up cache-loader` again (or `uv run python -m services.cache_loader`).
 - Tests that need "PostgreSQL down" use `shared/tests/isolated_db.down_sessions()` (it sets `connect_timeout`; on Windows port 1 waits forever without it). Tests against LocalStack create queues of their own subscribed to the topic: the Compose `consumers` container reads the real ones.
 - Never commit .env, tokens, generated files or downloaded Kaggle datasets.
 - The seed service uses SEED_RESET=true; do not run the stack against data that must be preserved.

@@ -27,6 +27,9 @@ EMPTY = "No compliance cases in the period."
 CSV_COLUMNS = [
     "case_id", "transaction_id", "account_id", "pattern", "amount",
     "currency", "amount_usd", "status", "outcome", "created_at",
+    # HU-43: the rate behind amount_usd, at the end so the columns of
+    # HU-35 keep their place.
+    "usd_rate", "rate_date",
 ]
 
 
@@ -54,6 +57,8 @@ def row(case: Case) -> SuspiciousCase:
         amount=case.amount,
         currency=case.currency,
         amount_usd=case.amount_usd,
+        usd_rate=case.usd_rate,
+        rate_date=case.rate_date,
         status=case.status,
         outcome=case.outcome,
         created_at=case.created_at,
@@ -70,7 +75,7 @@ def to_csv(items: list[SuspiciousCase]) -> str:
         values = item.model_dump()
         writer.writerow([
             "" if values[c] is None
-            else format(values[c], "f") if c in ("amount", "amount_usd")
+            else format(values[c], "f") if c in ("amount", "amount_usd", "usd_rate")
             else values[c].astimezone(UTC).isoformat() if c == "created_at"
             else str(values[c])
             for c in CSV_COLUMNS

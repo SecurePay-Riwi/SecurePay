@@ -85,6 +85,7 @@ One group per function, and the rules are written between groups instead of betw
 **Changes from version 1.0:**
 - **The engine no longer reaches the database.** The engine never queries PostgreSQL: it reads the active rules and the restricted list from the cache, and the day's exchange rate from DynamoDB. The components that read the database to fill the cache are Lambdas (rule refresh, list load). The 5432 rule was removed from `sg-motor`, and so was the inbound rule from `sg-motor` in `sg-rds`. Today the engine code still reads accounts, owners and the restricted list from PostgreSQL (the rules already come from the cache); this is temporary until the list and the account data are loaded into the cache.
   - **Temporary rule in dev (agreed on 2026-10-31).** So that the engine can decide in AWS before that load exists, the Terraform variable `engine_reads_database` (true in `envs/dev`, false by default) adds 5432/TCP from `sg-engine` to `sg-rds` (egress and ingress) and lets `engine-execution` read the `DATABASE_URL` parameter `/securepay/<env>/rds/master-url`. It goes back to false, and both rules disappear, once the restricted list and the account data are in the cache.
+  - **Temporary in dev too: the Lambdas use the master user (agreed on 2026-11-02, HU-68).** The cases, history and alerts Lambdas get `DATABASE_URL` of the master user as an environment variable (encrypted at rest, but visible to whoever may read the function's configuration). The component users (`cases_consumer`, `alerts`, ...) already have their passwords in Parameter Store; creating them in PostgreSQL with their grants, and reading the password at startup, is pending for every component (engine, Lambdas and admin task).
 - **Port 6380 on the cache.** ElastiCache Serverless uses 6379 (writes and consistent reads) and 6380 (reads from a replica), and many clients open both even if they do not use the second one. With only 6379 the connection could fail.
 - **`sg-admin`**, for the Fargate task that runs the schema migrations and the seed against the database. It had no group before.
 
@@ -119,8 +120,8 @@ Team members reach resources inside the VPC through **AWS Systems Manager Sessio
 | 1 | `rol-motor-ejecucion` | ECS (`ecs-tasks.amazonaws.com`) | Pull the engine image and write its logs |
 | 2 | `rol-motor` | ECS (`ecs-tasks.amazonaws.com`) | Publish decisions, use the cache, read the day's exchange rate and send traces |
 | 3 | `rol-consumidor-casos` | Lambda | Read the cases queue and write cases to the database |
-| 4 | `rol-consumidor-historial` | Lambda | Read the history queue, write device–account pairs to DynamoDB and the cache |
-| 5 | `rol-consumidor-analitica` | Lambda | Read the analytics queue and write to Firehose |
+| 4 | `rol-consumidor-historial` | Lambda | Read the history queue and write the 30-day account history to the database |
+| 5 | `rol-consumidor-analitica` | Lambda | Read the analytics queue and write the raw decisions to the Data Lake (Firehose once the load test sizes it) |
 | 6 | `rol-firehose-raw` | Firehose | Write to `raw/decisiones/` in the Data Lake |
 | 7 | `rol-api-reglas` | Lambda | Read and write rules, announce the change and launch the simulation on EMR |
 | 8 | `rol-api-casos` | Lambda | Read and write cases and store the evidence on closing |
@@ -176,15 +177,15 @@ The engine calls the list service over HTTPS only if the cache is unavailable; t
 | Action | Resource | Purpose |
 | :--- | :--- | :--- |
 | `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` | queue `historial` | Read the queue |
-| `dynamodb:PutItem` | table `dispositivo-cuenta` | Store the pair only if it is new (conditional write) |
-| `elasticache:Connect` | the cache and the user `historial` | Update the list of accounts per device |
+
+Since Sprint 4 the history is the PostgreSQL table `account_transactions` (team decision D3), not DynamoDB and the cache, so the role only reads its queue and reaches the database through `sg-lambda`. Sprint 5 removed `dynamodb:PutItem` and `elasticache:Connect` from it.
 
 **5. `rol-consumidor-analitica`** · own logs (outside the VPC)
 
 | Action | Resource | Purpose |
 | :--- | :--- | :--- |
 | `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` | queue `analitica` | Read the queue |
-| `firehose:PutRecordBatch` | stream `decisiones-raw` | Deliver the decisions to Firehose |
+| `s3:PutObject` | `pagoseguro-prod-datalake/raw/decisiones/*` | Write one JSON Lines object per batch, as the code does today. `firehose:PutRecordBatch` on `decisiones-raw` replaces it when Firehose is deployed (after the load test) |
 
 **6. `rol-firehose-raw`** (assumed by Firehose)
 
@@ -211,7 +212,7 @@ The Firehose documentation also includes `s3:GetObject`; it is left out because 
 | Action | Resource | Purpose |
 | :--- | :--- | :--- |
 | `ssm:GetParameter` | parameter `/pagoseguro/prod/rds/api_casos` | Password of the database user `api_casos`: read, assign, resolve and escalate cases |
-| `s3:PutObject` | `pagoseguro-prod-evidencia/*` | Store the evidence when a case is closed. The bucket applies only the 10-year retention, so `s3:PutObjectRetention` is not needed |
+| `s3:PutObject`, `s3:PutObjectRetention` | `pagoseguro-prod-evidencia/*` | Store the evidence when a case is closed. Each object is uploaded with its own COMPLIANCE retain-until date (`shared/evidence.archive()`, Sprint 4), which needs `s3:PutObjectRetention` |
 | `s3:GetObject` | `pagoseguro-prod-evidencia/*` | Look up the evidence of a closed case |
 
 Change from version 1.0: the evidence is stored by the cases API when the case is closed, not by the case consumer, which only creates the case.
@@ -231,6 +232,7 @@ The subscription to the `regla-cambiada` topic is authorized by a permission on 
 | :--- | :--- | :--- |
 | `ssm:GetParameter` | parameter `/pagoseguro/prod/rds/alertas` | Password of the database user `alertas`: find overdue cases, mark them as escalated and read the pending transactions approved by fallback |
 | `sns:Publish` | `tema:alertas-negocio` | Email to the supervisor and summary to compliance (with a filter by recipient) |
+| `s3:PutObject`, `s3:PutObjectRetention`, `s3:GetObject` | `pagoseguro-prod-evidencia/*` | Retry the evidence of resolved cases whose archive failed (`archive_pending()`, Sprint 4) |
 
 To review the transactions approved by fallback it calls the engine over HTTPS through the load balancer; it needs no IAM permission for that.
 
