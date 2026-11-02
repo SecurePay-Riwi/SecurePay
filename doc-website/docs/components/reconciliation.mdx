@@ -11,7 +11,7 @@ description: The nightly reconciliation with the four payment partners, from the
 Every night PagoSeguro compares what the engine approved with the files the four [payment partners](./partner-statements.mdx) send, and treasury sees what is missing at the partner, what is missing at PagoSeguro and which amounts do not agree, with their age. RN-10: a transaction matches when the **reference** is the same, the **amount** differs by at most **0.01** and the **dates** by at most **1 day** (both limits included). The daily run has to finish before 07:00.
 
 :::info Status
-Sprint 5, step 0: the shared contract is in place (the records, the tables, the signatures of every step), with a reference match in plain Python and a small fixture day. Each story fills in its step: reading the files (HU-36), the match in Spark (HU-37), the differences (HU-38 to HU-40) and treasury's routes (HU-38 to HU-41).
+Sprint 5: the shared contract is in place (the records, the tables, the signatures of every step) with a small fixture day, and the match runs in Spark (HU-37) with `GET /reconciliation/runs`. Still to come: reading the files (HU-36), the differences (HU-38 to HU-40) and treasury's other routes (HU-38 to HU-41).
 :::
 
 ## The flow
@@ -63,7 +63,18 @@ Each step has a fixed input and output from step 0, so nobody waits for the step
 | `ONLY_PAGOSEGURO` | Ours, not in the partner's file. |
 | `ONLY_PARTNER` | In the file, and not an `APPROVE` of the window. |
 
-A partner record whose reference is an `APPROVE` of the window but of another partner day still counts: its date decides. The output is one `MatchRow` per reference as JSON lines in `curated/conciliacion/fecha=<day>/part-*.json`. Step 0 leaves `match_day()`, the same rules in plain Python, which `reconcile()` uses until HU-37 moves it to PySpark (local mode in the tests, EMR Serverless in AWS).
+A partner record whose reference is an `APPROVE` of the window but of another partner day still counts: its date decides. The output is one `MatchRow` per reference as JSON lines in `curated/conciliacion/fecha=<day>/part-*.json`, with every key (nulls included); running the day again replaces it.
+
+`reconcile()` runs in PySpark (HU-37): the decisions of the window and the day's records are read as JSON lines, deduplicated, and joined by reference (a left join of the records with our side, plus our transactions of the day that no record has). `match.session()` is `local[*]` in the tests and in Compose, and the cluster's session on EMR Serverless, where Step Functions starts `match.main`:
+
+```bash
+spark-submit services/reconciliation/match.py --day 2026-10-05 \
+  --records s3://<datalake>/curated/extractos/fecha=2026-10-05/records.jsonl \
+  --decisions s3://<datalake>/raw/decisiones \
+  --output s3://<datalake>/curated/conciliacion/fecha=2026-10-05
+```
+
+`--decisions` is the root of `raw/decisiones/`: the match adds `fecha=<day>` for each day of the window. On a cluster Spark reads and writes S3 itself; in local mode an `s3://` path (LocalStack) goes through `storage.py`. pyspark is pinned to 4.1.x, the version of EMR Serverless `emr-spark-8.1.0` (Spark 4.1.1, Python 3.12). `match_day()` keeps the same rules in plain Python: the tests run every edge case (0.01 and 0.02, 1 day and 1 day and 1 second, repeated lines, `P2P`, `HOLD` and `REJECT`, the Bogota day) on both, and check that the fixture day gives the answer key. The Spark tests need Java 17 or later and skip without it.
 
 ## 3. Differences (HU-38 to HU-40)
 
@@ -72,6 +83,8 @@ A partner record whose reference is an `APPROVE` of the window but of another pa
 ## 4. Treasury's routes (HU-38 to HU-41)
 
 Routes of the [cases API](./cases.mdx) in `routes_reconciliation.py` (empty at step 0): `GET /reconciliation/differences`, `GET /reconciliation/differences/aging`, `POST /reconciliation/differences/{difference_id}/resolution` and `GET /reconciliation/runs`.
+
+`GET /reconciliation/runs?from=&to=` (HU-37) lists the runs of a period, oldest day first: `run_day`, `status` (`RUNNING`, `DONE`, `FAILED`), `started_at`, `finished_at`, `files_read`, `records_read`, `rows_rejected`, `matched`, `differences` and `error` (the step and its error when it failed). `from` and `to` are days, both inclusive; without them, every run. `from` after `to` or an invalid day is `400`, PostgreSQL down is `503`.
 
 ## Running it locally
 
