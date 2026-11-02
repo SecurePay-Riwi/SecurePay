@@ -41,6 +41,10 @@ BOGOTA = timezone(timedelta(hours=-5))
 
 _schema_ready = False
 
+# Rows per INSERT: 14 columns each, and PostgreSQL takes at most 65535
+# parameters per statement. A day without a partner's file has thousands.
+INSERT_BATCH = 1000
+
 
 def load_rows(match_path: str) -> list[MatchRow]:
     """Every part-*.json under match_path (local folder or s3://), with
@@ -123,10 +127,11 @@ def save(session, day: date, rows: list[MatchRow], counts: dict, now: datetime) 
         .returning(ReconciliationRun.id)
     ).scalar_one()
 
-    if differences:
+    values = [{**d, "run_id": run_id, "detected_at": now} for d in differences]
+    for start in range(0, len(values), INSERT_BATCH):
         session.execute(
             insert(ReconciliationDifference)
-            .values([{**d, "run_id": run_id, "detected_at": now} for d in differences])
+            .values(values[start:start + INSERT_BATCH])
             .on_conflict_do_nothing(index_elements=["run_day", "partner", "type", "reference"])
         )
     session.commit()

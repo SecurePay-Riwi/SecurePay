@@ -211,6 +211,19 @@ def test_running_the_day_again_does_not_duplicate(sessions):
     assert {d.detected_at for d in saved} == {NOW}  # the first detection stays
 
 
+def test_a_day_with_thousands_of_differences_is_saved(sessions):
+    # A partner's file missing: every one of ours is MISSING_IN_PARTNER, more
+    # than one INSERT can take (PostgreSQL's limit is 65535 parameters).
+    rows = [_row("ONLY_PAGOSEGURO", reference=f"ref-{i}") for i in range(6000)]
+    with sessions() as s:
+        result = store.save(s, DAY, rows, COUNTS, NOW)
+        run = s.scalars(select(ReconciliationRun)).one()
+
+    assert result["differences"] == 6000
+    assert (run.status, run.differences) == (RunStatus.DONE.value, 6000)
+    assert len(_differences(sessions)) == 6000
+
+
 def test_a_resolved_difference_is_not_reopened(sessions):
     rows = [_row("ONLY_PAGOSEGURO")]
     with sessions() as s:
