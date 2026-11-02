@@ -7,7 +7,7 @@ account, pattern and amounts in the original currency and in USD
 
 import csv
 import io
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -16,7 +16,8 @@ from shared.cases import Case, CaseStatus
 
 
 def _case(sessions, created_at, *, rules=("mule",), amount="100.00", currency="USD",
-          amount_usd="100.00", status=CaseStatus.OPEN, outcome=None):
+          amount_usd="100.00", status=CaseStatus.OPEN, outcome=None,
+          usd_rate=None, rate_date=None):
     """Insert a case opened at created_at; returns its id."""
     tx_id = uuid4()
     case = Case(
@@ -29,6 +30,8 @@ def _case(sessions, created_at, *, rules=("mule",), amount="100.00", currency="U
         amount=Decimal(amount),
         currency=currency,
         amount_usd=None if amount_usd is None else Decimal(amount_usd),
+        usd_rate=None if usd_rate is None else Decimal(usd_rate),
+        rate_date=rate_date,
         transaction_date=created_at,
         transaction={"id": str(tx_id)},
         status=status.value,
@@ -104,8 +107,9 @@ def test_one_day_period(client, sessions):
 
 def test_the_csv_export(client, sessions):
     _case(sessions, _at(12), rules=("mule",), amount="950000.00", currency="COP",
-          amount_usd="230.05", status=CaseStatus.RESOLVED, outcome="FRAUD")
-    _case(sessions, _at(13), rules=("splitting",), amount="12345678.90", currency="JPY",
+          amount_usd="230.05", status=CaseStatus.RESOLVED, outcome="FRAUD",
+          usd_rate="4129.53", rate_date=date(2026, 10, 12))
+    _case(sessions, _at(13), rules=("splitting",), amount="12345678", currency="JPY",
           amount_usd=None)
 
     response = _report(client, format="csv")
@@ -116,11 +120,14 @@ def test_the_csv_export(client, sessions):
         'attachment; filename="suspicious-report-2026-10-10-2026-10-20.csv"')
     rows = list(csv.DictReader(io.StringIO(response.text)))
     assert list(rows[0]) == ["case_id", "transaction_id", "account_id", "pattern", "amount",
-                             "currency", "amount_usd", "status", "outcome", "created_at"]
-    assert [(r["pattern"], r["amount"], r["currency"], r["amount_usd"], r["status"], r["outcome"])
+                             "currency", "amount_usd", "status", "outcome", "created_at",
+                             "usd_rate", "rate_date"]
+    assert [(r["pattern"], r["amount"], r["currency"], r["amount_usd"], r["status"], r["outcome"],
+             r["usd_rate"], r["rate_date"])
             for r in rows] == [
-        ("mule", "950000.00", "COP", "230.05", "RESOLVED", "FRAUD"),
-        ("splitting", "12345678.90", "JPY", "", "OPEN", ""),  # no scientific notation
+        ("mule", "950000.00", "COP", "230.05", "RESOLVED", "FRAUD", "4129.53", "2026-10-12"),
+        # JPY without decimals (HU-43), no scientific notation, no rate before HU-42.
+        ("splitting", "12345678", "JPY", "", "OPEN", "", "", ""),
     ]
     assert rows[0]["created_at"] == "2026-10-12T12:00:00+00:00"
 
@@ -131,7 +138,7 @@ def test_an_empty_csv_has_only_the_header(client, sessions):
     assert response.status_code == 200
     assert response.text == (
         "case_id,transaction_id,account_id,pattern,amount,currency,"
-        "amount_usd,status,outcome,created_at\n"
+        "amount_usd,status,outcome,created_at,usd_rate,rate_date\n"
     )
 
 

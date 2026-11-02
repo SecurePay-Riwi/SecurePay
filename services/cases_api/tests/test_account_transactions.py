@@ -4,6 +4,8 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
+import pytest
+
 from shared.cases import AccountTransaction
 
 ACCOUNT = uuid4()
@@ -25,6 +27,8 @@ def _row(factory, days_ago, account=ACCOUNT, direction="OUT", **fields):
         "amount": Decimal("950000.00"),
         "currency": "COP",
         "amount_usd": Decimal("230.05"),
+        "usd_rate": Decimal("4129.53"),
+        "rate_date": when.date(),
         "device_id": uuid4() if direction == "OUT" else None,
         "decision": "APPROVE",
         "decision_reason": "Below USD 50.",
@@ -60,13 +64,31 @@ def test_newest_first_with_every_field(client, sessions):
     # Money as decimal strings, the original currency and USD.
     assert first["amount"] == "950000.00" and first["currency"] == "COP"
     assert first["amount_usd"] == "230.05"
+    # HU-43: the rate behind amount_usd and its day.
+    assert first["usd_rate"] == "4129.53"
+    assert first["rate_date"] == (datetime.now(UTC) - timedelta(days=1)).date().isoformat()
     assert set(first) == {
         "transaction_id", "direction", "counterparty_account_id", "type", "channel",
-        "merchant_id", "amount", "currency", "amount_usd", "device_id", "decision",
+        "merchant_id", "amount", "currency", "amount_usd", "usd_rate", "rate_date",
+        "device_id", "decision",
         "decision_reason", "rules_triggered", "risk_score", "transaction_date",
         "processed_at",
     }
     assert body["items"][1]["device_id"] is not None
+
+
+@pytest.mark.parametrize(
+    ("amount", "currency", "shown"),
+    [("950000.00", "COP", "950000.00"), ("25.50", "USD", "25.50"),
+     ("25.50", "EUR", "25.50"), ("15000", "JPY", "15000")],
+)
+def test_each_currency_keeps_its_decimals(client, sessions, amount, currency, shown):
+    """HU-43: the column keeps two decimals; JPY is answered without them."""
+    _row(sessions, 1, account=(account := uuid4()), amount=Decimal(amount), currency=currency)
+
+    item = client.get(_url(account)).json()["items"][0]
+
+    assert (item["amount"], item["currency"]) == (shown, currency)
 
 
 def test_an_account_without_history_is_an_empty_list(client, sessions):

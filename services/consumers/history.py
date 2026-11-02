@@ -12,7 +12,9 @@ the source; in a top-up, the destination), the same rule as the engine's
 ``dev:{device}``. The related accounts (HU-29) are read from there.
 
 Amounts stay in the account's currency, with the engine's ``amount_usd``
-(null for events older than Sprint 4). The cases API reads the table
+(null for events older than Sprint 4) and the rate behind it,
+``usd_rate`` and ``rate_date`` (HU-43; null for events older than
+HU-42). The cases API reads the table
 (``GET /accounts/{account_id}/transactions``) and the alerts task deletes
 the rows older than ``ACCOUNT_HISTORY_DAYS`` (``account_history.purge``).
 
@@ -37,7 +39,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from services.consumers.batch import leer_lote, respuesta
 from shared import db
-from shared.cases import AccountTransaction, main_account
+from shared.cases import AccountTransaction, main_account, rate_values
 
 log = logging.getLogger(__name__)
 
@@ -90,6 +92,7 @@ def history_rows(event: dict) -> list[dict]:
             "amount": Decimal(str(transaction["amount"])),
             "currency": str(transaction["currency"]),
             "amount_usd": None if amount_usd is None else Decimal(str(amount_usd)),
+            **rate_values(decision),
             "decision": str(decision["decision"]),
             "decision_reason": str(decision["decision_reason"]),
             "rules_triggered": rules_triggered,
