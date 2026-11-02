@@ -107,6 +107,9 @@ module "ecr" {
 
   name_prefix  = local.name_prefix
   force_delete = true
+
+  # The consumers and the alerts task run the engine's image (HU-68).
+  lambda_repositories = ["engine"]
 }
 
 module "cache" {
@@ -140,13 +143,13 @@ module "ecs" {
   engine_execution_role_arn = module.iam.role_arns["engine-execution"]
   engine_task_role_arn      = module.iam.role_arns["engine"]
 
-  # The decisions topic and its consumers come with the Lambdas (sprint 5);
-  # without SNS_DECISIONES_TOPIC_ARN the engine still decides and /health
-  # reports the messaging as not configured.
+  # Every decision goes to the decisions topic, which feeds the consumer
+  # Lambdas (HU-68).
   engine_environment = {
-    AWS_DEFAULT_REGION = var.region
-    VALKEY_URL         = module.cache.url
-    VALKEY_CLUSTER     = "true"
+    AWS_DEFAULT_REGION       = var.region
+    VALKEY_URL               = module.cache.url
+    VALKEY_CLUSTER           = "true"
+    SNS_DECISIONES_TOPIC_ARN = module.messaging.decisions_topic_arn
   }
   engine_secrets = var.engine_reads_database ? { DATABASE_URL = module.database.master_url_parameter_arn } : {}
 
@@ -164,4 +167,39 @@ module "ecs" {
     PROVEEDOR_LISTAS_BUCKET = module.storage.bucket_names["list-provider"]
   }
   admin_secrets = { DATABASE_URL = module.database.master_url_parameter_arn }
+}
+
+module "messaging" {
+  source = "../../modules/messaging"
+
+  name_prefix       = local.name_prefix
+  supervisor_emails = var.supervisor_emails
+  compliance_emails = var.compliance_emails
+  alarm_emails      = var.budget_emails
+}
+
+# The cases, history and analytics consumers and the alerts task (HU-68),
+# with the engine's image. Created once lambda_image_tag is set.
+module "lambdas" {
+  source = "../../modules/lambdas"
+
+  name_prefix              = local.name_prefix
+  repository_url           = module.ecr.repository_urls["engine"]
+  image_tag                = var.lambda_image_tag
+  role_arns                = module.iam.role_arns
+  app_subnet_ids           = module.network.app_subnet_ids
+  lambda_security_group_id = module.security_groups.ids["lambda"]
+  queue_arns               = module.messaging.queue_arns
+
+  # Temporary: the master user, like the engine (security.mdx). One user
+  # per component is pending.
+  database_url = module.database.master_url
+
+  business_alerts_topic_arn = module.messaging.business_alerts_topic_arn
+  ops_alarms_topic_arn      = module.messaging.ops_alarms_topic_arn
+  datalake_bucket           = module.storage.bucket_names["datalake"]
+  evidence_bucket           = module.storage.bucket_names["evidence"]
+  evidence_retention_days   = "0.0035"
+  case_due_minutes          = var.case_due_minutes
+  log_retention_days        = 7
 }

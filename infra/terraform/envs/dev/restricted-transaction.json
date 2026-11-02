@@ -1,0 +1,16 @@
+{
+  "id": "7a2d3b5f-9c1e-4d4b-8f80-3e6c9b1d2f45",
+  "type": "RETIRO",
+  "channel": "CAJERO",
+  "source_account_id": "94e4cd85-0884-53cc-b9e4-c35640b276f2",
+  "destination_account_id": null,
+  "merchant_id": null,
+  "amount": "30.00",
+  "currency": "USD",
+  "source_balance_before": "1829.26",
+  "source_balance_after": "1799.26",
+  "destination_balance_before": null,
+  "destination_balance_after": null,
+  "device_id": "52e793c9-251d-5a4d-a17d-6e7c9dfdb714",
+  "transaction_date": "2026-10-01T09:30:00+00:00"
+}
