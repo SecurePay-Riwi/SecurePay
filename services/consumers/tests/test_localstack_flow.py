@@ -19,25 +19,43 @@ COLAS = ["casos", "historial", "analitica"]
 
 @pytest.fixture(scope="module")
 def aws():
+    """Queues of their own, subscribed to the decisions topic like the real
+    ones. The real queues are not used: the Compose consumers container
+    reads them too and would take the messages before the test."""
     try:
         sns, sqs, s3 = cliente("sns"), cliente("sqs"), cliente("s3")
         sqs.get_queue_url(QueueName="analitica")
     except Exception:
         pytest.skip("LocalStack no está disponible (docker compose up -d)")
 
-    urls = {c: sqs.get_queue_url(QueueName=c)["QueueUrl"] for c in COLAS}
-    return sns, sqs, s3, urls
+    suffix = uuid4().hex[:8]
+    urls, subscriptions = {}, []
+    for cola in COLAS:
+        url = sqs.create_queue(QueueName=f"{cola}-test-{suffix}")["QueueUrl"]
+        queue_arn = sqs.get_queue_attributes(
+            QueueUrl=url, AttributeNames=["QueueArn"]
+        )["Attributes"]["QueueArn"]
+        subscriptions.append(sns.subscribe(
+            TopicArn=TOPIC_ARN, Protocol="sqs", Endpoint=queue_arn,
+            Attributes={"RawMessageDelivery": "true"},
+        )["SubscriptionArn"])
+        urls[cola] = url
+    try:
+        yield sns, sqs, s3, urls
+    finally:
+        for subscription in subscriptions:
+            sns.unsubscribe(SubscriptionArn=subscription)
+        for url in urls.values():
+            sqs.delete_queue(QueueUrl=url)
 
 
 @pytest.fixture(autouse=True)
 def colas_vacias(aws):
-    """Lo que dejó otra prueba o corrida no debe contar aquí."""
+    """Lo que dejó otra prueba no debe contar aquí."""
     _, sqs, _, urls = aws
     for url in urls.values():
         _borrar(sqs, url, _leer_todo(sqs, url))
     yield
-    for url in urls.values():
-        _borrar(sqs, url, _leer_todo(sqs, url))
 
 
 def _evento(tx_id, decision="APPROVE"):
