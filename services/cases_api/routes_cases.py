@@ -67,6 +67,8 @@ def summary(case: Case, now: datetime) -> CaseSummary:
         amount=case.amount,
         currency=case.currency,
         amount_usd=case.amount_usd,
+        usd_rate=case.usd_rate,
+        rate_date=case.rate_date,
         assignee=case.assignee,
         created_at=case.created_at,
         due_at=case.due_at,

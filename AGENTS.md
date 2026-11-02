@@ -323,6 +323,16 @@ Read this before touching `shared/cases.py`, `services/cases_api/`,
 - Amounts are `Numeric` (decimal strings in JSON) and the case keeps the
   engine's `amount_usd`; no service outside the engine imports
   `currency.py`.
+- **Original amount, USD and the rate used (HU-43, RN-11):** `cases` and
+  `account_transactions` also keep `usd_rate` and `rate_date`, copied by
+  the consumers from the event with `rate_values()` (null before HU-42;
+  a malformed one fails that event alone). `create_schema()` adds the two
+  columns to an older database (`ADDED_COLUMNS`). The API answers each
+  amount with its currency's decimals (`in_currency()`, JPY none) and
+  `usd_rate` without trailing zeros (`plain_rate()`), through
+  `CurrencyDecimals` in `schemas.py`. Reports use the stored
+  `amount_usd`, never convert again. The suspicious CSV adds `usd_rate`
+  and `rate_date` as its last columns.
 
 ---
 

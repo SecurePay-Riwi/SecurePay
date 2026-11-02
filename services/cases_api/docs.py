@@ -92,16 +92,19 @@ _SUSPICIOUS_CASE = {
     "amount": "950000.00",
     "currency": "COP",
     "amount_usd": "230.05",
+    "usd_rate": "4129.53",
+    "rate_date": "2026-10-31",
     "status": "RESOLVED",
     "outcome": "FRAUD",
     "created_at": "2026-10-31T14:02:11.418000Z",
 }
 
 _SUSPICIOUS_CSV = (
-    "case_id,transaction_id,account_id,pattern,amount,currency,amount_usd,status,outcome,created_at\n"
+    "case_id,transaction_id,account_id,pattern,amount,currency,amount_usd,status,outcome,created_at,"
+    "usd_rate,rate_date\n"
     "0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01,a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21,"
     "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42,mule,950000.00,COP,230.05,RESOLVED,FRAUD,"
-    "2026-10-31T14:02:11.418000+00:00\n"
+    "2026-10-31T14:02:11.418000+00:00,4129.53,2026-10-31\n"
 )
 
 SUSPICIOUS_REPORT = {
@@ -111,12 +114,13 @@ SUSPICIOUS_REPORT = {
         "splitting (RN-05) and restricted list (RN-06), the decisions that "
         "open a case. One row per case with its account, `pattern` (the "
         "rules that fired, joined by `+`), the amount in the original "
-        "currency and in USD (RN-11), its state and its outcome, oldest "
-        "first.\n\n"
+        "currency (with its decimals: JPY has none) and in USD, with the "
+        "rate the engine used (`usd_rate`, `rate_date`; RN-11), its state "
+        "and its outcome, oldest first.\n\n"
         "`from` and `to` are days (`YYYY-MM-DD`, UTC), both inclusive, at "
         "most 31 days apart. `format=csv` returns the same rows as a file to "
         "download, `suspicious-report-<from>-<to>.csv`, with amounts as "
-        "decimal text. A period without cases is an empty list with "
+        "decimal text and `usd_rate`, `rate_date` as the last columns. A period without cases is an empty list with "
         "`message` (JSON) or only the header (CSV)."
     ),
     "responses": {
@@ -152,6 +156,8 @@ _ACCOUNT_TRANSACTION = {
     "amount": "950000.00",
     "currency": "COP",
     "amount_usd": "230.05",
+    "usd_rate": "4129.53",
+    "rate_date": "2026-10-31",
     "device_id": "c7e9a1b3-5d7f-4a9c-9e1b-3d5f7a9c1e86",
     "decision": "HOLD",
     "decision_reason": "More than 5 outgoing transfers in 10 minutes.",
@@ -167,8 +173,9 @@ ACCOUNT_TRANSACTIONS = {
         "Every transaction where the account took part in the last `days` "
         "days (at most 30, `ACCOUNT_HISTORY_DAYS`), whatever the engine "
         "decided: `OUT` when it was the source, `IN` when it was the "
-        "destination. The amount is in the account's currency, with the "
-        "engine's `amount_usd` (RN-11). `device_id` is only on the main "
+        "destination. The amount is in the account's currency (JPY without "
+        "decimals), with the engine's `amount_usd` and the rate behind it, "
+        "`usd_rate` and `rate_date` (RN-11, HU-43). `device_id` is only on the main "
         "account's row (the source; in a top-up, the destination).\n\n"
         "Newest first by `transaction_date`. An account without history is "
         "an empty list. Paginated with `page` and `size` (at most 100). "
@@ -243,6 +250,8 @@ _CASE_SUMMARY = {
     "amount": "950000.00",
     "currency": "COP",
     "amount_usd": "230.05",
+    "usd_rate": "4129.53",
+    "rate_date": "2026-10-31",
     "assignee": None,
     "created_at": "2026-10-31T14:02:11.418000Z",
     "due_at": "2026-10-31T18:02:11.418000Z",

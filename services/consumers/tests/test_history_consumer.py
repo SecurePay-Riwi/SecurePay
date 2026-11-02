@@ -4,7 +4,7 @@ Needs PostgreSQL (DATABASE_URL).
 """
 
 import json
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
 
@@ -224,3 +224,43 @@ def test_the_first_write_creates_the_case_tables(monkeypatch):
 
         assert result == {"batchItemFailures": []}
         assert _count(factory) == 2
+
+
+# --- HU-43: original amount, USD and the rate used ---------------------------
+
+@pytest.mark.parametrize(
+    ("amount", "currency_code", "usd_rate"),
+    [("950000.00", "COP", "4129.53"), ("230.05", "USD", "1"),
+     ("200.00", "EUR", "0.86937"), ("34500", "JPY", "149.968")],
+)
+def test_both_rows_keep_the_original_amount_usd_and_the_rate(
+    sessions, amount, currency_code, usd_rate
+):
+    event = _event(usd_rate=usd_rate, rate_date="2026-10-13")
+    event["transaction"]["amount"] = amount
+    event["transaction"]["currency"] = currency_code
+
+    assert history.handler(_batch(event)) == {"batchItemFailures": []}
+
+    rows = _rows(sessions)
+    assert set(rows) == {"OUT", "IN"}
+    for row in rows.values():
+        assert (row.amount, row.currency) == (Decimal(amount), currency_code)
+        assert row.amount_usd == Decimal("230.05")
+        assert row.usd_rate == Decimal(usd_rate)
+        assert row.rate_date == date(2026, 10, 13)
+
+
+def test_an_event_before_hu_42_is_written_without_rate(sessions):
+    assert history.handler(_batch(_event())) == {"batchItemFailures": []}
+
+    for row in _rows(sessions).values():
+        assert row.usd_rate is None and row.rate_date is None
+
+
+def test_a_malformed_rate_fails_alone(sessions):
+    good = _event(usd_rate="4129.53", rate_date="2026-10-13")
+    bad = _event(usd_rate="-1")
+
+    assert history.handler(_batch(good, bad)) == {"batchItemFailures": [{"itemIdentifier": "m1"}]}
+    assert _count(sessions) == 2
