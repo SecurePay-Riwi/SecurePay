@@ -3,6 +3,9 @@ timeout (CA-04: USD 30 is approved, USD 80 is held).
 
 The slow rules are simulated by replacing _decide, so these tests need
 Valkey (idempotency) but not PostgreSQL.
+
+The other default decisions of D2 (data missing in the cache, cache
+down, restricted list not loaded) are in test_reference_data.py.
 """
 
 import threading
@@ -16,17 +19,6 @@ import pytest
 from services.decision_engine import catalog, currency
 from services.decision_engine import decision_service as ds
 from services.decision_engine.schemas import TransactionRequest
-
-
-class FakeSession:
-    """Only what the timeout path touches."""
-
-    def __init__(self):
-        self.info = {}
-        self.closed = threading.Event()
-
-    def close(self):
-        self.closed.set()
 
 
 def _payload(amount: str, currency_code: str = "USD") -> TransactionRequest:
@@ -45,7 +37,7 @@ def _payload(amount: str, currency_code: str = "USD") -> TransactionRequest:
 
 
 def _rules_answer(decision: str, delay_s: float = 0):
-    def fake_decide(session, payload, snapshot):
+    def fake_decide(payload, snapshot):
         time.sleep(delay_s)
         return {
             "transaction_id": str(payload.id),
@@ -66,8 +58,8 @@ def slow_rules(monkeypatch):
     late = threading.Event()
     slow = _rules_answer("REJECT", delay_s=ds.TIMEOUT_MS / 1000 * 3)
 
-    def decide(session, payload, snapshot):
-        result = slow(session, payload, snapshot)
+    def decide(payload, snapshot):
+        result = slow(payload, snapshot)
         late.set()
         return result
 
@@ -80,10 +72,8 @@ def slow_rules(monkeypatch):
     [("30.00", "APPROVE"), ("49.99", "APPROVE"), ("50.00", "HOLD"), ("80.00", "HOLD")],
 )
 def test_timeout_applies_the_default_decision(slow_rules, amount, expected):
-    session = FakeSession()
-
     start = time.perf_counter()
-    result, replay = ds.process_transaction(session, _payload(amount))
+    result, replay = ds.process_transaction(_payload(amount))
     elapsed_ms = (time.perf_counter() - start) * 1000
 
     assert replay is False
@@ -96,7 +86,7 @@ def test_timeout_applies_the_default_decision(slow_rules, amount, expected):
 def test_rules_in_time_return_their_own_decision(monkeypatch):
     monkeypatch.setattr(ds, "_decide", _rules_answer("REJECT"))
 
-    result, _ = ds.process_transaction(FakeSession(), _payload("80.00"))
+    result, _ = ds.process_transaction(_payload("80.00"))
 
     assert result["decision"] == "REJECT"
     assert result["by_default"] is False
@@ -110,8 +100,8 @@ def test_default_decision_is_never_reject():
 
 def test_threshold_is_in_usd_not_in_the_account_currency(slow_rules):
     # 100,000 COP is about USD 30; 300,000 COP is about USD 90.
-    small, _ = ds.process_transaction(FakeSession(), _payload("100000.00", "COP"))
-    large, _ = ds.process_transaction(FakeSession(), _payload("300000.00", "COP"))
+    small, _ = ds.process_transaction(_payload("100000.00", "COP"))
+    large, _ = ds.process_transaction(_payload("300000.00", "COP"))
 
     assert small["decision"] == "APPROVE"
     assert large["decision"] == "HOLD"
@@ -120,26 +110,19 @@ def test_threshold_is_in_usd_not_in_the_account_currency(slow_rules):
 def test_resend_after_timeout_gets_the_same_decision(slow_rules):
     payload = _payload("80.00")
 
-    first, _ = ds.process_transaction(FakeSession(), payload)
+    first, _ = ds.process_transaction(payload)
     assert slow_rules.wait(2)  # the late evaluation has finished
-    second, replay = ds.process_transaction(FakeSession(), payload)
+    second, replay = ds.process_transaction(payload)
 
     assert replay is True
     assert second == first
     assert second["decision"] == "HOLD"
 
 
-def test_late_evaluation_closes_the_session_and_is_not_published(
-    slow_rules, eventos_publicados
-):
-    session = FakeSession()
+def test_late_evaluation_is_not_published(slow_rules, eventos_publicados):
+    result, _ = ds.process_transaction(_payload("30.00"))
 
-    result, _ = ds.process_transaction(session, _payload("30.00"))
-
-    # The request does not close it: the late thread still uses it.
-    assert session.info[ds.LATE_SESSION] is True
-    assert session.closed.wait(2)
-    assert slow_rules.is_set()
+    assert slow_rules.wait(2)
 
     # Only the default decision went out, once.
     assert len(eventos_publicados) == 1

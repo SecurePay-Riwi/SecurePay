@@ -49,7 +49,6 @@ def _context(*days_ago: float) -> RuleContext:
     t = to_ms(BASE)
     return RuleContext(
         payload=payload,
-        session=None,
         t_ms=t,
         amount_usd=Decimal("10.00"),
         device_accounts=[

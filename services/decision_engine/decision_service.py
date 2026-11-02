@@ -1,15 +1,14 @@
 
 import logging
 import os
-import re
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as DecisionTimeout
 from datetime import datetime, timezone
 
-from sqlalchemy.orm import Session
-
 from services.decision_engine import catalog, currency, history, publisher, rules
 from services.decision_engine import idempotency as idem
+from services.decision_engine import reference_data
+from services.decision_engine.reference_data import CacheUnavailable
 from services.decision_engine.rules.base import RuleContext, TriggeredRule
 from services.decision_engine.schemas import (
     Decision,
@@ -17,7 +16,7 @@ from services.decision_engine.schemas import (
     TransactionType,
 )
 from shared.events import evento_decision
-from shared.models import Comercio, Cuenta, Usuario
+from shared.refdata import digits
 from shared.rule_catalog import CatalogSnapshot, DefaultTimeoutParams
 
 # What leaves the source account goes into its outgoing history.
@@ -47,12 +46,12 @@ if TIMEOUT_MS <= 0 or WORKERS <= 0:
 # rule: default_decision() reads its limit.
 DEFAULT_RULE = "default_timeout"
 
+# The restricted list rule. If it is enabled and the list is not in the
+# cache, the transaction is held whatever the amount (D2).
+RESTRICTED_RULE = "restricted_list"
+
 # Highest risk score a decision reports.
 MAX_RISK_SCORE = 100
-
-# Set on the session when a decision outlives its request: the late
-# thread closes the session, not the request (see main.get_db).
-LATE_SESSION = "closed_by_late_decision"
 
 _workers = ThreadPoolExecutor(max_workers=WORKERS, thread_name_prefix="decision")
 
@@ -72,21 +71,13 @@ def choose_decision(triggered: list[TriggeredRule]) -> tuple[Decision, str]:
 
 
 class InvalidReference(Exception):
-    """The transaction names an account or a merchant that cannot be used."""
+    """The transaction cannot be decided as sent: its currency is not
+    the account's."""
 
 
 def normalize_document(document: str) -> str:
     """Keep only the digits, which is how the restricted list is stored."""
-    return re.sub(r"\D", "", document)
-
-
-def _load_account(session: Session, account_id) -> Cuenta:
-    account = session.get(Cuenta, account_id)
-
-    if account is None:
-        raise InvalidReference(f"Account {account_id} does not exist.")
-
-    return account
+    return digits(document)
 
 
 def evaluate_rules(ctx: RuleContext, snapshot: CatalogSnapshot) -> list[TriggeredRule]:
@@ -106,47 +97,48 @@ def evaluate_rules(ctx: RuleContext, snapshot: CatalogSnapshot) -> list[Triggere
     return triggered
 
 
-def _decide(
-    session: Session,
-    payload: TransactionRequest,
-    snapshot: CatalogSnapshot,
-) -> dict:
+def _decide(payload: TransactionRequest, snapshot: CatalogSnapshot) -> dict:
     """Apply the catalog's rules and return the decision, without
-    storing it."""
-    accounts = {
-        account_id: _load_account(session, account_id)
-        for account_id in (
-            payload.source_account_id,
-            payload.destination_account_id,
-        )
-        if account_id is not None
-    }
+    storing it.
 
-    if payload.merchant_id is not None:
-        if session.get(Comercio, payload.merchant_id) is None:
-            raise InvalidReference(
-                f"Merchant {payload.merchant_id} does not exist."
+    Accounts, merchants and the restricted list come from the cache
+    (HU-67): the engine never reads PostgreSQL. What is missing there
+    gets RN-01's default decision (D2); CacheUnavailable goes up to
+    _decide_in_time(), which answers the same way.
+    """
+    accounts = {}
+    for account_id in (payload.source_account_id, payload.destination_account_id):
+        if account_id is None:
+            continue
+        account = reference_data.get_account(account_id)
+        if account is None:
+            return default_decision(
+                payload, snapshot, f"account {account_id} is not in the cache"
             )
+        accounts[account_id] = account
+
+    if payload.merchant_id is not None and not reference_data.merchant_exists(
+        payload.merchant_id
+    ):
+        return default_decision(
+            payload, snapshot, f"merchant {payload.merchant_id} is not in the cache"
+        )
 
     # The main account is the source; in a top-up, the destination.
     main_account = accounts[
         payload.source_account_id or payload.destination_account_id
     ]
 
-    if main_account.moneda != payload.currency:
+    if main_account.currency != payload.currency:
         raise InvalidReference(
             "The transaction currency is not the account currency."
         )
 
     # Documents of every account owner involved, for the restricted list
     # rule (first in the catalog, so it is checked before the others).
-    owners = [
-        session.get(Usuario, account.user_id)
-        for account in accounts.values()
-    ]
+    # The loader already keeps only the digits.
     documents = {
-        normalize_document(owner.documento)
-        for owner in owners
+        normalize_document(account.document) for account in accounts.values()
     }
 
     # Account history: written before deciding, whatever the decision
@@ -178,13 +170,16 @@ def _decide(
     amount_usd = currency.to_usd(payload.amount, payload.currency)
     ctx = RuleContext(
         payload=payload,
-        session=session,
         t_ms=history.to_ms(payload.transaction_date),
         amount_usd=amount_usd,
         outgoing=outgoing,
         documents=documents,
         device_accounts=device_accounts,
     )
+
+    restricted = snapshot.get(RESTRICTED_RULE)
+    if restricted and restricted.enabled and ctx.on_restricted_list is None:
+        return restricted_list_not_loaded(payload, snapshot)
 
     triggered = evaluate_rules(ctx, snapshot)
     decision, reason = choose_decision(triggered)
@@ -210,8 +205,14 @@ def _decide(
     }
 
 
-def default_decision(payload: TransactionRequest, snapshot: CatalogSnapshot) -> dict:
-    """RN-01: the decision when the rules do not answer in time.
+def default_decision(
+    payload: TransactionRequest,
+    snapshot: CatalogSnapshot,
+    why: str | None = None,
+) -> dict:
+    """RN-01: the decision when the rules cannot decide: they do not
+    answer in time, or the cache does not have (or does not return) the
+    data they need (D2).
 
     Approve below the catalog's limit (USD 50), hold from it up. Never
     reject: being slow is not a reason to turn a customer down.
@@ -219,6 +220,7 @@ def default_decision(payload: TransactionRequest, snapshot: CatalogSnapshot) -> 
     entry = snapshot.get(DEFAULT_RULE)
     params = entry.typed_params() if entry else DefaultTimeoutParams()
     amount_usd = currency.to_usd(payload.amount, payload.currency)
+    why = why or f"the rules did not answer in {TIMEOUT_MS} ms"
 
     if amount_usd < params.limit_usd:
         decision = Decision.APPROVE
@@ -229,7 +231,7 @@ def default_decision(payload: TransactionRequest, snapshot: CatalogSnapshot) -> 
         "transaction_id": str(payload.id),
         "decision": decision.value,
         "decision_reason": (
-            f"Default decision: the rules did not answer in {TIMEOUT_MS} ms "
+            f"Default decision: {why} "
             f"(USD {amount_usd}, limit USD {params.limit_usd})."
         ),
         "rules_version": str(snapshot.version),
@@ -245,40 +247,46 @@ def default_decision(payload: TransactionRequest, snapshot: CatalogSnapshot) -> 
     }
 
 
-def _decide_in_time(session: Session, payload: TransactionRequest) -> dict:
+def restricted_list_not_loaded(
+    payload: TransactionRequest, snapshot: CatalogSnapshot
+) -> dict:
+    """D2: without the restricted list nobody can tell whether an owner
+    is listed, so the transaction is held whatever the amount."""
+    result = default_decision(payload, snapshot)
+    result["decision"] = Decision.HOLD.value
+    result["decision_reason"] = (
+        "Default decision: the restricted list is not loaded in the cache, "
+        f"held whatever the amount (USD {result['amount_usd']})."
+    )
+    return result
+
+
+def _decide_in_time(payload: TransactionRequest) -> dict:
     """Run the rules, or answer with the default decision if they take
-    longer than TIMEOUT_MS.
+    longer than TIMEOUT_MS or the cache does not answer.
 
     The catalog is read once, before starting: the rules and the default
     decision use the same version.
 
     A Python thread cannot be stopped, so the late evaluation finishes in
     the background and its result is dropped: the stored and published
-    decision is the default one. It keeps the session, so it closes it.
+    decision is the default one.
     """
     snapshot = catalog.current()
-    future = _workers.submit(_decide, session, payload, snapshot)
+    future = _workers.submit(_decide, payload, snapshot)
 
     try:
         return future.result(timeout=TIMEOUT_MS / 1000)
     except DecisionTimeout:
-        session.info[LATE_SESSION] = True
-        future.add_done_callback(lambda _: _close_late(session, payload.id))
         log.warning("Transaction %s: rules timed out, default decision", payload.id)
         return default_decision(payload, snapshot)
+    except CacheUnavailable as exc:
+        log.warning("Transaction %s: cache unavailable (%s), default decision",
+                    payload.id, exc)
+        return default_decision(payload, snapshot, "the cache did not answer")
 
 
-def _close_late(session: Session, tx_id) -> None:
-    try:
-        session.close()
-    except Exception:
-        log.exception("Transaction %s: could not close the late session", tx_id)
-
-
-def process_transaction(
-    session: Session,
-    payload: TransactionRequest,
-) -> tuple[dict, bool]:
+def process_transaction(payload: TransactionRequest) -> tuple[dict, bool]:
     """
     Evaluate a transaction only once per id.
 
@@ -297,7 +305,7 @@ def process_transaction(
         return previous, True
 
     try:
-        result = _decide_in_time(session, payload)
+        result = _decide_in_time(payload)
     except Exception:
         # No decision means nothing to replay: the retry must decide.
         idem.liberar(payload.id)

@@ -186,7 +186,7 @@ class TransactionResponse(BaseModel):
     # decision was applied.
     by_default: bool = Field(
         default=False,
-        description="True when the rules did not answer in time and the default decision was applied.",
+        description="True when RN-01's default decision was applied: the rules did not answer in time, or the cache did not have (or did not return) an account, the merchant or the restricted list.",
     )
     processed_at: datetime = Field(description="When the engine decided (UTC).")
     idempotent_replay: bool = Field(

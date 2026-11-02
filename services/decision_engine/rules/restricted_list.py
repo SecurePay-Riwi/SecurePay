@@ -2,7 +2,7 @@
 transaction is on the restricted list.
 
 The list is checked for every owner involved (source and destination),
-in PostgreSQL. Loading it into Valkey comes in a later story.
+in the cache ({restricted}:docs, loaded by services/cache_loader/).
 """
 
 from services.decision_engine.rules.base import RuleContext, TriggeredRule, hit
