@@ -72,8 +72,18 @@ def _context(transfers: int, on_list: bool = False) -> RuleContext:
 # The contract.
 
 
-def test_default_catalog_is_valid_and_version_zero():
+class _EmptyValkey:
+    """Nothing published. The real Valkey may have a catalog from the
+    Compose rules API or from another test."""
+
+    def get(self, key):
+        return None
+
+
+def test_default_catalog_is_valid_and_version_zero(monkeypatch):
     snapshot = default_catalog()
+    monkeypatch.setattr(catalog, "get_cache", _EmptyValkey)
+    catalog.reset()
 
     assert snapshot.version == 0
     assert [r.code for r in snapshot.rules] == [r.code for r in DEFAULT_RULES]

@@ -467,6 +467,7 @@ Read these before changing the design, not to work on the code:
 - docker-compose.yml orchestrates the local stack. Satellite repositories must be cloned beside this repository because Compose builds from sibling directories.
 - Use service hostnames inside containers (postgres, valkey, localstack, decision-engine); localhost inside a container is not another service.
 - The cases API (`cases-api`, port 8003), the `consumers` and the `alerts` task create the case tables at startup; all three need `DATABASE_URL`.
+- Tests that need "PostgreSQL down" use `shared/tests/isolated_db.down_sessions()` (it sets `connect_timeout`; on Windows port 1 waits forever without it). Tests against LocalStack create queues of their own subscribed to the topic: the Compose `consumers` container reads the real ones.
 - Never commit .env, tokens, generated files or downloaded Kaggle datasets.
 - The seed service uses SEED_RESET=true; do not run the stack against data that must be preserved.
 - Valkey has no persistence in Compose on purpose: every run starts with empty idempotency keys and account history.
