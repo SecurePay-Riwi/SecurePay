@@ -352,8 +352,15 @@ Read this before touching `shared/reconciliation.py`,
   once per transaction id, `partner_day()` == the day, read from
   `raw/decisiones/fecha=<day-1..day+1>`. DATE_OFF (dates more than 1 day
   apart) is checked before AMOUNT_OFF; both limits are included.
-  `match.match_day()` is the plain-Python reference; HU-37 moves
-  `reconcile()` to PySpark and keeps it for the tests.
+  `match.reconcile()` is PySpark (HU-37): `match.session()` is local[*]
+  in tests and Compose, the cluster's under spark-submit (EMR Serverless
+  runs `match.main --day --records --decisions --output`). Spark reads
+  and writes local folders, and `s3://` only on a cluster; in local mode
+  `s3://` (LocalStack) goes through `storage.py`. Output keeps nulls
+  (`ignoreNullFields=false`), one `part-*.json` per day, replaced on a
+  re-run. `match.match_day()` is the plain-Python reference: the Spark
+  tests run every edge case on both. pyspark is imported inside the
+  Spark functions only. Spark tests skip without Java (17 or later).
 - **D4:** `DATE_OFF` gives one `MISSING_IN_PARTNER` and one
   `MISSING_IN_PAGOSEGURO`. A difference is unique per (`run_day`,
   `partner`, `type`, `reference`) and inserted with `ON CONFLICT DO
@@ -369,7 +376,8 @@ Read this before touching `shared/reconciliation.py`,
   against them; do not edit them without Habith (three people's tests
   depend on them). Its `README.md` lists the day.
 - **Treasury's routes** are in the cases API (`routes_reconciliation.py`,
-  Yulianis), which also creates the tables at startup.
+  Yulianis; `GET /reconciliation/runs?from=&to=` is Habith's, HU-37, at
+  the end of the file), which also creates the tables at startup.
 - **Reading the files (HU-36):** the readers of the four formats are in
   `services/reconciliation/parsers.py` (`READERS`, one class per partner);
   never import `securepay-csv`. A bad line raises `LineError` with its
@@ -379,8 +387,10 @@ Read this before touching `shared/reconciliation.py`,
   `RejectedRow` on the control line and the records still count. A missing
   file is a `RejectedRow` with `line_number = 0`. Tests:
   `tests/test_ingest.py`.
-- `pyspark` is in the `spark` dependency group (default for `uv sync`);
-  the Docker image leaves it out (`--no-default-groups`).
+- `pyspark` is in the `spark` dependency group (default for `uv sync`),
+  pinned to 4.1.x: EMR Serverless `emr-spark-8.1.0` runs Spark 4.1.1 with
+  Python 3.12, so never use an API newer than 4.1. The Docker image
+  leaves it out (`--no-default-groups`).
 
 ## Decision engine: rules and account history
 

@@ -14,10 +14,9 @@ from shared.tests.isolated_db import isolated_sessions
 
 @pytest.fixture
 def session():
-    with isolated_sessions("reconciliation_main_test") as factory:
-        with factory() as s:
-            create_schema(s)
-            yield s
+    with isolated_sessions("reconciliation_main_test") as factory, factory() as s:
+        create_schema(s)
+        yield s
 
 
 def _run(session) -> ReconciliationRun:
@@ -28,7 +27,7 @@ def test_runs_the_three_steps(session, tmp_path):
     result = orchestration.run_day(session, DAY, STATEMENTS, DECISIONS, str(tmp_path))
     assert result["day"] == "2026-10-05"
     assert (tmp_path / "curated" / "extractos" / "fecha=2026-10-05" / "records.jsonl").exists()
-    assert (tmp_path / "curated" / "conciliacion" / "fecha=2026-10-05" / "part-00000.json").exists()
+    assert list((tmp_path / "curated" / "conciliacion" / "fecha=2026-10-05").glob("part-*.json"))
     assert _run(session).error is None
 
 
