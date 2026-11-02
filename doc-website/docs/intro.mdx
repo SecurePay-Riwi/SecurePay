@@ -101,6 +101,7 @@ SecurePay/
 │   ├── rules_api/              # versioned rules management API (FastAPI)
 │   ├── cases_api/              # cases API for analysts (FastAPI, Sprint 4)
 │   ├── alerts/                 # alerts task: escalation, compliance summary (Sprint 4)
+│   ├── reconciliation/         # nightly reconciliation with the partners (Sprint 5)
 │   └── consumers/              # SQS consumers written as Lambda handlers
 ├── shared/                     # published to PyPI as securepay-shared
 │   ├── models.py               # SQLAlchemy ORM
@@ -111,6 +112,7 @@ SecurePay/
 │   ├── events.py               # transaction.decided event (services/ only)
 │   ├── rule_catalog.py         # rule catalog models and defaults (services/ only)
 │   ├── cases.py                # case tables and states (services/ only)
+│   ├── reconciliation.py       # reconciliation records and tables (services/ only)
 │   └── evidence.py             # case evidence archive (services/ only)
 ├── infra/localstack/           # creates SNS, SQS, S3 and DynamoDB in LocalStack
 ├── infra/terraform/            # AWS infrastructure (network, IAM, S3, RDS)
@@ -126,6 +128,7 @@ SecurePay/
 | [Decision engine](./components/decision-engine.mdx) | `SecurePay`: `services/decision_engine/` | Evaluates transactions using the current versioned rule catalog in Valkey, with a safe fallback to code defaults if Valkey is unavailable. |
 | [Rules API](./components/rules-api.mdx) | `SecurePay`: `services/rules_api/` | Creates and updates rules, enables/disables them, and exposes historical catalog versions without redeploying the decision engine. |
 | [Cases](./components/cases.mdx) | `SecurePay`: `shared/cases.py`, `services/cases_api/`, `services/alerts/` | Sprint 4, closed: cases opened from the decisions, the analyst's inbox, assignment and resolution, escalation after 4 hours, compliance reports and immutable evidence. |
+| [Reconciliation](./components/reconciliation.mdx) | `SecurePay`: `shared/reconciliation.py`, `services/reconciliation/` | Sprint 5, step 0: the shared contract, a reference match in plain Python and a fixture day; reading, matching in Spark, differences and treasury's routes come with HU-36 to HU-41. |
 | [Messaging](./components/messaging.mdx) | `SecurePay`: `services/decision_engine/publisher.py`, `infra/localstack/` | Done locally: SNS topic, three SQS queues with dead-letter queues, on LocalStack. |
 | [Consumers](./components/consumers.mdx) | `SecurePay`: `services/consumers/` | Analytics writes to S3; cases opens cases and compliance reports, history keeps 30 days per account, both in PostgreSQL. |
 | [Partner statements](./components/partner-statements.mdx) | `securepay-csv`: `src/securepay_csv/partner_statements/` | Done: daily files of the four payment partners, with their defects, locally and in LocalStack. |

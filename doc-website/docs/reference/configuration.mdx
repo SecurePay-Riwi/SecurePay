@@ -58,6 +58,9 @@ See [Seed](../components/seed.mdx).
 | `DECISION_TIMEOUT_MS` | `120` | How long the engine waits for the rules before applying the default decision (RN-01). Below 200 ms so the answer and the network still fit. |
 | `DECISION_WORKERS` | `40` | Threads that evaluate the rules. A timed-out evaluation keeps its thread until it ends. |
 | `RULES_REFRESH_SECONDS` | `1` | How often the engine checks Valkey for a new catalog version published by the [rules API](../components/rules-api.mdx). A change reaches the decisions within this time. |
+| `RATES_TABLE` | `pagoseguro-exchange-rates` | Sprint 5 (HU-42): DynamoDB table of the daily exchange rates that [securepay-apis](../components/exchange_rates.mdx) loads. Read by the engine from HU-42. |
+| `RATES_REFRESH_SECONDS` | `3600` | Sprint 5 (HU-42): seconds between the engine's reloads of the rates table. |
+| `REFDATA_TTL_HOURS` | `48` | Sprint 5 (HU-67): hours the accounts and merchants stay in the cache; every load of the cache loader renews them, so what is deleted at the source disappears on its own. |
 
 Rule thresholds (velocity, mule account, shared device, the default decision limit) are not environment variables: they live in the rule catalog, see [Rules and the catalog](../components/decision-engine.mdx#rule-catalog).
 
@@ -80,6 +83,16 @@ In `SecurePay`: the cases API (`services/cases_api/`), the consumers and the ale
 | `BUSINESS_ALERTS_TOPIC` | `business-alerts` | SNS topic of the business alerts (supervisor and compliance): a name or an ARN. In AWS: the ARN of `securepay-<env>-business-alerts` (with a name the task calls `create_topic` to get the ARN). |
 | `EVIDENCE_BUCKET` | `pagoseguro-evidence` | RN-12: bucket with Object Lock where a resolved case's evidence is archived (HU-32). In AWS: the `evidence` bucket of Terraform. |
 | `EVIDENCE_RETENTION_DAYS` | `3650` | RN-12: how long each evidence object stays locked (COMPLIANCE), 10 years. A decimal: dev in AWS and the tests use `0.0035` (about 5 minutes), because a COMPLIANCE lock can never be shortened and 3650 would keep the bucket, and `terraform destroy`, blocked for 10 years. |
+
+## Reconciliation
+
+In `SecurePay` (`services/reconciliation/`, Sprint 5). `uv run python -m services.reconciliation --day YYYY-MM-DD` also uses `DATABASE_URL` (its tables are created at the start). See [Reconciliation](../components/reconciliation.mdx).
+
+| Variable | Default | What it does |
+| :--- | :--- | :--- |
+| `RECON_DATA_DIR` | `generated/reconciliation` | Root of `curated/` (the records read and the match of each day). Local runs only, ignored by git; in AWS, `s3://<datalake bucket>`. |
+| `STATEMENTS_SOURCE` | `../securepay-csv/generated/extractos` | Where the partners' files are read: a local folder laid out like `generated/extractos/`, or `s3://<datalake bucket>/raw/extractos`. |
+| `DECISIONS_SOURCE` | `s3://pagoseguro-datalake/raw/decisiones` | The engine's decisions as the analytics consumer writes them (locally in LocalStack), one folder `fecha=YYYY-MM-DD` per day. |
 
 ## Messaging and Data Lake
 

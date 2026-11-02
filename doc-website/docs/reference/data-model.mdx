@@ -120,6 +120,15 @@ Sprint 4. Models in `shared/cases.py` (their own metadata, not `shared/models.py
 | `compliance_reports` | RN-06: one row per listed document of a transaction (`transaction_id` + `document` unique): `case_id`, `account_id`, `document`, `list_type`, `matched_at`, `notified_at` (set by the compliance summary). |
 | `account_transactions` | 30 days of transactions per account (`transaction_id` + `account_id` PK): `direction` (`OUT` for the source, `IN` for the destination), `counterparty_account_id`, `type`, `channel`, `merchant_id`, `amount`, `currency`, `amount_usd`, `device_id` (only on the main account's row), the decision, `transaction_date`, `processed_at`. Indexes: (`account_id`, `transaction_date` DESC) and (`device_id`, `transaction_date`) where `device_id` is set. |
 
+### Reconciliation: `reconciliation_runs`, `reconciliation_differences`
+
+Sprint 5 (RN-10). Models in `shared/reconciliation.py` (their own metadata), created by the cases API at startup and by `python -m services.reconciliation` (`create_schema()`, idempotent, under an advisory lock). See [Reconciliation](../components/reconciliation.mdx).
+
+| Table | Content |
+| :--- | :--- |
+| `reconciliation_runs` | One row per day reconciled (`run_day` unique): `status` (`RUNNING`, `DONE`, `FAILED`), `started_at`, `finished_at`, `files_read`, `records_read`, `rows_rejected`, `matched`, `differences`, `error` (the step and its error when `FAILED`). Running a day again reuses its row. |
+| `reconciliation_differences` | What treasury has to look at: `run_id`, `run_day`, `partner`, `type` (`MISSING_IN_PARTNER`, `MISSING_IN_PAGOSEGURO`, `AMOUNT_MISMATCH`), `reference`, `partner_reference`, `currency`, `pagoseguro_amount`, `partner_amount`, `amount_difference` (partner − PagoSeguro, only `AMOUNT_MISMATCH`), `pagoseguro_at`, `partner_at`, `status` (`PENDING`, `RESOLVED`; resolved is final), `detected_at`, `resolved_at`, `resolved_by`, `resolution_note`. Unique (`run_day`, `partner`, `type`, `reference`), so running a day again neither duplicates nor reopens a difference. Index (`status`, `run_day`). |
+
 ## Valkey
 
 | Key | Type | TTL | Content |
@@ -130,6 +139,10 @@ Sprint 4. Models in `shared/cases.py` (their own metadata, not `shared/models.py
 | `sec:{account_id}` | sorted set | 60 min after the last security event (`HISTORY_SECURITY_MINUTES`) | Device and password changes (`POST /security-events`). Member: `id\|type\|device_id`. Score: `event_date` in ms. Read by the account takeover rule. |
 | `{rules}:catalog` | string (JSON) | None | The latest `CatalogSnapshot`, published by the rules API. |
 | `{rules}:version` | string | None | Its version. The engine checks it every `RULES_REFRESH_SECONDS` and reads the catalog only when it changed. |
+| `acct:{account_id}` | hash | `REFDATA_TTL_HOURS` (48 h), renewed by every load | Sprint 5 (HU-67): `currency`, `user_id`, `document` (digits only), `status`. Written by the cache loader; the engine will read it instead of PostgreSQL. |
+| `merch:{merchant_id}` | hash | `REFDATA_TTL_HOURS` | Sprint 5 (HU-67): `status`, `category`. |
+| `{restricted}:docs` | set | None | Sprint 5 (HU-67): the listed documents (digits only). Each load writes `{restricted}:docs:next` and renames it over this key. |
+| `{restricted}:loaded_at`, `refdata:loaded_at` | string | None | Sprint 5 (HU-67): ISO time of the last load of the list and of the accounts and merchants. |
 
 ## DynamoDB
 
