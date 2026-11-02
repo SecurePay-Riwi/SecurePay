@@ -4,11 +4,9 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
 from services.cases_api import deps
 from shared.cases import Case, ComplianceReport
+from shared.tests.isolated_db import down_sessions
 
 URL = "/compliance/restricted-list-reports"
 T0 = datetime(2026, 10, 31, 14, 0, tzinfo=UTC)
@@ -122,7 +120,7 @@ def test_invalid_input_is_400(client):
 
 
 def test_without_postgresql_is_503(client):
-    deps.bind(sessionmaker(bind=create_engine("postgresql+psycopg://x:x@127.0.0.1:1/x")))
+    deps.bind(down_sessions())
 
     response = client.get(URL)
 

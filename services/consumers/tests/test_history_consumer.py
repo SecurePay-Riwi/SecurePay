@@ -9,13 +9,12 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import create_engine, func, select
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import func, select
 
 from services.consumers import history
 from shared.cases import AccountTransaction, create_schema
 from shared.events import evento_decision
-from shared.tests.isolated_db import isolated_sessions
+from shared.tests.isolated_db import down_sessions, isolated_sessions
 
 
 @pytest.fixture
@@ -201,7 +200,7 @@ def test_a_broken_event_fails_alone(sessions):
 
 
 def test_postgresql_down_returns_the_whole_batch(monkeypatch):
-    down = sessionmaker(bind=create_engine("postgresql+psycopg://x:x@127.0.0.1:1/x"))
+    down = down_sessions()
     monkeypatch.setattr(history, "SessionLocal", down)
 
     result = history.handler(_batch(_event(), "not json", _event()))
