@@ -232,7 +232,10 @@ cp .env.example .env
 ```
 
 Ajustar `DATABASE_URL` según la opción que elegiste en el paso 3 y pegar tu
-token de LocalStack. El resto de variables de `.env.example` tienen valores
+token de LocalStack. `DATABASE_URL` solo lo usa lo que corres en tu máquina
+con `uv run` (pytest, el seed); los contenedores de Compose siempre usan el
+PostgreSQL de Compose. Si tienes los dos, las pruebas van al del puerto que
+pongas aquí, no al que usa el stack. El resto de variables de `.env.example` tienen valores
 por defecto válidos para desarrollo.
 
 ``` env

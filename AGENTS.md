@@ -434,7 +434,7 @@ every repository in the SecurePay-Riwi organization.
 git clone https://github.com/SecurePay-Riwi/SecurePay.git
 git clone https://github.com/SecurePay-Riwi/securepay-seed.git   # side by side
 cd SecurePay
-cp .env.example .env   # fill in credentials; Compose PostgreSQL is port 5433
+cp .env.example .env   # DATABASE_URL: 5432 installed PostgreSQL (default), 5433 Compose's
 docker compose up -d
 uv sync
 (cd ../securepay-seed && cp .env.example .env && uv sync && uv run python -m securepay_seed.seed)
@@ -480,6 +480,7 @@ Read these before changing the design, not to work on the code:
 - Dockerfile builds the product image with Python 3.12 and uv; the same image runs the decision engine and consumers with different commands.
 - docker-compose.yml orchestrates the local stack. Satellite repositories must be cloned beside this repository because Compose builds from sibling directories.
 - Use service hostnames inside containers (postgres, valkey, localstack, decision-engine); localhost inside a container is not another service.
+- Which PostgreSQL: the containers always use Compose's (`postgres:5432` inside the network). What runs on your machine with `uv run` (pytest, the seed) uses `DATABASE_URL` from `.env`: port 5432 for an installed PostgreSQL (the `.env.example` default) or 5433 for Compose's. With both installed, pytest talks to the one in `DATABASE_URL`, not to the one the stack writes to.
 - The cases API (`cases-api`, port 8003), the `consumers` and the `alerts` task create the case tables at startup; all three need `DATABASE_URL`.
 - Never commit .env, tokens, generated files or downloaded Kaggle datasets.
 - The seed service uses SEED_RESET=true; do not run the stack against data that must be preserved.

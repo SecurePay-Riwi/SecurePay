@@ -121,6 +121,7 @@ pytest prints one character per test while it runs and a summary line at the end
 | API tests fail with `422` (account not found) | The seed is not loaded, or it was loaded with another seed value. Reload it with `SEED_RESET=true`. |
 | Velocity or idempotency results look shifted | Keys left over from a previous run. Clean Valkey (see [Simulate the full flow](./simulate-full-flow.mdx#1-clean-valkey)). |
 | A generator test with exact counts fails | Something changed the generator's randomness; with seed 42 it must always produce 1,035 events. |
+| Tests touch a database you did not expect | They use `DATABASE_URL` from `.env`, not the stack's PostgreSQL: 5432 is an installed one, 5433 the Compose one. |
 
 ## Conventions
 
