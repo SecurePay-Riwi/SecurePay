@@ -7,6 +7,8 @@ from datetime import datetime
 
 import pytest
 
+from sqlalchemy.exc import OperationalError
+
 from services.alerts import account_history, compliance_summary, escalation, handler
 from shared import evidence
 
@@ -29,6 +31,8 @@ class FakeSession:
 def session(monkeypatch):
     fake = FakeSession()
     monkeypatch.setattr(handler, "SessionLocal", lambda: fake)
+    # The case tables "exist": ensure_schema has its own tests below.
+    monkeypatch.setattr(handler, "_schema_ready", True)
     return fake
 
 
@@ -87,3 +91,31 @@ def test_no_work_gives_zero_counts(session, monkeypatch):
     monkeypatch.setattr(account_history, "purge", lambda session, now: 0)
     monkeypatch.setattr(evidence, "archive_pending", lambda session: 0)
     assert handler.handler() == {"escalated": 0, "notified": 0, "purged": 0, "archived": 0}
+
+
+def test_the_first_run_creates_the_case_tables_once(session, calls, monkeypatch):
+    # In Lambda nothing runs before the handler (python -m services.alerts
+    # does it locally), so the first run of a container creates the tables.
+    created = []
+    monkeypatch.setattr(handler, "_schema_ready", False)
+    monkeypatch.setattr(handler, "create_schema", lambda s: created.append(s))
+    calls()
+
+    handler.handler()
+    handler.handler()
+
+    assert created == [session]
+
+
+def test_tables_not_created_are_retried_and_the_jobs_still_run(session, calls, monkeypatch):
+    def down(s):
+        raise OperationalError("SELECT 1", {}, Exception("connection refused"))
+
+    monkeypatch.setattr(handler, "_schema_ready", False)
+    monkeypatch.setattr(handler, "create_schema", down)
+    made = calls()
+
+    handler.handler()
+
+    assert [name for name, _ in made] == ["escalate", "summary", "purge", "archive"]
+    assert handler._schema_ready is False

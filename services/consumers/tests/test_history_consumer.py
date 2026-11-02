@@ -214,6 +214,18 @@ def test_postgresql_down_returns_the_whole_batch(monkeypatch):
     }
 
 
+def test_the_first_write_creates_the_case_tables(monkeypatch):
+    # A Lambda has no startup step (runner.py does it locally): the first
+    # batch of a container creates the tables before writing.
+    with isolated_sessions("history_consumer_empty_test") as factory:
+        monkeypatch.setattr(history, "SessionLocal", factory)
+
+        result = history.handler(_batch(_event()))
+
+        assert result == {"batchItemFailures": []}
+        assert _count(factory) == 2
+
+
 # --- HU-43: original amount, USD and the rate used ---------------------------
 
 @pytest.mark.parametrize(

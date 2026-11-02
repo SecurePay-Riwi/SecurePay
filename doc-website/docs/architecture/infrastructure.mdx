@@ -89,7 +89,7 @@ This is the inventory of what Terraform must create, not of what exists today. D
 | EMR Serverless application | `pagoseguro-prod-spark` | 1 | Spark; stops on its own when idle; no VPC; runs the 5 jobs | Size per job expected (see [Estimated figures](#estimates)) |
 | Step Functions state machine | `conciliacion` | 1 | Standard: reads statements (Lambda), reconciles (Spark, `.sync`), writes differences (Lambda); retries per step | Decided |
 
-**The 12 Lambdas.**
+**The 12 Lambdas.** In dev, Sprint 5 (HU-68) deploys the first four: the three queue consumers and `alertas`, with the names of [Terraform](./terraform.mdx#names-in-aws) (`securepay-dev-cases-consumer`, ...). Until the load test sizes Firehose, the analytics consumer writes to `raw/decisiones/` directly.
 
 | Lambda | Trigger | In the VPC | Memory and timeout | Role |
 | :--- | :--- | :--- | :--- | :--- |

@@ -266,3 +266,27 @@ class Resolution(BaseModel):
         description="FRAUD (final_decision REJECT) or LEGITIMATE (final_decision APPROVE).",
     )
     note: str = Field(min_length=1, max_length=2000, description="Why, 1 to 2000 characters.")
+
+
+# --- Reconciliation runs (HU-37) --------------------------------------------
+
+class ReconciliationRunItem(BaseModel):
+    """One day reconciled (a reconciliation_runs row)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    run_day: date = Field(description="The partners' day reconciled (YYYY-MM-DD).")
+    status: str = Field(description="RUNNING, DONE or FAILED.")
+    started_at: datetime = Field(description="When the last run of the day started, UTC.")
+    finished_at: datetime | None = Field(default=None, description="When it finished, UTC; null while RUNNING.")
+    files_read: int = Field(description="Partner files read.")
+    records_read: int = Field(description="Detail lines read from them.")
+    rows_rejected: int = Field(description="Lines or files that could not be read.")
+    matched: int = Field(description="References that matched (RN-10).")
+    differences: int = Field(description="Differences the run found.")
+    error: str | None = Field(default=None, description="Why it FAILED: the step and its error; null otherwise.")
+
+
+class ReconciliationRunList(BaseModel):
+    items: list[ReconciliationRunItem] = Field(description="The runs of the period, oldest day first.")
+    total: int = Field(description="Runs in the period.")

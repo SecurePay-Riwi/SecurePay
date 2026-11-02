@@ -12,6 +12,7 @@ from services.cases_api.schemas import (
     CaseDetail,
     CasePage,
     Health,
+    ReconciliationRunList,
     RelatedAccountList,
     RestrictedListReportPage,
     SuspiciousReport,
@@ -30,6 +31,7 @@ EXPECTED = {
     ("get", "/cases/{case_id}"): ["200", "400", "404", "503"],
     ("put", "/cases/{case_id}/assignee"): ["200", "400", "404", "409", "503"],
     ("post", "/cases/{case_id}/resolution"): ["200", "400", "404", "409", "503"],
+    ("get", "/reconciliation/runs"): ["200", "400", "503"],
 }
 
 
@@ -77,6 +79,11 @@ def test_examples_are_valid():
     RelatedAccountList.model_validate(_example("get", related, "200"))
     for status in ("400", "503"):
         assert set(_example("get", related, status)) == {"detail"}
+
+    runs = "/reconciliation/runs"
+    ReconciliationRunList.model_validate(_example("get", runs, "200"))
+    for status in ("400", "503"):
+        assert set(_example("get", runs, status)) == {"detail"}
 
     CasePage.model_validate(_example("get", "/cases", "200"))
     for status in ("400", "503"):

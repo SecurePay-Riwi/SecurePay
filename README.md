@@ -57,7 +57,7 @@ El repositorio reúne los componentes trabajados hasta el momento:
 
 - Motor antifraude con API FastAPI y reglas de decisión.
 - API independiente para crear, modificar, activar/desactivar y consultar versiones de reglas antifraude (`services/rules_api/`, puerto 8002).
-- Sprint 4 (closed): case tables (`shared/cases.py`), cases API (`services/cases_api/`, port 8003) and alerts task (`services/alerts/`). Done: opening cases (HU-25), restricted list reports (HU-34), the 30-day history of each account (HU-28, `GET /accounts/{account_id}/transactions`), the accounts related through a device (HU-29, `GET /accounts/{account_id}/related-accounts`) and the analyst's work: the inbox (HU-26, `GET /cases`), assigning (HU-27, `PUT /cases/{case_id}/assignee`) and resolving (HU-30, `POST /cases/{case_id}/resolution`), and the escalation to the supervisor of the cases open over 4 hours (HU-31: every 5 minutes the alerts task sends one summary per run; with `CASE_DUE_MINUTES=2` it shows locally in a few minutes), the suspicious operations report (HU-35, `GET /reports/suspicious`), the immutable case evidence (HU-32) and the engine on ECS/Fargate (HU-57). Running the consumers and the alerts task as Lambdas in AWS is HU-68 (Sprint 5).
+- Sprint 4 (closed): case tables (`shared/cases.py`), cases API (`services/cases_api/`, port 8003) and alerts task (`services/alerts/`). Done: opening cases (HU-25), restricted list reports (HU-34), the 30-day history of each account (HU-28, `GET /accounts/{account_id}/transactions`), the accounts related through a device (HU-29, `GET /accounts/{account_id}/related-accounts`) and the analyst's work: the inbox (HU-26, `GET /cases`), assigning (HU-27, `PUT /cases/{case_id}/assignee`) and resolving (HU-30, `POST /cases/{case_id}/resolution`), and the escalation to the supervisor of the cases open over 4 hours (HU-31: every 5 minutes the alerts task sends one summary per run; with `CASE_DUE_MINUTES=2` it shows locally in a few minutes), the suspicious operations report (HU-35, `GET /reports/suspicious`), the immutable case evidence (HU-32) and the engine on ECS/Fargate (HU-57). Running the consumers and the alerts task as Lambdas in AWS is HU-68 (Sprint 5, see "Infraestructura en AWS").
 - Sprint 5 (in progress): nightly reconciliation with the payment partners (`shared/reconciliation.py`, `services/reconciliation/`, `uv run python -m services.reconciliation --day 2026-10-05`). Step 0 is in place: the shared contract, a reference match in plain Python and a fixture day in `services/reconciliation/tests/fixtures/`.
 - Seed de datos maestros para PostgreSQL y generador de transacciones de prueba.
 - Pruebas automatizadas para los componentes del proyecto.
@@ -526,8 +526,9 @@ Detalles: README de `securepay-csv` y la página
 
 Cruza los extractos del paso 13 con las decisiones que el consumidor de
 analítica dejó en LocalStack (`raw/decisiones/`, paso 12) y guarda las
-diferencias en PostgreSQL. Mientras se construye el sprint 5, la lectura de
-los extractos y el guardado de las diferencias todavía no hacen nada.
+diferencias en PostgreSQL. La lectura de los extractos ya funciona (HU-36);
+mientras se construye el sprint 5, el guardado de las diferencias todavía no
+hace nada.
 
 ``` bash
 uv run python -m services.reconciliation --day 2026-10-05
@@ -620,10 +621,12 @@ Necesitas Terraform 1.9 o más reciente, la CLI de AWS y un usuario IAM (nunca r
 
     cp terraform.tfvars.example terraform.tfvars   # tu nombre y tu correo
     terraform init
-    terraform plan       # la primera vez: 159 to add
+    terraform plan       # la primera vez: 181 to add (con un correo de presupuesto y los dos de prueba)
     terraform apply
     terraform destroy    # siempre al terminar de probar: los NAT y RDS cobran aunque no haya tráfico
 
 Para levantar el motor: subir las imágenes a ECR con el commit corto como tag, poner `engine_image_tag` y `admin_image_tag` en `terraform.tfvars`, `terraform apply` otra vez, sembrar con la tarea admin y probar con `curl.exe -k` contra el balanceador. Los comandos exactos están en la sección 6 de `deploy-aws-terraform.mdx`.
+
+**Consumers and alerts task as Lambdas (HU-68, Sprint 5).** Terraform also creates the decisions topic, the `cases`, `history` and `analytics` queues with their DLQs, the `business-alerts` topic (one e-mail per audience: `supervisor_emails`, `compliance_emails`) and the `ops-alarms` topic. With `lambda_image_tag` (the engine's image, built with `docker build --provenance=false`) it adds the Lambdas `securepay-dev-cases-consumer`, `-history-consumer`, `-analytics-consumer` and `-alerts` (every 5 minutes). Confirm the subscription e-mail AWS sends to each address after `apply`. The test (a restricted list withdrawal with `restricted-transaction.json` and `case_due_minutes = 2`) is section 7 of `deploy-aws-terraform.mdx`. Locally nothing changes: `python -m services.consumers` and `python -m services.alerts` run the same handlers.
 
 El estado (`terraform.tfstate`) y `terraform.tfvars` quedan en tu equipo y git los ignora. El estado guarda las contraseñas de RDS, así que no se comparte. Corre `apply` y `destroy` siempre desde el mismo equipo.

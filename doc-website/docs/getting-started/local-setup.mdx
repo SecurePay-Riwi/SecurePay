@@ -26,7 +26,7 @@ cd SecurePay
 uv sync
 ```
 
-`uv sync` creates `.venv` and installs exactly the versions pinned in `uv.lock`, including the dev group (pytest) and the spark group (pyspark, for the reconciliation match; the Docker image leaves both out). You do not need to activate the environment: every command runs with `uv run`.
+`uv sync` creates `.venv` and installs exactly the versions pinned in `uv.lock`, including the dev group (pytest) and the spark group (pyspark 4.1.x, for the reconciliation match; the Docker image leaves both out). The match tests also need Java 17 or later (`java -version`); without it they are skipped. You do not need to activate the environment: every command runs with `uv run`.
 
 ## 2. Create the `.env`
 

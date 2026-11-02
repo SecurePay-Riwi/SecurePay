@@ -19,3 +19,12 @@ budget_emails = ["you@example.com"]
 # engine_min_tasks = 2
 # engine_max_tasks = 4
 # domain_name      = "api.example.com"   # unset: self-signed certificate
+
+# Consumers and alerts task as Lambdas (deploy-aws-terraform.mdx). They run
+# the engine image, so the tag is usually the same as engine_image_tag.
+# AWS e-mails each address a confirmation link after the apply: click it or
+# that address gets nothing.
+# lambda_image_tag  = "<short commit of SecurePay>"
+# supervisor_emails = ["you+supervisor@example.com"]
+# compliance_emails = ["you+compliance@example.com"]
+# case_due_minutes  = 2   # test only: escalate after 2 minutes (default 240)

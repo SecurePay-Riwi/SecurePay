@@ -53,7 +53,7 @@ def fail_run(session, day: date, step: str, error: Exception, now: datetime) -> 
 
 def run_day(session, day: date, source: str, decisions: str, target: str, spark=None) -> dict:
     """The three steps for one day. Raises the step's error after marking
-    the run FAILED."""
+    the run FAILED. `spark` None: match starts a local session."""
     start_run(session, day, datetime.now(UTC))
     step = "ingest"
     try:
@@ -87,10 +87,11 @@ def main(argv=None) -> None:
     parser.add_argument("--target", default=RECON_DATA_DIR)
     args = parser.parse_args(argv)
 
+    spark = match.session()  # one local Spark session for every day
     with SessionLocal() as session:
         create_schema(session)
         for day in days(args):
-            result = run_day(session, day, args.source, args.decisions, args.target)
+            result = run_day(session, day, args.source, args.decisions, args.target, spark)
             log.info("Reconciled %s: %s", day, json.dumps(result))
 
 

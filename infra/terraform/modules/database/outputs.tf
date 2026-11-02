@@ -24,3 +24,9 @@ output "master_url_parameter_arn" {
   description = "ARN of the DATABASE_URL parameter of the master user (the value is never an output)."
   value       = aws_ssm_parameter.master_url.arn
 }
+
+output "master_url" {
+  description = "DATABASE_URL of the master user. Temporary, for the dev Lambdas (security.mdx, Encryption and secrets); never printed."
+  value       = aws_ssm_parameter.master_url.value
+  sensitive   = true
+}
