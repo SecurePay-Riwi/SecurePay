@@ -1,5 +1,5 @@
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Literal
@@ -167,6 +167,14 @@ class TransactionResponse(BaseModel):
     amount_usd: Decimal | None = Field(
         default=None,
         description="The transaction amount in USD, rounded to cents (RN-11), with the same rate the rules use. The consumers store it with the case and the account history. null in decisions stored before it existed.",
+    )
+    usd_rate: Decimal | None = Field(
+        default=None,
+        description="Units of the transaction's currency per 1 USD used for amount_usd (1 for USD), as a decimal string. null until the engine reads the day's rate (HU-42) and in decisions stored before it existed.",
+    )
+    rate_date: date | None = Field(
+        default=None,
+        description="Day of the exchange rate used for amount_usd: the transaction's day, or the last earlier day with a rate. null until the engine reads the day's rate (HU-42) and in decisions stored before it existed.",
     )
     risk_score: int = Field(
         default=0,

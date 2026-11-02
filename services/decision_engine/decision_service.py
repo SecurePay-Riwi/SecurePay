@@ -201,6 +201,9 @@ def _decide(
         "opens_case": any(r.opens_case for r in triggered),
         # RN-11: the cases and the account history store it (sprint 4).
         "amount_usd": str(amount_usd),
+        # C4: the rate of the transaction's day, filled by HU-42.
+        "usd_rate": None,
+        "rate_date": None,
         "risk_score": min(MAX_RISK_SCORE, sum(r.score for r in triggered)),
         "by_default": False,
         "processed_at": datetime.now(timezone.utc).isoformat(),
@@ -234,6 +237,8 @@ def default_decision(payload: TransactionRequest, snapshot: CatalogSnapshot) -> 
         "rule_versions": {DEFAULT_RULE: entry.rule_version if entry else 1},
         "opens_case": False,
         "amount_usd": str(amount_usd),
+        "usd_rate": None,
+        "rate_date": None,
         "risk_score": 0,
         "by_default": True,
         "processed_at": datetime.now(timezone.utc).isoformat(),

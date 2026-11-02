@@ -97,6 +97,9 @@ services:
       PUBLISH_BUFFER_SIZE: ${PUBLISH_BUFFER_SIZE:-10000}
       PUBLISH_RETRIES: ${PUBLISH_RETRIES:-3}
       RULES_REFRESH_SECONDS: ${RULES_REFRESH_SECONDS:-1}
+      RATES_TABLE: ${RATES_TABLE:-pagoseguro-exchange-rates}
+      RATES_REFRESH_SECONDS: ${RATES_REFRESH_SECONDS:-3600}
+      REFDATA_TTL_HOURS: ${REFDATA_TTL_HOURS:-48}
     ports: ["8000:8000"]
     depends_on:
       postgres: {condition: service_healthy}
