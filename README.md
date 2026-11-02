@@ -526,8 +526,9 @@ Detalles: README de `securepay-csv` y la página
 
 Cruza los extractos del paso 13 con las decisiones que el consumidor de
 analítica dejó en LocalStack (`raw/decisiones/`, paso 12) y guarda las
-diferencias en PostgreSQL. Mientras se construye el sprint 5, la lectura de
-los extractos y el guardado de las diferencias todavía no hacen nada.
+diferencias en PostgreSQL. La lectura de los extractos ya funciona (HU-36);
+mientras se construye el sprint 5, el guardado de las diferencias todavía no
+hace nada.
 
 ``` bash
 uv run python -m services.reconciliation --day 2026-10-05

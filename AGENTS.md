@@ -368,8 +368,16 @@ Read this before touching `shared/reconciliation.py`,
   against them; do not edit them without Habith (three people's tests
   depend on them). Its `README.md` lists the day.
 - **Treasury's routes** are in the cases API (`routes_reconciliation.py`,
-  Yulianis), which also creates the tables at startup. The readers of the
-  four formats are written in this repo; never import `securepay-csv`.
+  Yulianis), which also creates the tables at startup.
+- **Reading the files (HU-36):** the readers of the four formats are in
+  `services/reconciliation/parsers.py` (`READERS`, one class per partner);
+  never import `securepay-csv`. A bad line raises `LineError` with its
+  English reason and becomes a `RejectedRow`; the rest of the file is still
+  read. The control record is checked against every detail line and the sum
+  of the readable amounts (in the partner's units); a mismatch is one
+  `RejectedRow` on the control line and the records still count. A missing
+  file is a `RejectedRow` with `line_number = 0`. Tests:
+  `tests/test_ingest.py`.
 - `pyspark` is in the `spark` dependency group (default for `uv sync`);
   the Docker image leaves it out (`--no-default-groups`).
 

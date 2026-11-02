@@ -49,7 +49,29 @@ Each step has a fixed input and output from step 0, so nobody waits for the step
 
 ## 1. Read (HU-36)
 
-`ingest.read_day(day, source)` reads the day's files from a folder laid out like `generated/extractos/` (`STATEMENTS_SOURCE`) or from `s3://<datalake>/raw/extractos`. Only the latest version of each partner (`_v2` over `_v1`). A malformed row and a control record that does not add up go to the rejected list with their reason, and the rest of the file is still read; a missing file is a rejected row with reason `file missing`. `ingest.run()` writes `curated/extractos/fecha=<day>/records.jsonl` and `rejects.jsonl` under `RECON_DATA_DIR`. The readers of the four formats are written in this repo: `securepay-csv`'s are never imported (structure rule 4).
+`ingest.read_day(day, source)` reads the day's files from a folder laid out like `generated/extractos/` (`STATEMENTS_SOURCE`) or from `s3://<datalake>/raw/extractos`: `<source>/<partner>/fecha=YYYY-MM-DD/<partner>_YYYYMMDD_vN.<ext>`. For each partner it takes only the highest version (`_v2` over `_v1`, `_v10` over `_v9`). `ingest.run()` writes `curated/extractos/fecha=<day>/records.jsonl` and `rejects.jsonl` under `RECON_DATA_DIR` and returns the counts; `files_read` counts every file read, an empty one too.
+
+**The readers** (`services/reconciliation/parsers.py`, one class per partner in `READERS`) are written in this repo: `securepay-csv`'s are never imported (structure rule 4). Each turns its format into `StatementRecord`s with the amount at its currency's precision (`MONEDA_DECIMALES`: `88.910` → `88.91`, JPY without decimals) and the time in UTC (`PARTNER_UTC_OFFSET`: `red_corresponsales` and `cajeros_express` write Bogotá time).
+
+| Partner | What the reader expects |
+| :--- | :--- |
+| `banco_andino` | Header, CSV with commas, `fecha_hora_utc` with `Z`, type `RECARGA`, last row `TOTAL,<count>,<total>` |
+| `red_corresponsales` | `H` header, `D` details of exactly 88 characters (amount in minor units), `T` trailer with count and total in minor units |
+| `cajeros_express` | Header, CSV with `;`, comma decimals, `dd/mm/yyyy` + `HH:MM:SS`, always `RETIRO`, last row `CONTROL;<count>;<total>` |
+| `qr_pagos` | `#CTRL\|day\|count\|total` first (minor units), a header, then `\|`-separated details, always `QR`, UTC |
+
+**What is rejected** (one `RejectedRow` with the line, its raw text and an English reason; the rest of the file is still read):
+
+| Case | `reason` |
+| :--- | :--- |
+| Wrong number of fields, or a fixed-width line that is not 88 characters | `expected 6 fields, found 5` / `detail record has 32 characters, expected 88` |
+| Amount that is not a number, zero or negative, or with more decimals than its currency allows | `amount is not a number` / `amount is not positive` / `amount has more decimals than USD allows` |
+| Invalid date | `date is not valid` |
+| Currency other than COP, USD, EUR, JPY | `unknown currency 'GBP'` |
+| Empty reference, or a type the partner does not handle | `pagoseguro reference is missing` / `unknown transaction type 'RETIRO'` |
+| Control record that does not match | `control record does not match: declares ...`. It compares the count with **every** detail line (rejected ones too) and the total with the sum of the amounts that could be read, in the partner's units. The records are still read. |
+| Control record missing or unreadable | `control record is missing` / `control record is not readable` |
+| No file of that partner for the day | `file missing` (line 0) |
 
 ## 2. Match (HU-37)
 
@@ -84,7 +106,7 @@ uv run python -m services.reconciliation --from 2026-10-01 --to 2026-10-07
 
 ## Fixtures
 
-`services/reconciliation/tests/fixtures/` holds one small hand-made day, 2026-10-05, with at least one case of every status and defect: the four partners' files, the decisions of the window, what steps 1 and 2 must write and the answer key `extracts_report.json` (same keys as `securepay-csv`'s, plus `expected_run` with the counts). Its `README.md` lists the day transaction by transaction. `test_fixtures.py` checks that they agree with each other and `test_match.py` that the reference match gives exactly the expected rows.
+`services/reconciliation/tests/fixtures/` holds one small hand-made day, 2026-10-05, with at least one case of every status and defect: the four partners' files, the decisions of the window, what steps 1 and 2 must write and the answer key `extracts_report.json` (same keys as `securepay-csv`'s, plus `expected_run` with the counts). Its `README.md` lists the day transaction by transaction. `test_fixtures.py` checks that they agree with each other, `test_ingest.py` that reading the files gives exactly the expected records and rejections, and `test_match.py` that the reference match gives exactly the expected rows.
 
 ## Tests
 
