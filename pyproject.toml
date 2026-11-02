@@ -20,7 +20,7 @@ dev = [
     "pytest>=9.1.1",
 ]
 spark = [
-    "pyspark>=4.3.0",
+    "pyspark>=4.1.1,<4.2",
 ]
 
 [tool.uv]
