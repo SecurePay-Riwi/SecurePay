@@ -11,7 +11,10 @@ from services.cases_api.schemas import (
     AccountTransactionPage,
     CaseDetail,
     CasePage,
+    DifferenceAging,
     Health,
+    ReconciliationDifferenceItem,
+    ReconciliationDifferencePage,
     ReconciliationRunList,
     RelatedAccountList,
     RestrictedListReportPage,
@@ -32,6 +35,9 @@ EXPECTED = {
     ("put", "/cases/{case_id}/assignee"): ["200", "400", "404", "409", "503"],
     ("post", "/cases/{case_id}/resolution"): ["200", "400", "404", "409", "503"],
     ("get", "/reconciliation/runs"): ["200", "400", "503"],
+    ("get", "/reconciliation/differences"): ["200", "400", "503"],
+    ("get", "/reconciliation/differences/aging"): ["200", "400", "503"],
+    ("post", "/reconciliation/differences/{difference_id}/resolution"): ["200", "400", "404", "409", "503"],
 }
 
 
@@ -84,6 +90,20 @@ def test_examples_are_valid():
     ReconciliationRunList.model_validate(_example("get", runs, "200"))
     for status in ("400", "503"):
         assert set(_example("get", runs, status)) == {"detail"}
+
+    differences = "/reconciliation/differences"
+    ReconciliationDifferencePage.model_validate(_example("get", differences, "200"))
+    aging = DifferenceAging.model_validate(_example("get", f"{differences}/aging", "200"))
+    assert [r.range for r in aging.ranges] == ["0-1", "2-7", "8+"]
+    assert aging.total == sum(r.count for r in aging.ranges)
+    resolution = f"{differences}/{{difference_id}}/resolution"
+    resolved = ReconciliationDifferenceItem.model_validate(_example("post", resolution, "200"))
+    assert (resolved.status, resolved.age_days) == ("RESOLVED", None)
+    for status in ("400", "503"):
+        assert set(_example("get", differences, status)) == {"detail"}
+        assert set(_example("get", f"{differences}/aging", status)) == {"detail"}
+    for status in ("400", "404", "409", "503"):
+        assert set(_example("post", resolution, status)) == {"detail"}
 
     CasePage.model_validate(_example("get", "/cases", "200"))
     for status in ("400", "503"):
@@ -140,6 +160,16 @@ def test_assigning_needs_x_user():
 def test_resolving_needs_x_user():
     params = _paths()["/cases/{case_id}/resolution"]["post"]["parameters"]
     assert [p["name"] for p in params] == ["case_id", "x-user"]
+
+
+def test_the_differences_filter_and_paginate():
+    params = _paths()["/reconciliation/differences"]["get"]["parameters"]
+    assert [p["name"] for p in params] == ["type", "partner", "status", "from", "to", "page", "size"]
+
+
+def test_resolving_a_difference_needs_x_user():
+    params = _paths()["/reconciliation/differences/{difference_id}/resolution"]["post"]["parameters"]
+    assert [p["name"] for p in params] == ["difference_id", "x-user"]
 
 
 def test_title():
