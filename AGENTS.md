@@ -32,12 +32,14 @@ SecurePay/                  ← this repo: the product (engine, consumers, infra
 │   ├── events.py           ← transaction.decided event format (used only by services/)
 │   ├── rule_catalog.py     ← rule catalog models and defaults (used only by services/)
 │   ├── cases.py            ← case tables, states and create_schema() (used only by services/)
-│   └── evidence.py         ← case evidence archive, archive() (used only by services/)
+│   ├── evidence.py         ← case evidence archive, archive() (used only by services/)
+│   └── reconciliation.py   ← reconciliation records, tables and create_schema() (used only by services/)
 ├── services/
 │   ├── decision_engine/    ← FastAPI antifraud engine (rules in rules/, catalog in catalog.py)
 │   ├── rules_api/           ← FastAPI rules management and catalog versioning
 │   ├── cases_api/          ← FastAPI cases API for analysts (port 8003, Sprint 4)
 │   ├── alerts/             ← alerts task: escalation, compliance summary, history purge
+│   ├── reconciliation/     ← nightly reconciliation: ingest, match (Spark), store (Sprint 5)
 │   └── consumers/          ← SNS/SQS consumers and analytics
 ├── tests/                  ← end-to-end tests that run more than one service
 │                             (test_rule_catalog_e2e.py: rules API + engine)
@@ -77,7 +79,7 @@ files, never imports: each one finds the others' output in `../securepay-<repo>/
 dependencies = ["securepay-shared>=0.1.0"]
 ```
 
-`cache.py`, `events.py`, `rule_catalog.py`, `cases.py` and `evidence.py` are **not** part of the published package — they are only
+`cache.py`, `events.py`, `rule_catalog.py`, `cases.py`, `evidence.py` and `reconciliation.py` are **not** part of the published package — they are only
 used by `services/` and stay in this repo.
 
 ---
@@ -193,14 +195,22 @@ stop and ask instead of working around it.
 | HU-31 | MAG-187 | Escalation after 4 hours (RN-09), code and local run | Jorge | #71 |
 | — | — | Windows and full-stack test fixes | Jorge | #70 |
 
-### Sprint 5 — Planned (Reconciliation + FX + CI/CD)
-Besides the backlog in `doc-website/docs/product-backlog/sprint-backlog-5.mdx`,
-two stories came out of Sprint 4:
+### Sprint 5 — In progress (Reconciliation + FX + CI/CD)
+"Step 0" puts the reconciliation contract in the code first
+(`shared/reconciliation.py`, `services/reconciliation/` with the fixture day,
+the empty `routes_reconciliation.py`, `usd_rate` and `rate_date` in the
+decision, the cache keys of HU-67 in `reference_data.py`). HU-24, HU-66 and
+HU-58 moved to Sprint 6. Backlog: `doc-website/docs/product-backlog/sprint-backlog-5.mdx`.
 
 | HU | Jira | Description | Owner |
 |----|------|-------------|-------|
+| HU-67 | MAG-352 | Load the restricted list and the account data into the cache; when it closes, remove the temporary `engine_reads_database` rule (`sg-engine` → `sg-rds`) of HU-57 | Habith |
+| HU-37 | MAG-237 | Reconcile by reference, amount and date (Spark) | Habith |
+| HU-42, HU-43 | MAG-242, MAG-243 | Exchange rate of the day; keep the original amount, USD and the rate used | Habith |
+| HU-38 → HU-41 | MAG-238..241 | Missing at the partner, missing at PagoSeguro, amount differences; pending differences and age | Yulianis |
 | HU-68 | MAG-351 | Deploy the consumers and the alerts task as Lambdas (the AWS part of HU-31: EventBridge every 5 minutes, `business-alerts` e-mails filtered by `audience`, S3 permissions for the evidence) | Jorge |
-| HU-67 | MAG-352 | Load the restricted list and the account data into the cache; when it closes, remove the temporary `engine_reads_database` rule (`sg-engine` → `sg-rds`) of HU-57 | — |
+| HU-36 | MAG-236 | Read the partners' daily files; nightly orchestration (Step Functions at 02:00 Bogotá) | Jorge |
+| HU-65 | MAG-246 | Application CI/CD pipeline | Jorge |
 
 ---
 
@@ -314,6 +324,54 @@ Read this before touching `shared/cases.py`, `services/cases_api/`,
   `currency.py`.
 
 ---
+
+## Reconciliation (Sprint 5)
+
+Read this before touching `shared/reconciliation.py`,
+`services/reconciliation/` or `routes_reconciliation.py`. Page:
+`doc-website/docs/components/reconciliation.mdx`.
+
+- **Four steps, one owner each, one shape.** `shared/reconciliation.py`
+  holds `Partner`, `partner_for()`, `partner_day()`, `PARTNER_UTC_OFFSET`,
+  the dataclasses `StatementRecord`, `RejectedRow` and `MatchRow`,
+  `to_json()` / `record_from_json()` / `match_row_from_json()` (the only
+  serialization: decimal strings, UTC ISO times, `YYYY-MM-DD` days), the
+  enums `MatchStatus`, `DifferenceType`, `DifferenceStatus`, `RunStatus`,
+  `AGE_RANGES`, `AMOUNT_TOLERANCE` (0.01), `DATE_TOLERANCE_DAYS` (1), the
+  tables `reconciliation_runs` and `reconciliation_differences` and
+  `create_schema(session)`. Nobody else defines columns, types or states.
+- **Steps** (signatures of contract C2): `ingest.read_day()` / `run()` /
+  `handler()` (HU-36) write `curated/extractos/fecha=<day>/records.jsonl`
+  and `rejects.jsonl`; `match.reconcile(spark, ...)` (HU-37) writes
+  `curated/conciliacion/fecha=<day>/part-*.json`; `store.load_rows()` /
+  `classify()` / `save()` / `handler()` (HU-38 to HU-40) write the
+  differences. Paths under `RECON_DATA_DIR` locally, `s3://<datalake>` in
+  AWS; read and write them with `services/reconciliation/storage.py`.
+- **Match rules (RN-10, D3):** PagoSeguro's side is `APPROVE`, not `P2P`,
+  once per transaction id, `partner_day()` == the day, read from
+  `raw/decisiones/fecha=<day-1..day+1>`. DATE_OFF (dates more than 1 day
+  apart) is checked before AMOUNT_OFF; both limits are included.
+  `match.match_day()` is the plain-Python reference; HU-37 moves
+  `reconcile()` to PySpark and keeps it for the tests.
+- **D4:** `DATE_OFF` gives one `MISSING_IN_PARTNER` and one
+  `MISSING_IN_PAGOSEGURO`. A difference is unique per (`run_day`,
+  `partner`, `type`, `reference`) and inserted with `ON CONFLICT DO
+  NOTHING`: a repeated run neither duplicates nor reopens it. `RESOLVED`
+  is final.
+- **Orchestration:** `python -m services.reconciliation --day` (or
+  `--from --to`) runs ingest → match → store; the run is `RUNNING` at the
+  start and `FAILED` with `"<step>: <error>"` if a step fails. In AWS:
+  Step Functions at 02:00 Bogotá (Jorge, HU-36).
+- **Fixtures:** `services/reconciliation/tests/fixtures/` is one small
+  day (2026-10-05) with every status and defect, the expected output of
+  ingest and match and the answer key (`extracts_report.json`). Test
+  against them; do not edit them without Habith (three people's tests
+  depend on them). Its `README.md` lists the day.
+- **Treasury's routes** are in the cases API (`routes_reconciliation.py`,
+  Yulianis), which also creates the tables at startup. The readers of the
+  four formats are written in this repo; never import `securepay-csv`.
+- `pyspark` is in the `spark` dependency group (default for `uv sync`);
+  the Docker image leaves it out (`--no-default-groups`).
 
 ## Decision engine: rules and account history
 
@@ -511,7 +569,7 @@ Read these before changing the design, not to work on the code:
 
 ## Docker images and local ecosystem (MAG-31 / MAG-32)
 
-- Dockerfile builds the product image with Python 3.12 and uv; the same image runs the decision engine and consumers with different commands.
+- Dockerfile builds the product image with Python 3.12 and uv; the same image runs the decision engine and consumers with different commands. It installs only the main dependencies (`--no-default-groups`): no pytest, no pyspark.
 - docker-compose.yml orchestrates the local stack. Satellite repositories must be cloned beside this repository because Compose builds from sibling directories.
 - Use service hostnames inside containers (postgres, valkey, localstack, decision-engine); localhost inside a container is not another service.
 - Which PostgreSQL: the containers always use Compose's (`postgres:5432` inside the network). What runs on your machine with `uv run` (pytest, the seed) uses `DATABASE_URL` from `.env`: port 5432 for an installed PostgreSQL (the `.env.example` default) or 5433 for Compose's. With both installed, pytest talks to the one in `DATABASE_URL`, not to the one the stack writes to.

@@ -1,0 +1,4 @@
+fecha_hora_utc,referencia_banco,referencia_pagoseguro,tipo,moneda,monto
+2026-10-05T07:45:29Z,BA000000001,8826d3d4-1b2e-5a4f-a00b-38c1b3789400,RECARGA,USD,27.07
+2026-10-05T18:20:00Z,BA000000003,0a15bfa4-e601-5486-b43c-d08c34e0ac14,RECARGA,EUR,89.00
+TOTAL,3,116.07

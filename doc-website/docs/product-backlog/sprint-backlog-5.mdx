@@ -5,6 +5,14 @@ sidebar_position: 7
 # Sprint backlog 5
 ## Reconciliation + Exchange Rates + CI/CD
 
+**Sprint goal:** the nightly reconciliation with the payment partners runs
+from their files to the differences treasury sees, the engine decides from
+the cache with the day's exchange rate, and the Sprint 4 services run in AWS
+with a pipeline that tests and deploys on its own.
+
+HU-24, HU-66 and HU-58 moved to
+[Sprint 6](./sprint-backlog-6.mdx): they depend on work of that sprint.
+
 | HU | Jira | Epic | Description | MoSCoW |
 | :--- | :--- | :--- | :--- | :--- |
 | HU-36 | MAG-236 | EP-07 | Process daily partner statements | Must |
@@ -15,9 +23,6 @@ sidebar_position: 7
 | HU-41 | MAG-241 | EP-07 | Pending differences and age | Should |
 | HU-42 | MAG-242 | EP-08 | Query exchange rate by date | Should |
 | HU-43 | MAG-243 | EP-08 | Retain original amount and amount in United States Dollars | Should |
-| HU-58 | MAG-244 | EP-11 | Compare Elastic Kubernetes Service versus Fargate for the decision service and justify the choice | Must |
-| HU-24 | MAG-245 | EP-04 | Simulate a rule version on historical transactions | — |
 | HU-65 | MAG-246 | EP-12 | Application CI/CD pipeline | — |
-| HU-66 | MAG-247 | EP-12 | Data CI/CD pipeline (EMR Serverless and Step Functions jobs) | — |
 | HU-67 | MAG-352 | EP-03 | Load the restricted list and the account data into the cache (removes the temporary engine-to-RDS rule of HU-57) | Must |
 | HU-68 | MAG-351 | EP-11 | Deploy the consumers and the alerts task as Lambdas | — |

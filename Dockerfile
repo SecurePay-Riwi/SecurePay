@@ -7,9 +7,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_LINK_MODE=copy \
     PATH="/app/.venv/bin:$PATH"
 
-# Dependencies first, so a code change does not reinstall them.
+# Dependencies first, so a code change does not reinstall them. No dev
+# tools and no pyspark (group "spark", ~300 MB): the engine and the
+# consumers do not need it, and EMR Serverless brings its own Spark.
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-default-groups --no-install-project
 
 COPY . .
 

@@ -1,0 +1,91 @@
+---
+sidebar_position: 6.5
+title: Reconciliation
+description: The nightly reconciliation with the four payment partners, from their files to the differences treasury works on (RN-10).
+---
+
+# Reconciliation
+
+**Folders:** `shared/reconciliation.py`, `services/reconciliation/`, `services/cases_api/routes_reconciliation.py` · **Run:** `uv run python -m services.reconciliation --day 2026-10-05` (or `--from 2026-10-01 --to 2026-10-07`)
+
+Every night PagoSeguro compares what the engine approved with the files the four [payment partners](./partner-statements.mdx) send, and treasury sees what is missing at the partner, what is missing at PagoSeguro and which amounts do not agree, with their age. RN-10: a transaction matches when the **reference** is the same, the **amount** differs by at most **0.01** and the **dates** by at most **1 day** (both limits included). The daily run has to finish before 07:00.
+
+:::info Status
+Sprint 5, step 0: the shared contract is in place (the records, the tables, the signatures of every step), with a reference match in plain Python and a small fixture day. Each story fills in its step: reading the files (HU-36), the match in Spark (HU-37), the differences (HU-38 to HU-40) and treasury's routes (HU-38 to HU-41).
+:::
+
+## The flow
+
+```text
+partner files ──► 1. read ──► records.jsonl ──► 2. match ◄── raw/decisiones (analytics consumer)
+                     │                              │
+                 rejects.jsonl                  part-*.json (one MatchRow per reference)
+                                                    │
+                                                    ▼
+                         3. store ──► reconciliation_differences ──► 4. treasury's routes
+```
+
+| Step | Code | What it does | Story |
+| :--- | :--- | :--- | :--- |
+| 1. Read | `services/reconciliation/ingest.py` | Reads the day's four files, keeps the latest version of each, sets aside bad rows and writes `StatementRecord`s | HU-36 |
+| 2. Match | `services/reconciliation/match.py` | Joins those records with the engine's `APPROVE` decisions by reference and writes one `MatchRow` per reference (Spark) | HU-37 |
+| 3. Store | `services/reconciliation/store.py` | Turns each `MatchRow` into differences and saves them; closes the run | HU-38 to HU-40 |
+| 4. Query | `services/cases_api/routes_reconciliation.py` | Treasury lists the differences, sees their age and resolves them | HU-38 to HU-41 |
+
+Each step has a fixed input and output from step 0, so nobody waits for the step before: they test against the [fixtures](#fixtures). Locally `python -m services.reconciliation` runs steps 1 to 3 in order; in AWS, Step Functions does it at 02:00 in Bogotá (`cron(0 7 * * ? *)` UTC), with the match on EMR Serverless.
+
+## The shared contract
+
+`shared/reconciliation.py` is the only place that defines the shapes. The steps import them; they never copy them.
+
+- **`Partner`** and `partner_for(tx_type, channel)`: which partner sees a transaction. `banco_andino` top-ups through `APP` and `WEB`; `red_corresponsales` top-ups and withdrawals at a `CORRESPONSAL`; `cajeros_express` withdrawals at a `CAJERO`; `qr_pagos` every `QR` payment. `P2P` has no partner (`None`).
+- **`partner_day(partner, at)`**: the day of a UTC time in the partner's time zone, the file it goes in (`PARTNER_UTC_OFFSET`: `0` or `-5`; Bogotá has no daylight saving time).
+- **`StatementRecord`** (step 1's output), **`RejectedRow`** and **`MatchRow`** (step 2's output), frozen dataclasses.
+- **`to_json()`**, **`record_from_json()`** and **`match_row_from_json()`**: the only serialization. Amounts are decimal strings (`"27.07"`), times ISO 8601 in UTC (`"2026-10-05T07:45:29+00:00"`), days `"YYYY-MM-DD"`. Spark writes the same keys.
+- **`MatchStatus`** (`MATCHED`, `ONLY_PAGOSEGURO`, `ONLY_PARTNER`, `AMOUNT_OFF`, `DATE_OFF`), **`DifferenceType`** (`MISSING_IN_PARTNER`, `MISSING_IN_PAGOSEGURO`, `AMOUNT_MISMATCH`), **`DifferenceStatus`** (`PENDING`, `RESOLVED`), **`RunStatus`** (`RUNNING`, `DONE`, `FAILED`) and **`AGE_RANGES`** (`0-1`, `2-7`, `8+` days).
+- The tables **`reconciliation_runs`** and **`reconciliation_differences`** and `create_schema(session)` (see the [data model](../reference/data-model.mdx#reconciliation-reconciliation_runs-reconciliation_differences)). The cases API creates them at startup.
+
+`services/reconciliation/storage.py` reads and writes a local folder or an `s3://` URL, so the same code runs locally and in AWS.
+
+## 1. Read (HU-36)
+
+`ingest.read_day(day, source)` reads the day's files from a folder laid out like `generated/extractos/` (`STATEMENTS_SOURCE`) or from `s3://<datalake>/raw/extractos`. Only the latest version of each partner (`_v2` over `_v1`). A malformed row and a control record that does not add up go to the rejected list with their reason, and the rest of the file is still read; a missing file is a rejected row with reason `file missing`. `ingest.run()` writes `curated/extractos/fecha=<day>/records.jsonl` and `rejects.jsonl` under `RECON_DATA_DIR`. The readers of the four formats are written in this repo: `securepay-csv`'s are never imported (structure rule 4).
+
+## 2. Match (HU-37)
+
+`match.reconcile(spark, day, records_path, decisions_path, output_path)`. PagoSeguro's side is the `transaction.decided` events of `raw/decisiones/fecha=<day-1>` to `fecha=<day+1>` with decision `APPROVE` and type other than `P2P`, counted once per transaction id (raw may repeat a line), whose `partner_day()` is the day: a partner never sees a transfer inside the wallet, nor what was rejected or held. Then, by reference:
+
+| Status | When |
+| :--- | :--- |
+| `MATCHED` | Same reference, amounts within 0.01 and dates within 1 day. |
+| `DATE_OFF` | Same reference, dates more than 1 day apart (checked first). |
+| `AMOUNT_OFF` | Same reference, dates within 1 day, amounts more than 0.01 apart. |
+| `ONLY_PAGOSEGURO` | Ours, not in the partner's file. |
+| `ONLY_PARTNER` | In the file, and not an `APPROVE` of the window. |
+
+A partner record whose reference is an `APPROVE` of the window but of another partner day still counts: its date decides. The output is one `MatchRow` per reference as JSON lines in `curated/conciliacion/fecha=<day>/part-*.json`. Step 0 leaves `match_day()`, the same rules in plain Python, which `reconcile()` uses until HU-37 moves it to PySpark (local mode in the tests, EMR Serverless in AWS).
+
+## 3. Differences (HU-38 to HU-40)
+
+`store.classify(row)` turns each `MatchRow` into differences: `ONLY_PAGOSEGURO` → `MISSING_IN_PARTNER`, `ONLY_PARTNER` → `MISSING_IN_PAGOSEGURO`, `AMOUNT_OFF` → `AMOUNT_MISMATCH` (with both amounts and `amount_difference` = partner − PagoSeguro), and `DATE_OFF` → one of each missing type (team decision D4: the same reference more than a day apart is not the same operation). `store.save()` closes the run of the day as `DONE` with its counts and inserts the differences with `ON CONFLICT DO NOTHING`: running a day again neither duplicates a difference nor reopens a resolved one.
+
+## 4. Treasury's routes (HU-38 to HU-41)
+
+Routes of the [cases API](./cases.mdx) in `routes_reconciliation.py` (empty at step 0): `GET /reconciliation/differences`, `GET /reconciliation/differences/aging`, `POST /reconciliation/differences/{difference_id}/resolution` and `GET /reconciliation/runs`.
+
+## Running it locally
+
+```bash
+uv run python -m services.reconciliation --day 2026-10-05
+uv run python -m services.reconciliation --from 2026-10-01 --to 2026-10-07
+```
+
+`--source`, `--decisions` and `--target` change `STATEMENTS_SOURCE`, `DECISIONS_SOURCE` and `RECON_DATA_DIR` (see [configuration](../reference/configuration.mdx#reconciliation)). The run of each day is `RUNNING` when it starts and `FAILED`, with the step and its error, if a step fails. The decisions come from LocalStack (`raw/decisiones/`, written by the analytics consumer) after running the generator over HTTP against the engine, and the files from `securepay-csv`.
+
+## Fixtures
+
+`services/reconciliation/tests/fixtures/` holds one small hand-made day, 2026-10-05, with at least one case of every status and defect: the four partners' files, the decisions of the window, what steps 1 and 2 must write and the answer key `extracts_report.json` (same keys as `securepay-csv`'s, plus `expected_run` with the counts). Its `README.md` lists the day transaction by transaction. `test_fixtures.py` checks that they agree with each other and `test_match.py` that the reference match gives exactly the expected rows.
+
+## Tests
+
+`uv run pytest services/reconciliation shared/tests/test_reconciliation_contract.py`. The contract and the orchestration tests need PostgreSQL (they run in a schema of their own); the match and the fixtures do not.

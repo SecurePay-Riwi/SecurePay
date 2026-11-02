@@ -39,8 +39,9 @@ SecurePay-Riwi/
 de las fuentes lo instalan como dependencia (`import securepay_shared`).
 Trae `models` (SQLAlchemy), `db` (conexión a PostgreSQL), `config` (variables
 y constantes) y `aws` (clientes de boto3). `shared/cache.py`,
-`shared/events.py`, `shared/rule_catalog.py`, `shared/cases.py` y
-`shared/evidence.py` no van en el paquete: solo los usa `services/`.
+`shared/events.py`, `shared/rule_catalog.py`, `shared/cases.py`,
+`shared/evidence.py` y `shared/reconciliation.py` no van en el paquete:
+solo los usa `services/`.
 
 ## Descripción
 
@@ -57,6 +58,7 @@ El repositorio reúne los componentes trabajados hasta el momento:
 - Motor antifraude con API FastAPI y reglas de decisión.
 - API independiente para crear, modificar, activar/desactivar y consultar versiones de reglas antifraude (`services/rules_api/`, puerto 8002).
 - Sprint 4 (closed): case tables (`shared/cases.py`), cases API (`services/cases_api/`, port 8003) and alerts task (`services/alerts/`). Done: opening cases (HU-25), restricted list reports (HU-34), the 30-day history of each account (HU-28, `GET /accounts/{account_id}/transactions`), the accounts related through a device (HU-29, `GET /accounts/{account_id}/related-accounts`) and the analyst's work: the inbox (HU-26, `GET /cases`), assigning (HU-27, `PUT /cases/{case_id}/assignee`) and resolving (HU-30, `POST /cases/{case_id}/resolution`), and the escalation to the supervisor of the cases open over 4 hours (HU-31: every 5 minutes the alerts task sends one summary per run; with `CASE_DUE_MINUTES=2` it shows locally in a few minutes), the suspicious operations report (HU-35, `GET /reports/suspicious`), the immutable case evidence (HU-32) and the engine on ECS/Fargate (HU-57). Running the consumers and the alerts task as Lambdas in AWS is HU-68 (Sprint 5).
+- Sprint 5 (in progress): nightly reconciliation with the payment partners (`shared/reconciliation.py`, `services/reconciliation/`, `uv run python -m services.reconciliation --day 2026-10-05`). Step 0 is in place: the shared contract, a reference match in plain Python and a fixture day in `services/reconciliation/tests/fixtures/`.
 - Seed de datos maestros para PostgreSQL y generador de transacciones de prueba.
 - Pruebas automatizadas para los componentes del proyecto.
 - Simulación local de mensajería con SNS/SQS y almacenamiento en S3 mediante LocalStack.
@@ -96,6 +98,7 @@ levanta por separado:
 | Levantar el motor de decisión | `uv run uvicorn services.decision_engine.main:app --reload` | PostgreSQL y Valkey (y LocalStack para publicar) | 11 |
 | Levantar los consumidores | `uv run python -m services.consumers` | LocalStack | 11b |
 | Generar los extractos de los socios | `uv run python -m securepay_csv.partner_statements` (en `securepay-csv`) | Salida del generador (paso 9 o 12) | 13 |
+| Conciliar un día con los socios | `uv run python -m services.reconciliation --day 2026-10-05` | PostgreSQL; los extractos (paso 13) y las decisiones en LocalStack | 13b |
 | Levantar el servicio de listas restrictivas | `uv run uvicorn securepay_apis.restricted_list.main:app --port 8001` (en `securepay-apis`) | El archivo que exporta el seed | 14 |
 | Consultar las tasas de cambio | `uv run python -m securepay_apis.exchange_rates` (en `securepay-apis`) | Internet | 15 |
 
@@ -518,6 +521,20 @@ uv run python -m securepay_csv.partner_statements
 
 Detalles: README de `securepay-csv` y la página
 [Partner statements](https://securepay-riwi.github.io/SecurePay/docs/components/partner-statements).
+
+### Paso 13b --- Conciliar un día con los socios (Sprint 5)
+
+Cruza los extractos del paso 13 con las decisiones que el consumidor de
+analítica dejó en LocalStack (`raw/decisiones/`, paso 12) y guarda las
+diferencias en PostgreSQL. Mientras se construye el sprint 5, la lectura de
+los extractos y el guardado de las diferencias todavía no hacen nada.
+
+``` bash
+uv run python -m services.reconciliation --day 2026-10-05
+```
+
+Detalles: página
+[Reconciliation](https://securepay-riwi.github.io/SecurePay/docs/components/reconciliation).
 
 ### Paso 14 --- Levantar el servicio de listas restrictivas (repo `securepay-apis`)
 

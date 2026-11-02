@@ -428,6 +428,16 @@ def test_decision_carries_amount_usd(eventos_publicados):
     assert eventos_publicados[0]["decision"]["amount_usd"] == expected
 
 
+def test_decision_carries_the_rate_fields_empty_until_hu_42(eventos_publicados):
+    response = client.post("/transactions", json=_payload_normal())
+
+    assert response.status_code == 200, response.text
+    assert response.json()["usd_rate"] is None
+    assert response.json()["rate_date"] is None
+    decision = eventos_publicados[0]["decision"]
+    assert decision["usd_rate"] is None and decision["rate_date"] is None
+
+
 def test_engine_answers_when_sns_is_down(monkeypatch, caplog):
     def sns_caido():
         raise ConnectionError("SNS no responde")

@@ -1,0 +1,277 @@
+{
+  "day": "2026-10-05",
+  "note": "Hand-made fixture of services/reconciliation (step 0). Same keys as securepay-csv's extracts_report.json, plus the defects it does not inject (MALFORMED_ROW, DATE_OFF, EXTRA_DECIMALS, ONE_CENT_OFF, TIME_ZONE) and the counts the run should end with.",
+  "expected_run": {
+    "files_read": 4,
+    "records": 11,
+    "rejected": 2,
+    "matched": 8,
+    "match_rows": 13,
+    "differences": 6
+  },
+  "files_by_partner": {
+    "banco_andino": 2,
+    "red_corresponsales": 1,
+    "cajeros_express": 1,
+    "qr_pagos": 1
+  },
+  "defects_by_type": {
+    "MISSING_RECORD": 2,
+    "ROUNDED_AMOUNT": 2,
+    "BAD_CONTROL_TOTALS": 2,
+    "EXTRA_DECIMALS": 1,
+    "TIME_ZONE": 1,
+    "DATE_OFF": 1,
+    "MALFORMED_ROW": 1,
+    "ONE_CENT_OFF": 1,
+    "EXTRA_RECORD": 1
+  },
+  "expected_differences_by_type": {
+    "MISSING_IN_PARTNER": 3,
+    "MISSING_IN_PAGOSEGURO": 2,
+    "AMOUNT_MISMATCH": 1
+  },
+  "files": [
+    {
+      "partner": "banco_andino",
+      "day": "2026-10-05",
+      "version": 1,
+      "file": "banco_andino/fecha=2026-10-05/banco_andino_20261005_v1.csv",
+      "records": 2,
+      "latest": false,
+      "control_declared": {
+        "count": 3,
+        "total": "116.07"
+      },
+      "control_actual": {
+        "count": 2,
+        "total": "116.07"
+      },
+      "control_matches": false
+    },
+    {
+      "partner": "banco_andino",
+      "day": "2026-10-05",
+      "version": 2,
+      "file": "banco_andino/fecha=2026-10-05/banco_andino_20261005_v2.csv",
+      "records": 3,
+      "latest": true,
+      "control_declared": {
+        "count": 3,
+        "total": "150115.98"
+      },
+      "control_actual": {
+        "count": 3,
+        "total": "150115.98"
+      },
+      "control_matches": true
+    },
+    {
+      "partner": "red_corresponsales",
+      "day": "2026-10-05",
+      "version": 1,
+      "file": "red_corresponsales/fecha=2026-10-05/red_corresponsales_20261005_v1.txt",
+      "records": 2,
+      "latest": true,
+      "control_declared": {
+        "count": 2,
+        "total": "25000000"
+      },
+      "control_actual": {
+        "count": 2,
+        "total": "25000000"
+      },
+      "control_matches": true
+    },
+    {
+      "partner": "cajeros_express",
+      "day": "2026-10-05",
+      "version": 1,
+      "file": "cajeros_express/fecha=2026-10-05/cajeros_express_20261005_v1.csv",
+      "records": 4,
+      "latest": true,
+      "control_declared": {
+        "count": 4,
+        "total": "124627.00"
+      },
+      "control_actual": {
+        "count": 4,
+        "total": "123627.00"
+      },
+      "control_matches": false
+    },
+    {
+      "partner": "qr_pagos",
+      "day": "2026-10-05",
+      "version": 1,
+      "file": "qr_pagos/fecha=2026-10-05/qr_pagos_20261005_v1.txt",
+      "records": 3,
+      "latest": true,
+      "control_declared": {
+        "count": 3,
+        "total": "3026"
+      },
+      "control_actual": {
+        "count": 3,
+        "total": "3026"
+      },
+      "control_matches": true
+    }
+  ],
+  "defects": [
+    {
+      "defect": "MISSING_RECORD",
+      "partner": "banco_andino",
+      "day": "2026-10-05",
+      "version": 1,
+      "reference": "8d2c8936-e11f-58dd-ae85-833cdac82618",
+      "detail": "the partner does not report the operation",
+      "corrected_in_v2": true
+    },
+    {
+      "defect": "ROUNDED_AMOUNT",
+      "partner": "banco_andino",
+      "day": "2026-10-05",
+      "version": 1,
+      "reference": "0a15bfa4-e601-5486-b43c-d08c34e0ac14",
+      "detail": "88.91 -> 89.00 EUR",
+      "corrected_in_v2": true
+    },
+    {
+      "defect": "BAD_CONTROL_TOTALS",
+      "partner": "banco_andino",
+      "day": "2026-10-05",
+      "version": 1,
+      "reference": null,
+      "detail": "declares 3 records and total 116.07; the detail has 2 and 116.07"
+    },
+    {
+      "defect": "EXTRA_DECIMALS",
+      "partner": "banco_andino",
+      "day": "2026-10-05",
+      "version": 2,
+      "reference": "0a15bfa4-e601-5486-b43c-d08c34e0ac14",
+      "detail": "88.910 is read as 88.91"
+    },
+    {
+      "defect": "MISSING_RECORD",
+      "partner": "red_corresponsales",
+      "day": "2026-10-05",
+      "version": 1,
+      "reference": "94e4ccea-6e30-5905-bd7c-0018287fc4f6",
+      "detail": "the partner does not report the operation"
+    },
+    {
+      "defect": "TIME_ZONE",
+      "partner": "red_corresponsales",
+      "day": "2026-10-05",
+      "version": 1,
+      "reference": "a379bb71-ed9e-50dc-8da4-f512ce1c0f07",
+      "detail": "23:30 in Bogota on 2026-10-05 is 04:30 UTC on 2026-10-06"
+    },
+    {
+      "defect": "ROUNDED_AMOUNT",
+      "partner": "cajeros_express",
+      "day": "2026-10-05",
+      "version": 1,
+      "reference": "d462ba1c-5dab-599d-ac2e-63c354c7f3ce",
+      "detail": "123456.78 -> 123457.00 COP"
+    },
+    {
+      "defect": "DATE_OFF",
+      "partner": "cajeros_express",
+      "day": "2026-10-05",
+      "version": 1,
+      "reference": "4203fd18-35cf-54a2-9c36-a1cc1b71bd0c",
+      "detail": "the partner dates it 2026-10-06T01:00Z; ours is 2026-10-04T03:10Z"
+    },
+    {
+      "defect": "MALFORMED_ROW",
+      "partner": "cajeros_express",
+      "day": "2026-10-05",
+      "version": 1,
+      "reference": "fa390576-c755-5630-8066-20308be5dbf4",
+      "detail": "amount N/A"
+    },
+    {
+      "defect": "BAD_CONTROL_TOTALS",
+      "partner": "cajeros_express",
+      "day": "2026-10-05",
+      "version": 1,
+      "reference": null,
+      "detail": "declares 4 records and total 124627.00; the detail adds up to 123627.00 (C5 read as 20.00)"
+    },
+    {
+      "defect": "ONE_CENT_OFF",
+      "partner": "qr_pagos",
+      "day": "2026-10-05",
+      "version": 1,
+      "reference": "efbfd10f-a445-5bfa-871b-3f53c17e9fe7",
+      "detail": "10.00 -> 10.01 USD, inside the tolerance"
+    },
+    {
+      "defect": "EXTRA_RECORD",
+      "partner": "qr_pagos",
+      "day": "2026-10-05",
+      "version": 1,
+      "reference": "99fdc9ad-1c98-59b6-9071-ca21c0864b2f",
+      "detail": "operation PagoSeguro does not have"
+    }
+  ],
+  "expected_differences": [
+    {
+      "type": "MISSING_IN_PARTNER",
+      "partner": "cajeros_express",
+      "day": "2026-10-05",
+      "reference": "4203fd18-35cf-54a2-9c36-a1cc1b71bd0c",
+      "currency": "EUR",
+      "pagoseguro_amount": "50.00",
+      "partner_amount": null
+    },
+    {
+      "type": "MISSING_IN_PAGOSEGURO",
+      "partner": "cajeros_express",
+      "day": "2026-10-05",
+      "reference": "4203fd18-35cf-54a2-9c36-a1cc1b71bd0c",
+      "currency": "EUR",
+      "pagoseguro_amount": null,
+      "partner_amount": "50.00"
+    },
+    {
+      "type": "AMOUNT_MISMATCH",
+      "partner": "cajeros_express",
+      "day": "2026-10-05",
+      "reference": "d462ba1c-5dab-599d-ac2e-63c354c7f3ce",
+      "currency": "COP",
+      "pagoseguro_amount": "123456.78",
+      "partner_amount": "123457.00"
+    },
+    {
+      "type": "MISSING_IN_PARTNER",
+      "partner": "cajeros_express",
+      "day": "2026-10-05",
+      "reference": "fa390576-c755-5630-8066-20308be5dbf4",
+      "currency": "USD",
+      "pagoseguro_amount": "20.00",
+      "partner_amount": null
+    },
+    {
+      "type": "MISSING_IN_PAGOSEGURO",
+      "partner": "qr_pagos",
+      "day": "2026-10-05",
+      "reference": "99fdc9ad-1c98-59b6-9071-ca21c0864b2f",
+      "currency": "USD",
+      "pagoseguro_amount": null,
+      "partner_amount": "5.25"
+    },
+    {
+      "type": "MISSING_IN_PARTNER",
+      "partner": "red_corresponsales",
+      "day": "2026-10-05",
+      "reference": "94e4ccea-6e30-5905-bd7c-0018287fc4f6",
+      "currency": "USD",
+      "pagoseguro_amount": "60.00",
+      "partner_amount": null
+    }
+  ]
+}

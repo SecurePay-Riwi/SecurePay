@@ -9,6 +9,7 @@ file belongs to one story:
     routes_reports.py     suspicious operations report (HU-35)
     routes_accounts.py    account history, related accounts (HU-28, HU-29)
     routes_compliance.py  restricted list reports (HU-34)
+    routes_reconciliation.py  reconciliation differences (HU-38 to HU-41)
 
 Routes get their session and the X-User header from deps.py.
 """
@@ -31,9 +32,11 @@ from services.cases_api import (
     routes_accounts,
     routes_cases,
     routes_compliance,
+    routes_reconciliation,
     routes_reports,
 )
 from services.cases_api.schemas import Health
+from shared import reconciliation
 from shared.cases import create_schema
 
 logger = logging.getLogger(__name__)
@@ -45,6 +48,7 @@ INVALID = "The request contains invalid data."
 async def lifespan(app: FastAPI):
     with deps.SessionLocal() as session:
         create_schema(session)
+        reconciliation.create_schema(session)
     yield
 
 
@@ -95,3 +99,4 @@ app.include_router(routes_cases.router)
 app.include_router(routes_reports.router)
 app.include_router(routes_accounts.router)
 app.include_router(routes_compliance.router)
+app.include_router(routes_reconciliation.router)
