@@ -55,7 +55,7 @@ def test_analytics_writes_the_batch_as_json_lines(monkeypatch):
     assert bucket == analytics.BUCKET
     assert clave.startswith("raw/decisiones/fecha=")
     lineas = s3.objetos[(bucket, clave)].splitlines()
-    assert [json.loads(l)["transaction"]["id"] for l in lineas] == ["tx-1", "tx-2"]
+    assert [json.loads(linea)["transaction"]["id"] for linea in lineas] == ["tx-1", "tx-2"]
 
 
 def test_a_broken_message_fails_alone(monkeypatch):
