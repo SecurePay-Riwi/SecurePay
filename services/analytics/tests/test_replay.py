@@ -9,7 +9,6 @@ from uuid import uuid4
 
 import pytest
 
-from services.analytics import metrics
 from services.analytics.replay import ReferenceData, ReplayDecision, decide_all, replay
 from services.analytics.tests.conftest import FIXTURES
 from services.decision_engine import currency, history, reference_data
@@ -216,13 +215,6 @@ def test_reference_data_from_the_database_has_the_seed():
 
     assert ref.merchants and ref.restricted_documents
     assert all(d.isdigit() for d in ref.restricted_documents)
-
-
-def test_the_metrics_have_their_shape_before_hu_44():
-    assert metrics.rule_metrics([], []) == []
-    assert metrics.pattern_coverage([], []) == []
-    label = metrics.Label("t", "generator", None, False, None)
-    assert label.source == "generator"
 
 
 def test_security_events_after_the_transaction_do_not_count(no_valkey):

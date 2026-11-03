@@ -17,6 +17,7 @@ engine ──SNS──► analytics consumer ──► raw/decisiones/fecha=<arr
 generator labels.jsonl ──(services.analytics.labels)──► raw/labels/fecha=<day>/  ──┤
 PostgreSQL cases ──(export.py, C6)──► raw/cases/fecha=<day>/                       ──┤
 PostgreSQL reconciliation ──(export.py, C6)──► raw/reconciliation/fecha=<day>/     ──┤
+Kaggle rows ──(python -m services.analytics.metrics --kaggle)──► raw/metrics/kaggle/ ──┤
                                                                                    ▼
                         build_decisions ──► curated/decisiones/fecha=<day>/ (Parquet, one row per transaction)
                                                                                    ▼
@@ -31,6 +32,7 @@ PostgreSQL reconciliation ──(export.py, C6)──► raw/reconciliation/fech
 | Raw | `raw/labels/fecha=<day>/labels.jsonl` | The generator's labels file, as it is | `python -m services.analytics.labels` |
 | Raw | `raw/cases/fecha=<day>/` | `cases.jsonl`, `case_events.jsonl`: the current state | `export.py` (Yulianis) |
 | Raw | `raw/reconciliation/fecha=<day>/` | `differences.jsonl`, `runs.jsonl`: the current state | `export.py` (Yulianis) |
+| Raw | `raw/metrics/kaggle/` | `rule_metrics.jsonl`, `pattern_coverage.jsonl`: the metrics of the last Kaggle replay (rows of the two tables, ratios as decimal strings) | `python -m services.analytics.metrics --kaggle` |
 | Curated | `curated/decisiones/fecha=<day>/` | Parquet with the schema of `curated_decision` | `build_decisions.py` |
 | Analytics | `analytics/<table>/` | Parquet with the schema of each table | One builder per group of tables |
 
@@ -52,7 +54,7 @@ PostgreSQL reconciliation ──(export.py, C6)──► raw/reconciliation/fech
                      (transaction_id)
 
  fact_difference (run_day, partner) ──── dim_partner (partner)
- rule_metrics, pattern_coverage: the replay's results (C5), by rule or pattern and label source
+ rule_metrics, pattern_coverage: fact_decision + fact_label + fact_rule_hit (and the Kaggle replay, C5), by rule or pattern and label source
 ```
 
 ## Tables
@@ -270,8 +272,8 @@ PostgreSQL reconciliation ──(export.py, C6)──► raw/reconciliation/fech
 
 ### `rule_metrics`
 
-**Grain:** one rule, label source and catalog version of a replay · **Partition:** one folder, rebuilt on every run · **Owner:** Habith (HU-44, HU-45)  
-**Built from:** `services/analytics/metrics.py over the replay (C5)`
+**Grain:** one rule, label source and catalog version · **Partition:** one folder, rebuilt on every run · **Owner:** Habith (HU-44, HU-45)  
+**Built from:** `fact_decision, fact_label, fact_rule_hit, dim_rule; raw/metrics/kaggle (the replay, C5)`
 
 | Column | Type | Description |
 | :--- | :--- | :--- |
@@ -287,8 +289,8 @@ PostgreSQL reconciliation ──(export.py, C6)──► raw/reconciliation/fech
 
 ### `pattern_coverage`
 
-**Grain:** one fraud pattern, label source and catalog version of a replay · **Partition:** one folder, rebuilt on every run · **Owner:** Habith (HU-46)  
-**Built from:** `services/analytics/metrics.py over the replay (C5)`
+**Grain:** one fraud pattern, label source and catalog version · **Partition:** one folder, rebuilt on every run · **Owner:** Habith (HU-46)  
+**Built from:** `fact_decision, fact_label, fact_rule_hit; raw/metrics/kaggle (the replay, C5)`
 
 | Column | Type | Description |
 | :--- | :--- | :--- |
@@ -328,8 +330,8 @@ One Athena view per business question, `services/analytics/sql/q<N>_<name>.sql`,
 How the answer key computes each one (`make_fixtures.py`), so the views agree with it:
 
 - **q1:** `COUNT(*)` and `SUM(amount_usd)` of `fact_decision` per day, type, currency, channel and decision.
-- **q2:** for each rule of the catalog replayed (not `default_timeout`) and label source: `hits` = labeled transactions where it fired, `true_positives` = those that are fraud, `false_positives` = the rest, `precision` = tp / hits (null with 0 hits), `false_positive_rate` = fp / labeled legitimate transactions. Ratios with 4 decimals, rounded half up. A transaction without a label does not count.
-- **q3:** per fraud pattern and label source: `detected` = decision `HOLD` or `REJECT`, or `opens_case`; `missed` = the rest; `detection_rate` = detected / frauds; `top_rule` = the rule that fires most among the detected ones (ties: alphabetical; null when none was detected).
+- **q2:** for each rule of the catalog replayed (not `default_timeout`) and label source: `hits` = labeled transactions where it fired, `true_positives` = those that are fraud, `false_positives` = the rest, `precision` = tp / hits (null with 0 hits), `false_positive_rate` = fp / labeled legitimate transactions. Ratios with 4 decimals, rounded half up. A transaction without a label does not count. Every rule of the catalog has a row (0 hits included) when `dim_rule` has that catalog version. The view shows, per label source, only the latest catalog version (`MAX(CAST(rules_version AS INTEGER))`); its control computes the lake's sources from `fact_decision`, `fact_label`, `fact_rule_hit` and `dim_rule`, and takes the replayed Kaggle rows of `rule_metrics` as they are.
+- **q3:** per fraud pattern and label source: `detected` = decision `HOLD` or `REJECT`, or `opens_case`; `missed` = the rest; `detection_rate` = detected / frauds; `top_rule` = the rule that fires most among the detected ones, any rule in `rules_triggered` (ties: alphabetical; null when none was detected). A fraud label without a pattern counts as `UNKNOWN`. Latest catalog version per source and control as in q2.
 - **q4:** per day of `created_at`, `status` and `outcome`: `escalated` counts the cases with `escalated_at`; `minutes_to_resolve` is whole minutes (rounded down); `avg_minutes_to_resolve` with 2 decimals, `p90_minutes_to_resolve` the nearest-rank 90th percentile, `within_sla_pct` = resolved in 240 minutes or less × 100 / resolved, 2 decimals; null for cases still open.
 - **q5:** per `run_day`, partner, type, status and `age_range` (age counted from `run_day` to the day built): the number of differences and the sum of `amount_difference` (null when the group has none).
 - **q6:** only `HIGH` and `MEDIUM`; `rank` within each kind ordered by level, then `held_or_rejected_30d` and `transactions_30d` descending, then id. Merchants have null `accounts_30d` and `cases_30d`.

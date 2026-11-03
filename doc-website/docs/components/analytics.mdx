@@ -11,7 +11,7 @@ description: The analytics ETL to the dimensional model, the views for Power BI,
 Sprint 6 takes the engine's decisions, the cases and the reconciliation to a dimensional model in the lake (Parquet), answers the six business questions with one Athena view each, and measures the rules against the labeled history by running the engine again over it.
 
 :::info Status
-Sprint 6 step 0: the contract is in the code (`shared/analytics.py`), the decisions' builder and view `q1` work over a fixture day, the replay runs the engine's rules in memory, and the labels of the generator and of the Kaggle rows are read. The other builders, the export, the metrics and the views `q2` to `q6` have their signatures and come with HU-44 to HU-53.
+Step 0 put the contract in the code (`shared/analytics.py`), the decisions' builder, view `q1`, the replay and the labels. HU-44 to HU-46 added the rule metrics (`rule_metrics`, `pattern_coverage`) and the views `q2` and `q3`. The other builders, the export and the views `q4` to `q6` have their signatures and come with HU-47 and HU-51 to HU-53.
 :::
 
 ## The flow
@@ -19,7 +19,9 @@ Sprint 6 step 0: the contract is in the code (`shared/analytics.py`), the decisi
 ```text
 raw/ (consumer, labels, export) ──► etl.run_day ──► curated/decisiones ──► analytics/<table> ──► views q1..q6 ──► Power BI
                                                                     │
-                     replay (engine rules in memory) ◄──────────────┘──► rule_metrics, pattern_coverage (q2, q3)
+                                  build_metrics (the engine's decisions + labels) ──► rule_metrics, pattern_coverage (q2, q3)
+                                                                    ▲
+ PostgreSQL (Kaggle rows) ──► metrics command: replay with the current catalog ──► raw/metrics/kaggle/
 ```
 
 | Step | Code | Owner |
@@ -32,7 +34,7 @@ raw/ (consumer, labels, export) ──► etl.run_day ──► curated/decision
 | `dim_device` | `build_devices.py` | Yulianis (HU-47) |
 | PostgreSQL → `raw/cases`, `raw/reconciliation` | `export.py` | Yulianis (HU-51, HU-52) |
 | Labels of the generator and of Kaggle | `labels.py` | Habith |
-| Replay and metrics | `replay.py`, `metrics.py` | Habith (HU-44 to HU-46) |
+| Replay and metrics, `rule_metrics`, `pattern_coverage` | `replay.py`, `metrics.py`, `build_metrics.py` | Habith (HU-44 to HU-46) |
 | Views and control queries | `views.py`, `sql/`, `sql/control/` | Habith (q1 to q3), Yulianis (q4 to q6) |
 
 ## Running it locally
@@ -55,7 +57,7 @@ uv run python -m services.analytics --day 2026-10-05 --raw s3://pagoseguro-datal
 Each builder is `build(spark, day, raw, output) -> {table: rows written}`, registered with one line in `etl.BUILDERS` (the decisions first: the others read `curated/decisiones`). It writes each table with `services/analytics/spark.py` (`write()`, `read()`), which applies the schema of `shared/analytics.py` and replaces the day's partition, so a day can run again. pyspark is imported inside the functions, as in the reconciliation's match.
 
 - `curated/decisiones`: the events of `raw/decisiones/fecha=<day-1..day+1>` whose transaction is of the day, one row per `transaction_id`.
-- `fact_decision` adds `label_source` from the labels; `fact_rule_hit` takes each rule's `decision` and `score` from the catalog entry `(rule, rule_version)` of `dim_rule` (for `default_timeout`, the transaction's decision). `dim_rule` has the code default catalog (version `"0"`); the published versions join it with HU-44.
+- `fact_decision` adds `label_source` from the labels; `fact_rule_hit` takes each rule's `decision` and `score` from the catalog entry `(rule, rule_version)` of `dim_rule` (for `default_timeout`, the transaction's decision). `dim_rule` has the code default catalog (version `"0"`); a published catalog version is not in it yet (the ETL does not read the rules API), so a rule of it that never fired has no `rule_metrics` row.
 - `fact_label` reads every `raw/labels/fecha=*/labels.jsonl` (a labels file covers a whole generator run), once per transaction, without security events or repeated lines, and keeps the transactions of the day.
 - `dim_merchant` counts the QR payments of the 30 days up to the day.
 
@@ -77,7 +79,62 @@ Each builder is `build(spark, day, raw, output) -> {table: rows written}`, regis
 
 Both are context variables: outside the block, and always in the engine, the history and the reference data are Valkey. No Valkey, network or PostgreSQL inside a replay. A repeated id is decided once; a currency that is not the account's (the engine's 422) is left out; security events are recorded before the transactions at or after their time. Exchange rates: what `currency` has loaded, else the fixed 2026-10-01 rates. Nobody outside `services/analytics/` imports `replay.py` (the rules API will, inside its simulation route, HU-24).
 
-`metrics.py` holds `Label`, `RuleMetrics`, `PatternCoverage`, `rule_metrics()` and `pattern_coverage()` (empty until HU-44 and HU-46); the definitions are on the [model page](../reference/analytics-model.mdx#views-contract-c3).
+## Rule metrics (HU-44 to HU-46)
+
+How good each rule is, measured against the labels (C4) with the definitions of the [model page](../reference/analytics-model.mdx#views-contract-c3): precision and false positives per rule (`rule_metrics`, view `q2`), and fraud detected against missed per pattern (`pattern_coverage`, view `q3`). Each row is per label source and catalog version; the views show the latest catalog version of each source.
+
+The same definitions exist twice, like the reconciliation's match:
+
+- `metrics.py` in plain Python, over a replay: `rule_metrics(decisions, labels, snapshot=None)` (with the snapshot every rule of the catalog has a row, 0 hits included), `pattern_coverage()`, `false_positive_examples()` (HU-45: per rule, the legitimate transactions with the largest amounts) and `expected_rule_hits()`.
+- `build_metrics.py` in Spark, the last builder of the ETL: the engine's own decisions of every day in the lake (`fact_decision` with `fact_label`, `fact_rule_hit`, `dim_rule`), plus the rows a Kaggle replay left in `raw/metrics/kaggle/`. Both tables are rebuilt on every run.
+
+`test_metrics.py` runs both against the answer key of the fixture day.
+
+```bash
+# PaySim and Sparkov (securepay-seed's Kaggle ETL loaded in PostgreSQL), replayed with the
+# current catalog (the rules API's latest version, or the code defaults): prints the metrics
+# and writes raw/metrics/kaggle/ under --root; the next ETL run adds them to q2 and q3.
+uv run python -m services.analytics.metrics --kaggle [--limit 50000] [--root generated/analytics]
+
+# The generator's run (GEN_OUTPUT=file), replayed with the current catalog: prints only (the
+# lake already has the engine's decisions of it).
+uv run python -m services.analytics.metrics \
+    --events ../securepay-generator/generated/instance-0/events.jsonl \
+    --labels ../securepay-generator/generated/instance-0/labels.jsonl
+```
+
+Both need PostgreSQL with the seed (the reference data); `--catalog file.json` replays another `CatalogSnapshot`.
+
+### Results (E-16)
+
+The generator's run of `seed 42`, mode `dev`, 400 transactions, 5 % fraud, replayed with the code default catalog (version `"0"`, splitting `HOLD` after D2), with the second command above (November 3, 2026):
+
+| Rule | Hits | True positives | False positives | Precision | False positive rate |
+| :--- | ---: | ---: | ---: | ---: | ---: |
+| `account_takeover` | 1 | 1 | 0 | 1.0000 | 0.0000 |
+| `mule` | 1 | 1 | 0 | 1.0000 | 0.0000 |
+| `restricted_list` | 1 | 1 | 0 | 1.0000 | 0.0000 |
+| `shared_device` | 13 | 0 | 13 | 0.0000 | 0.0345 |
+| `splitting` | 1 | 1 | 0 | 1.0000 | 0.0000 |
+| `velocity` | 2 | 2 | 0 | 1.0000 | 0.0000 |
+
+| Pattern | Frauds | Detected | Missed | Detection rate | Top rule |
+| :--- | ---: | ---: | ---: | ---: | :--- |
+| `ACCOUNT_TAKEOVER` | 1 | 1 | 0 | 1.0000 | `account_takeover` |
+| `MULE` | 4 | 1 | 3 | 0.2500 | `mule` |
+| `RESTRICTED_LIST` | 1 | 1 | 0 | 1.0000 | `restricted_list` |
+| `SPLITTING` | 4 | 1 | 3 | 0.2500 | `splitting` |
+| `VELOCITY` | 13 | 2 | 11 | 0.1538 | `velocity` |
+
+**Why patterns escape (HU-46).** The generator labels every transaction of a fraud scheme as fraud, but the rules fire on the transaction that completes it, as the business rules say:
+
+- `VELOCITY`: a burst of transfers; RN-02 holds from the 6th in 10 minutes, so the first five go through. The two transactions where the label expects the rule (`expected_rule = velocity`) were both held.
+- `MULE`: three transfers in and one withdrawal; RN-03 holds the withdrawal, the transfers in are legitimate on their own.
+- `SPLITTING`: RN-05 needs the sum to exceed the limit, so the first splits pass.
+- `expected_rule_hits` in the output says it per rule: every transaction that expects `account_takeover`, `mule`, `restricted_list`, `splitting` or `velocity` got it.
+- `shared_device` is not a fraud pattern: the generator labels its 75 transactions `is_fraud = false` with `expected_rule = shared_device`, and marks a device as shared with more than 1 account, while RN-04 asks for more than 3. The rule fired on 13 of them. Its "false positives" are by design: it only raises `risk_score` (`APPROVE`, score 30) and holds nothing.
+
+**PaySim and Sparkov** were not measured here: the Kaggle datasets are not in this environment. Run the first command where securepay-seed's Kaggle ETL is loaded and add its tables to this page.
 
 ## Fixtures and tests
 
@@ -88,6 +145,7 @@ Both are context variables: outside the block, and always in the engine, the his
 | `shared/tests/test_analytics_contract.py` | The paths, the tables and columns of C2, types, this model page | Nothing |
 | `services/analytics/tests/test_etl.py` | curated (window, repeated lines), every table and its schema, running a day again | Java |
 | `services/analytics/tests/test_views.py` | Each view and its control query against the answer key (one case per view) | Java |
+| `services/analytics/tests/test_metrics.py` | The metrics' definitions by hand, both versions against the answer key, the command's replay, a Kaggle replay through the ETL to `q2` and `q3` | Java (the last test) |
 | `services/analytics/tests/test_replay.py` | The replay gives the engine's decisions, never reaches Valkey, a catalog change changes it | Nothing |
 | `services/analytics/tests/test_labels.py` | Generator labels and events, the copy command, the Kaggle reader | PostgreSQL with the seed (one test) |
 | `services/decision_engine/tests/test_history_backend.py` | `use_backend()` and `use_source()`: Valkey by default, the in-memory history like Valkey | Valkey (one test) |

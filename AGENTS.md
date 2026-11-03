@@ -270,6 +270,16 @@ Pages: `doc-website/docs/components/analytics.mdx` and
   `reference_data.use_source(ReferenceData)` (context variables; the
   engine always uses Valkey). Nobody outside `services/analytics/` imports
   it (the rules API only in its simulation route, HU-24).
+- **Metrics (HU-44 to HU-46):** the definitions exist twice, like the
+  match: `metrics.py` in Python over a replay (`rule_metrics(decisions,
+  labels, snapshot)`, `pattern_coverage()`, `false_positive_examples()`)
+  and `build_metrics.py` in Spark over the lake (the last builder:
+  `fact_decision` + `fact_label` + `fact_rule_hit` + `dim_rule`, every
+  day, rebuilt each run), plus the Kaggle replay's rows in
+  `raw/metrics/kaggle/` (`python -m services.analytics.metrics
+  --kaggle`). Views `q2`/`q3` show the latest catalog version per label
+  source. `metrics.py` imports the replay only inside functions: the
+  ETL does not need the engine.
 - **Labels (C4):** the generator's `generated/instance-<n>/labels.jsonl`
   is copied to `raw/labels/fecha=<day>/` (`python -m
   services.analytics.labels`). Kaggle rows: `transacciones` has no dataset
