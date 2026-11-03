@@ -209,4 +209,4 @@ uv run python -m services.reconciliation --from 2026-10-01 --to 2026-10-07
 
 ## Tests
 
-`uv run pytest services/reconciliation shared/tests/test_reconciliation_contract.py`, plus treasury's routes in `services/cases_api/tests/test_reconciliation_differences.py`. `test_store.py` checks that the fixture day gives exactly the `expected_differences` and `expected_run` of the answer key. The contract and the orchestration tests need PostgreSQL (they run in a schema of their own); the match and the fixtures do not.
+`uv run pytest services/reconciliation shared/tests/test_reconciliation_contract.py`, plus treasury's routes in `services/cases_api/tests/test_reconciliation_differences.py`. `test_store.py` checks that the fixture day gives exactly the `expected_differences` and `expected_run` of the answer key. `tests/test_reconciliation_e2e.py` runs the three steps chained against the same day and the same answer key. The contract and the orchestration tests need PostgreSQL (they run in a schema of their own); the match and the fixtures do not.
