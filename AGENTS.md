@@ -597,7 +597,7 @@ every repository in the SecurePay-Riwi organization.
   folder or service they run in and the expected result) and Checklist.
 - **Before opening a PR:** `uv run ruff format .`, `uv run ruff check .` and
   `uv run pytest`. The CI
-  (`.github/workflows/ci.yml`: jobs `lint`, `secret-scan`, `tests`, `image`)
+  (`.github/workflows/ci.yml`: jobs `lint`, `secret-scan`, `tests`, `image`, `terraform`)
   runs the same on the PR and must be green to merge. Do not add per-file
   ruff ignores for someone else's code; fix it or ask.
 

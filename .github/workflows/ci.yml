@@ -1,9 +1,9 @@
 name: CI
 
 # Runs on every pull request to main: lint, the full test suite, a secret
-# scan and the Docker image build. Nothing here needs AWS. Habith's branch
-# protection on main requires the four jobs below (their names are the
-# check names): lint, secret-scan, tests, image.
+# scan, the Docker image build and the Terraform checks. Nothing here needs
+# AWS. The branch protection on main requires the five jobs below (their
+# names are the check names): lint, secret-scan, tests, image, terraform.
 
 on:
   pull_request:
@@ -133,3 +133,27 @@ jobs:
       # Same flags as the deploy, so a PR that breaks the image fails here.
       - name: Build the engine image
         run: docker build --provenance=false -t securepay-engine:ci .
+
+  # The pipeline of the nightly reconciliation (Step Functions + Glue) is
+  # Terraform: this job is the CI's "DAG validation" (CT-04). No AWS
+  # credentials: init without backend only downloads the providers.
+  terraform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+
+      - name: Terraform fmt
+        working-directory: infra/terraform
+        run: terraform fmt -check -recursive
+
+      - name: Terraform validate
+        working-directory: infra/terraform/envs/dev
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate

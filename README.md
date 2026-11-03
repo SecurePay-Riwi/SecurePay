@@ -366,8 +366,8 @@ uv run ruff check .
 ```
 
 Cada pull request a `main` corre lo mismo en GitHub Actions
-(`.github/workflows/ci.yml`: `lint`, `secret-scan` con gitleaks, `tests` y
-`image`), y al fusionar en `main` `.github/workflows/deploy.yml` sube la
+(`.github/workflows/ci.yml`: `lint`, `secret-scan` con gitleaks, `tests`,
+`image` y `terraform` con `fmt` y `validate`), y al fusionar en `main` `.github/workflows/deploy.yml` sube la
 imagen a ECR y la despliega en ECS y en las Lambdas si dev está levantado.
 Detalle en Docusaurus (Contributing y Testing).
 
