@@ -20,6 +20,22 @@ variable "github_immutable_subject" {
   default     = "repo:SecurePay-Riwi@333775069/SecurePay@1387412508"
 }
 
+variable "source_deployers" {
+  description = "Data-source repositories that deploy their own image: one role each (<prefix>-deploy-<key>) that may push only to the ECR repository <prefix>-<key> and update only its Lambdas. immutable_subject is shown by `gh api repos/<owner>/<repo>/actions/oidc/customization/sub` as sub_claim_prefix."
+  type = map(object({
+    repository        = string
+    immutable_subject = string
+    lambdas           = list(string)
+  }))
+  default = {
+    apis = {
+      repository        = "SecurePay-Riwi/securepay-apis"
+      immutable_subject = "repo:SecurePay-Riwi@333775069/securepay-apis@1426475753"
+      lambdas           = ["exchange-rates"]
+    }
+  }
+}
+
 variable "create_github_oidc_provider" {
   description = "Create the GitHub OIDC provider. Set false if the account already has one (there can only be one per account)."
   type        = bool

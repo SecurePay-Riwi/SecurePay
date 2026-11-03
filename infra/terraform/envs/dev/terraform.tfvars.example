@@ -29,3 +29,7 @@ budget_emails = ["you@example.com"]
 # compliance_emails = ["you+compliance@example.com"]
 # treasury_emails   = ["you+treasury@example.com"]
 # case_due_minutes  = 2   # test only: escalate after 2 minutes (default 240)
+
+# Exchange-rates Lambda (deploy-aws-terraform.mdx). It runs the securepay-apis
+# image that its Deploy workflow pushed to securepay-dev-apis.
+# apis_image_tag = "<short commit of securepay-apis>"

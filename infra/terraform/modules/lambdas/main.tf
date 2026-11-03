@@ -5,7 +5,8 @@
 #
 # Nothing here exists until image_tag is set, like the engine service: the
 # first apply creates the repository, the image is pushed, the next apply
-# creates the functions.
+# creates the functions. The exchange-rates Lambda runs another image
+# (securepay-apis) and lives in exchange_rates.tf.
 
 data "aws_region" "current" {}
 

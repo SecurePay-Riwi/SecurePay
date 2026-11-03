@@ -14,6 +14,10 @@ resource "aws_iam_openid_connect_provider" "github" {
 locals {
   github_oidc_arn = "arn:${local.aws}:iam::${local.account}:oidc-provider/token.actions.githubusercontent.com"
   repositories    = ["engine", "generator", "admin"]
+
+  # Lambdas that a data-source repository deploys with its own image; the
+  # SecurePay role does not touch them.
+  source_lambdas = toset(flatten([for deployer in values(var.source_deployers) : deployer.lambdas]))
 }
 
 data "aws_iam_policy_document" "deploy_trust" {
@@ -68,7 +72,7 @@ resource "aws_iam_role_policy" "deploy" {
       { Sid = "RegisterTaskDefinition", Effect = "Allow", Action = ["ecs:RegisterTaskDefinition", "ecs:DescribeTaskDefinition"], Resource = "*" }, # ECS does not scope registration
       { Sid = "DeployEngine", Effect = "Allow", Action = ["ecs:UpdateService", "ecs:DescribeServices"], Resource = "${local.arn.ecs}:service/${local.p}/engine" },
       { Sid = "RunMigrations", Effect = "Allow", Action = "ecs:RunTask", Resource = "${local.arn.ecs}:task-definition/${local.p}-admin:*" },
-      { Sid = "DeployLambdas", Effect = "Allow", Action = ["lambda:UpdateFunctionCode", "lambda:GetFunctionConfiguration"], Resource = [for name, _ in local.lambdas : "${local.arn.function}-${name}"] },
+      { Sid = "DeployLambdas", Effect = "Allow", Action = ["lambda:UpdateFunctionCode", "lambda:GetFunctionConfiguration"], Resource = [for name, _ in local.lambdas : "${local.arn.function}-${name}" if !contains(local.source_lambdas, name)] },
       {
         Sid       = "HandTaskRoles"
         Effect    = "Allow"
@@ -76,6 +80,67 @@ resource "aws_iam_role_policy" "deploy" {
         Resource  = [for name in ["engine-execution", "engine", "admin-execution", "admin"] : aws_iam_role.this[name].arn]
         Condition = { StringEquals = { "iam:PassedToService" = "ecs-tasks.amazonaws.com" } }
       },
+    ]
+  })
+}
+
+# One deploy role per data-source repository that ships its own image
+# (var.source_deployers): only its main branch may assume it, and it may
+# only push its image and update its own Lambdas. A shared role would let
+# that repository deploy the engine too.
+data "aws_iam_policy_document" "source_deploy_trust" {
+  for_each = var.source_deployers
+
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [local.github_oidc_arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values = [
+        "repo:${each.value.repository}:ref:refs/heads/main",
+        "${each.value.immutable_subject}:ref:refs/heads/main",
+      ]
+    }
+  }
+}
+
+resource "aws_iam_role" "source_deploy" {
+  for_each = var.source_deployers
+
+  name               = "${local.p}-deploy-${each.key}"
+  assume_role_policy = data.aws_iam_policy_document.source_deploy_trust[each.key].json
+
+  depends_on = [aws_iam_openid_connect_provider.github]
+}
+
+resource "aws_iam_role_policy" "source_deploy" {
+  for_each = var.source_deployers
+
+  name = "${local.p}-deploy-${each.key}"
+  role = aws_iam_role.source_deploy[each.key].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      local.ecr_token,
+      {
+        Sid      = "PushImage"
+        Effect   = "Allow"
+        Action   = ["ecr:BatchCheckLayerAvailability", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload", "ecr:PutImage", "ecr:BatchGetImage"]
+        Resource = "${local.arn.repository}-${each.key}"
+      },
+      { Sid = "DeployLambdas", Effect = "Allow", Action = ["lambda:UpdateFunctionCode", "lambda:GetFunctionConfiguration"], Resource = [for name in each.value.lambdas : "${local.arn.function}-${name}"] },
     ]
   })
 }

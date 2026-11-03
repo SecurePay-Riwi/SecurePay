@@ -104,8 +104,13 @@ module "ecr" {
   name_prefix  = local.name_prefix
   force_delete = true
 
-  # The consumers and the alerts task run the engine's image (HU-68).
-  lambda_repositories = ["engine"]
+  # apis: the securepay-apis image, pushed by that repository's deploy
+  # workflow (role deploy-apis).
+  repositories = ["engine", "generator", "admin", "apis"]
+
+  # The consumers and the alerts task run the engine's image (HU-68); the
+  # exchange-rates Lambda runs securepay-apis' image (HU-42).
+  lambda_repositories = ["engine", "apis"]
 }
 
 module "cache" {
@@ -201,6 +206,10 @@ module "lambdas" {
   evidence_retention_days   = "0.0035"
   case_due_minutes          = var.case_due_minutes
   log_retention_days        = 7
+
+  apis_repository_url  = module.ecr.repository_urls["apis"]
+  apis_image_tag       = var.apis_image_tag
+  exchange_rates_table = module.storage.exchange_rates_table
 }
 
 # The nightly reconciliation (HU-36): Step Functions at 02:00 Bogota, the

@@ -98,6 +98,12 @@ variable "lambda_image_tag" {
   default     = null
 }
 
+variable "apis_image_tag" {
+  description = "Tag of the securepay-apis image the exchange-rates Lambda runs (the short git commit its deploy workflow pushed). Unset: no exchange-rates Lambda yet."
+  type        = string
+  default     = null
+}
+
 variable "supervisor_emails" {
   description = "Receive the case escalations (audience = supervisor). Confirm the subscription from AWS's e-mail after each apply."
   type        = list(string)
