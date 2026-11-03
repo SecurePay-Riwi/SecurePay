@@ -1,0 +1,130 @@
+name: CI
+
+# Runs on every pull request to main: lint, the full test suite, a secret
+# scan and the Docker image build. Nothing here needs AWS. Habith's branch
+# protection on main requires the four jobs below (their names are the
+# check names): lint, secret-scan, tests, image.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.11.32"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Ruff
+        run: uv run --frozen ruff check --output-format=github .
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GITLEAKS_VERSION: "8.28.0"
+      GITLEAKS_SHA256: a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb
+    steps:
+      # The whole history: a secret removed in a later commit is still in git.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # The gitleaks binary (MIT); gitleaks-action needs a paid license for
+      # organization repositories.
+      - name: Install gitleaks
+        run: |
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum --check
+          tar -xzf gitleaks.tar.gz gitleaks
+          rm gitleaks.tar.gz
+
+      # Exit code 1 on any finding fails the build. A secret that was rotated
+      # goes to .gitleaksignore with its fingerprint.
+      - name: Scan the history for secrets
+        run: ./gitleaks git . --redact --no-banner --exit-code 1
+
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pagoseguro
+          POSTGRES_PASSWORD: pagoseguro
+          POSTGRES_DB: pagoseguro
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U pagoseguro"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      valkey:
+        image: valkey/valkey:8
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql://pagoseguro:pagoseguro@localhost:5432/pagoseguro
+      VALKEY_URL: redis://localhost:6379/0
+      VALKEY_CLUSTER: "false"
+    steps:
+      - name: Checkout SecurePay
+        uses: actions/checkout@v4
+        with:
+          path: SecurePay
+
+      - name: Checkout securepay-seed
+        uses: actions/checkout@v4
+        with:
+          repository: SecurePay-Riwi/securepay-seed
+          path: securepay-seed
+          ref: main
+
+      # PySpark (reconciliation match tests) needs a JVM.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Seed PostgreSQL
+        working-directory: securepay-seed
+        run: uv run --frozen python -m securepay_seed.seed
+
+      # Tests that need LocalStack skip themselves when it is not running.
+      - name: Pytest
+        working-directory: SecurePay
+        run: uv run --frozen pytest -ra
+
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Same flags as the deploy, so a PR that breaks the image fails here.
+      - name: Build the engine image
+        run: docker build --provenance=false -t securepay-engine:ci .
