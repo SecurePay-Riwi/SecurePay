@@ -31,10 +31,16 @@ data "aws_iam_policy_document" "deploy_trust" {
       values   = ["sts.amazonaws.com"]
     }
 
+    # GitHub sends the immutable form (owner and repository with their
+    # numeric ids) when the repository uses immutable subject claims, as
+    # SecurePay does; the name-only form stays for repositories without it.
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:ref:refs/heads/main"]
+      values = [
+        "repo:${var.github_repository}:ref:refs/heads/main",
+        "${var.github_immutable_subject}:ref:refs/heads/main",
+      ]
     }
   }
 }

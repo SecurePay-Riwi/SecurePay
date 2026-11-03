@@ -254,6 +254,8 @@ The engine publishes every decision to `securepay-dev-decisions`, which copies i
 
    Without this load the engine answers with default decisions and the restricted list test below returns `HOLD` instead of `REJECT`. Valkey keeps nothing when the cache is recreated, so run it again after a new `apply` that replaces the cache.
 
+   **Tested on AWS on November 3, 2026** (engine and Lambdas `7dd1ddb`, from `main` after MAG-356): after one `list-loader` run, `smoke-transaction.json` returned `APPROVE` without `by_default` and `restricted-transaction.json` returned `REJECT` with `restricted_list`, and the cases Lambda opened the case. The exchange-rates table was empty (nothing fills it in AWS yet), so the engine logged that and converted with the fixed snapshot.
+
 3. Send a withdrawal from an account whose owner is on the restricted list ([`restricted-transaction.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/envs/dev/restricted-transaction.json); the seed is deterministic, so the account is the same in every environment):
 
    ```powershell
@@ -417,7 +419,7 @@ Once the lock of the last uploaded version has passed, destroy everything and ty
 terraform destroy
 ```
 
-It ends with `Destroy complete! Resources: 214 destroyed` after step 8 with one treasury address (the 185 of the first `apply` plus the 29 of the Lambdas and the reconciliation). The Glue job and its files go with it. The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
+It ends with `Destroy complete! Resources: 219 destroyed` after steps 6 to 8 (measured on November 3, 2026: the 185 of the first `apply`, the 5 of the engine and the 29 of the Lambdas and the reconciliation; each extra e-mail address is one more). The Glue job and its files go with it. The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
 
 **Check that nothing is left.** This must print nothing:
 
@@ -443,9 +445,12 @@ Then in GitHub: **SecurePay → Settings → Secrets and variables → Actions �
 
 **Run it by hand** after an `apply`, to deploy what is already in `main`: **Actions → Deploy → Run workflow** (branch `main`). The job log ends with `Engine running ...` and one `... running ...` line per Lambda.
 
+**Tested on AWS on November 3, 2026.** With dev up but no image tags, the first run built `7dd1ddb`, pushed it to ECR and ended green with the notices "Engine not deployed" and "Lambda not deployed". After the `apply` with that tag, the second run reused the image (`Image 7dd1ddb is already in ECR.`), rolled out the engine service in 3 min 24 s without a rollback and updated the seven Lambdas in 1 min 25 s. Before the fix of the deploy role's trust (`github_immutable_subject`), "Get AWS credentials" failed with `Not authorized to perform sts:AssumeRoleWithWebIdentity`.
+
 | Situation | Result |
 | --- | --- |
 | Dev destroyed (the role does not exist) or the variable is not set | Green, with the notice "Nothing deployed" |
+| `Not authorized to perform sts:AssumeRoleWithWebIdentity` in "Get AWS credentials" (green, with the notice "Nothing deployed") | The token's `sub` does not match the role's trust. CloudTrail shows the one GitHub sent: `aws cloudtrail lookup-events --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRoleWithWebIdentity --max-results 1`; compare it with `github_immutable_subject` in `modules/iam` |
 | The image tag is already in ECR (a rerun of the same commit) | The image is reused; tags are immutable |
 | The service or a Lambda does not exist yet (no image tag in `terraform.tfvars`) | Green, with a notice for each one |
 | The new tasks fail their health checks | The ECS circuit breaker rolls back and the job fails with "Rollback" |
