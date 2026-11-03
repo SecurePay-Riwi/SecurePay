@@ -167,16 +167,16 @@ def test_an_approve_without_opens_case_opens_nothing(sessions):
     assert _cases(sessions) == []
 
 
-def test_a_splitting_approve_opens_a_compliance_case(sessions):
-    """Carried over from Sprint 3 (HU-15, MAG-131 / MAG-146): splitting
-    approves the transaction but opens a compliance case (RN-05)."""
-    event = _event(rules=("splitting",), decision="APPROVE", tx_type="P2P")
+def test_a_splitting_hold_opens_a_compliance_case(sessions):
+    """HU-15 / RN-05: splitting holds the transaction and opens a
+    compliance case (HOLD + case since sprint 6, D2; it was APPROVE)."""
+    event = _event(rules=("splitting",), decision="HOLD", tx_type="P2P")
 
     assert cases.handler(_batch(event)) == {"batchItemFailures": []}
 
     [case] = _cases(sessions)
     assert case.status == CaseStatus.OPEN.value
-    assert case.decision == "APPROVE"
+    assert case.decision == "HOLD"
     assert case.rules_triggered == ["splitting"]
     assert [e.type for e in _events(sessions, case.id)] == [CaseEventType.CREATED.value]
 

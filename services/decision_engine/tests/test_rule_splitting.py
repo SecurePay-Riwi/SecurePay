@@ -1,6 +1,7 @@
 """HU-15 / RN-05: splitting. 3 or more transactions from the same
 account in 24 hours, each below the daily limit (USD 10000), that
-together go over it, open a compliance case.
+together go over it, are held and open a compliance case (HOLD +
+case since sprint 6, D2).
 
 The unit tests build RuleContext and RuleEntry by hand. The last one
 needs the seed in PostgreSQL and Valkey (the API).
@@ -86,11 +87,11 @@ def test_three_adding_up_to_exactly_the_limit_do_not_fire():
     assert splitting.evaluate(ctx, _rule()) is None
 
 
-def test_three_going_over_the_limit_open_a_case():
+def test_three_going_over_the_limit_are_held_with_a_case():
     result = splitting.evaluate(_context((4000, 7), (4000, 3), (4450, 0)), _rule())
 
     assert result.rule == "splitting"
-    assert result.decision == Decision.APPROVE
+    assert result.decision == Decision.HOLD
     assert result.opens_case is True
     assert result.score == 40
     assert result.reason == (
@@ -188,7 +189,7 @@ def _withdrawal(account, amount_usd, date) -> dict:
     }
 
 
-def test_three_withdrawals_over_the_limit_are_approved_with_a_case(
+def test_three_withdrawals_over_the_limit_are_held_with_a_case(
     account, eventos_publicados
 ):
     # The generator's pattern: USD 3400 to 3900 at hours 0, 3 and 7.
@@ -204,7 +205,7 @@ def test_three_withdrawals_over_the_limit_are_approved_with_a_case(
 
     assert [d["opens_case"] for d in decisions] == [False, False, True]
     last = decisions[-1]
-    assert last["decision"] == "APPROVE"
+    assert last["decision"] == "HOLD"
     assert last["rules_triggered"] == ["splitting"]
     assert last["risk_score"] == 40
     assert last["decision_reason"].startswith("Splitting: 3 transactions in 24 hours")

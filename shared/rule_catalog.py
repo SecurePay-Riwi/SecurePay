@@ -166,7 +166,9 @@ DEFAULT_RULES = [
         code="splitting",
         type="splitting",
         rn="RN-05",
-        action="APPROVE",
+        # HOLD + case (team decision 2026-11-03, sprint 6 D2): with APPROVE
+        # whoever splits keeps moving money while nobody reviews.
+        action="HOLD",
         opens_case=True,
         score=40,
         params={"window_hours": 24, "min_transactions": 3, "daily_limit_usd": "10000"},
