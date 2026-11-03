@@ -228,7 +228,7 @@ The engine image goes to ECR tagged with the short git commit, the admin image (
 
 ## 7. Run the consumers and the alerts task as Lambdas
 
-The engine publishes every decision to `securepay-dev-decisions`, which copies it to three queues. Each queue has its Lambda: `securepay-dev-cases-consumer` and `-history-consumer` write to RDS from the application subnets, and `-analytics-consumer` writes the decisions to `raw/decisiones/` in the Data Lake from outside the VPC. `securepay-dev-alerts` runs every 5 minutes (EventBridge Scheduler): it escalates overdue cases to the supervisor, sends the restricted list summary to compliance, purges the 30-day history and retries the evidence. `securepay-dev-list-loader` copies accounts, merchants and the restricted list from RDS into the cache once a day at 01:00 Bogotá (HU-67). They run the engine image of step 6 with another command (`python -m awslambdaric <handler>`), and the consumers and the alerts task create the case tables in RDS the first time they write.
+The engine publishes every decision to `securepay-dev-decisions`, which copies it to three queues. Each queue has its Lambda: `securepay-dev-cases-consumer` and `-history-consumer` write to RDS from the application subnets, and `-analytics-consumer` writes the decisions to `raw/decisiones/` in the Data Lake from outside the VPC. `securepay-dev-alerts` runs every 5 minutes (EventBridge Scheduler): it escalates overdue cases to the supervisor, sends the restricted list summary to compliance, purges the 30-day history and retries the evidence. `securepay-dev-list-loader` copies accounts, merchants and the restricted list from RDS into the cache once a day at 01:00 Bogotá (HU-67). They run the engine image of step 6 with another command (`python -m awslambdaric <handler>`). Each Lambda that reaches RDS connects with its own database user and reads its own password from Parameter Store at startup; `securepay-dev-db-bootstrap`, which Terraform invokes during the apply, creates the tables, those users and their grants with the master user (see [Database users](../architecture/security.mdx#database-users)).
 
 1. If your Terraform user was created before November 2026, paste again the whole [`terraform-user-policy.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/terraform-user-policy.json) in its inline policy `securepay-terraform-iam` (step 2.3): it now also lets Terraform hand the roles to Lambda and to EventBridge Scheduler (statement `PassRolesToServices`, which now names the three services; the policy must stay under the 2,048 characters IAM allows inline).
 
@@ -243,7 +243,16 @@ The engine publishes every decision to `securepay-dev-decisions`, which copies i
    terraform apply
    ```
 
-   It must say `18 to add`: the 5 functions and their 5 log groups, the 3 queue mappings, the two schedules (alerts and cache loader), the alerts invoke settings, its error metric filter and its alarm. **Lambda → Functions** shows the five, "Image" package type. (From `main` today the same apply also creates step 8, so it says `29 to add`.)
+   It must say `21 to add`: the 6 functions and their 6 log groups, the `db-bootstrap` invocation, the 3 queue mappings, the two schedules (alerts and cache loader), the alerts invoke settings, its error metric filter and its alarm. **Lambda → Functions** shows the six, "Image" package type. (From `main` today the same apply also creates step 8, so it says `32 to add`.) If `db-bootstrap` fails, the apply fails with its error and nothing reads the queues.
+
+   Check that `db-bootstrap` created the five users, and that a Lambda's configuration has the name of its password parameter but no password:
+
+   ```powershell
+   terraform state show 'module.lambdas.aws_lambda_invocation.db_bootstrap[0]'
+   aws lambda get-function-configuration --function-name securepay-dev-cases-consumer --query "Environment.Variables"
+   ```
+
+   The first shows `result` with `"users": ["alerts", "cases_consumer", "history_consumer", "list_loader", "reconciliation"]`; the second shows `DATABASE_USER`, `DATABASE_PASSWORD_PARAMETER` = `/securepay/dev/rds/cases_consumer` and `CREATE_SCHEMA` = `false`, and no `DATABASE_URL`.
 
    Load the cache now instead of waiting for 01:00. It prints how many accounts, merchants and listed documents it wrote:
 
@@ -486,7 +495,7 @@ In the console, NAT gateways must show "Deleted", **EC2 → Elastic IPs** must b
 
 ## Automatic deploys from GitHub Actions
 
-Steps 6 and 7 build and push the image by hand. Once dev exists, `.github/workflows/deploy.yml` does the same on every merge to `main`: it assumes the role `securepay-dev-deploy` with GitHub's OIDC token (no AWS keys in GitHub; the role only trusts the `main` branch), pushes the engine image to `securepay-dev-engine` tagged with the short commit, registers a new revision of the engine task definition with that image, rolls out the ECS service `engine` and updates the seven Lambdas of steps 7 and 8. Terraform still creates and destroys the environment.
+Steps 6 and 7 build and push the image by hand. Once dev exists, `.github/workflows/deploy.yml` does the same on every merge to `main`: it assumes the role `securepay-dev-deploy` with GitHub's OIDC token (no AWS keys in GitHub; the role only trusts the `main` branch), pushes the engine image to `securepay-dev-engine` tagged with the short commit, registers a new revision of the engine task definition with that image, rolls out the ECS service `engine`, updates and runs `db-bootstrap` (a new image may need new tables or grants), and then updates the seven Lambdas of steps 7 and 8. Terraform still creates and destroys the environment.
 
 **Once:** create the repository variable with the role ARN (anyone with admin access to the repository). Get the ARN:
 
@@ -507,6 +516,7 @@ Then in GitHub: **SecurePay → Settings → Secrets and variables → Actions �
 | The image tag is already in ECR (a rerun of the same commit) | The image is reused; tags are immutable |
 | The service or a Lambda does not exist yet (no image tag in `terraform.tfvars`) | Green, with a notice for each one |
 | The new tasks fail their health checks | The ECS circuit breaker rolls back and the job fails with "Rollback" |
+| `db-bootstrap` returns an error | The job fails with "db-bootstrap failed" before touching the other Lambdas, which keep their old image; its log is `/aws/lambda/securepay-dev-db-bootstrap` |
 
 **securepay-apis** has the same workflow for its own image: on every merge to its `main` it assumes `securepay-dev-deploy-apis` (it only trusts the `main` branch of securepay-apis, and may only push to `securepay-dev-apis` and update `securepay-dev-exchange-rates`), pushes the image tagged with the short commit and updates the exchange-rates Lambda. It needs its own repository variable: `AWS_DEPLOY_ROLE_ARN` in **securepay-apis → Settings → Secrets and variables → Actions → Variables**, with the ARN of `aws iam get-role --role-name securepay-dev-deploy-apis --query Role.Arn --output text`. The SecurePay workflow does not touch that Lambda.
 
@@ -531,5 +541,7 @@ A later `terraform apply` puts back the image tag of `terraform.tfvars` in the e
 | `curl` gets `503` with `idempotencia` | The engine cannot reach the cache | Check that `VALKEY_CLUSTER` is `true` in the task definition and the cache is "Available" |
 | `terraform apply` fails creating a Lambda with `image manifest, config or layer media type ... is not supported` | The image was built without `--provenance=false` | Build again with `--provenance=false` and a new commit (tags are immutable), set the new tag and apply |
 | `not authorized to perform: iam:PassRole` creating a Lambda or the schedule | The Terraform user lacks `lambda.amazonaws.com` or `scheduler.amazonaws.com` in `PassRolesToServices` | Paste again the whole `terraform-user-policy.json` (step 7.1) |
+| `terraform apply` fails on `aws_lambda_invocation.db_bootstrap` | `db-bootstrap` could not reach RDS or Parameter Store, or a SQL statement failed | `aws logs tail /aws/lambda/securepay-dev-db-bootstrap` shows the cause. The apply can be run again: the bootstrap is idempotent |
+| A Lambda logs `permission denied for table ...` or `for sequence ...` | Its database user lacks a grant its code needs | Add it in `services/db_bootstrap/grants.py` (and a test), build a new image and apply: the new tag runs `db-bootstrap` again |
 | No e-mail arrives from the alerts task | The subscription is still "Pending confirmation" | Click the link of the confirmation e-mail (also check spam), or **SNS → Subscriptions → Request confirmation** |
 | `AccessDenied ... protected by object lock` on `destroy` | A test object is still locked | Wait until its retain-until date and run `destroy` again |

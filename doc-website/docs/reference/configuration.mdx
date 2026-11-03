@@ -23,6 +23,12 @@ The AWS variables (`AWS_ENDPOINT_URL`, `AWS_DEFAULT_REGION` and the fake keys) a
 | Variable | Example | What it does |
 | :--- | :--- | :--- |
 | `DATABASE_URL` | `postgresql://pagoseguro:pagoseguro@localhost:5433/pagoseguro` | PostgreSQL connection for what runs on your machine (pytest, the seed). Port 5433 for the Compose database, 5432 for an installed one (the `.env.example` default). The containers ignore it and use `postgres:5432`. |
+| `DATABASE_USER` | `cases_consumer` | AWS only. When set, `DATABASE_URL` is ignored and the URL is built from this user, the password read from `DATABASE_PASSWORD_PARAMETER` and the variables below (MAG-361, [Database users](../architecture/security.mdx#database-users)). |
+| `DATABASE_PASSWORD_PARAMETER` | `/securepay/dev/rds/cases_consumer` | AWS only. Name of the Parameter Store `SecureString` with the user's password; the component's role may read only its own. |
+| `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME` | RDS endpoint, `5432`, `securepay` | AWS only. Where the database is. |
+| `DATABASE_SSLMODE` | `require` | AWS only. TLS mode of that connection; RDS requires TLS. Only the tests against a local PostgreSQL set `disable`. |
+| `CREATE_SCHEMA` | `true` | `false` in AWS: `db-bootstrap` creates the tables there and the components skip `create_schema()`, which needs to own the tables. |
+| `DATABASE_PARAMETER_PATH` | `/securepay/dev/rds` | `db-bootstrap` only: parent path of the component passwords it gives to each user. |
 
 ## Seed
 
@@ -72,7 +78,7 @@ In `SecurePay` (`services/rules_api/`). It uses `DATABASE_URL` (its tables `rule
 
 ## Cases
 
-In `SecurePay`: the cases API (`services/cases_api/`), the consumers and the alerts task (`services/alerts/`). All three use `DATABASE_URL` and create the case tables at startup. See [Cases](../components/cases.mdx).
+In `SecurePay`: the cases API (`services/cases_api/`), the consumers and the alerts task (`services/alerts/`). All three use `DATABASE_URL` and create the case tables at startup (in AWS, `db-bootstrap` creates them and `CREATE_SCHEMA=false`). See [Cases](../components/cases.mdx).
 
 | Variable | Default | What it does |
 | :--- | :--- | :--- |
