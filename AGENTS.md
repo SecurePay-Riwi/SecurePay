@@ -280,6 +280,14 @@ Pages: `doc-website/docs/components/analytics.mdx` and
   --kaggle`). Views `q2`/`q3` show the latest catalog version per label
   source. `metrics.py` imports the replay only inside functions: the
   ETL does not need the engine.
+- **Simulation (HU-24):** `simulate.py` replays one day (plus
+  `WARMUP_DAYS` before it, from `raw/decisiones` in plain Python, or the
+  Kaggle rows) with the current catalog and a candidate and compares
+  them (`changed`, `changes`, `released_usd`, `examples`). The rules API
+  runs it in `POST /rules/simulations` through
+  `services/rules_api/simulation.py` (imports inside the function, the
+  only analytics import of the API); one day only (`422` for a range),
+  never writes rules, versions or Valkey.
 - **Labels (C4):** the generator's `generated/instance-<n>/labels.jsonl`
   is copied to `raw/labels/fecha=<day>/` (`python -m
   services.analytics.labels`). Kaggle rows: `transacciones` has no dataset
@@ -553,7 +561,9 @@ Read this before adding or changing a rule in `services/decision_engine/`.
   commit it publishes `{rules}:catalog` and `{rules}:version` in one
   script that never replaces a newer version; at startup it publishes
   the latest again (Valkey has no persistence in Compose). The engine
-  never imports the API and the API never imports the engine.
+  never imports the API; the API reaches the engine's rule code only
+  through the simulation route (`simulation.py` → `services.analytics`,
+  contract C5).
 - **Account history lives in Valkey and is shared by every rule**
   (`history.py`). Do not create another per-rule key:
   - `out:{account}`: what leaves the account (`P2P`, `QR`, `RETIRO`),

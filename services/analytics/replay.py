@@ -12,7 +12,7 @@ Exchange rates: whatever services.decision_engine.currency has loaded;
 without a table, the engine's fixed 2026-10-01 rates (as in its tests).
 
 Nobody outside services/analytics/ imports this module; the rules API
-only inside its simulation route (HU-24).
+only inside its simulation route (HU-24, through simulate.py).
 """
 
 import json

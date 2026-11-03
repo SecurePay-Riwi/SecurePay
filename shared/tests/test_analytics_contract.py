@@ -114,9 +114,11 @@ def test_spark_schema_follows_the_table():
 
 
 def test_only_analytics_imports_the_replay():
-    """C5: nobody outside services/analytics/ imports replay.py (the rules
-    API will, inside its simulation route only, with HU-24)."""
+    """C5: nobody outside services/analytics/ imports the analytics code,
+    the replay included, except the rules API's simulation route (HU-24,
+    services/rules_api/simulation.py) and tests."""
+    allowed = ROOT / "services" / "rules_api" / "simulation.py"
     for path in (ROOT / "services").rglob("*.py"):
-        if "analytics" in path.parts:
+        if "analytics" in path.parts or "tests" in path.parts or path == allowed:
             continue
-        assert "services.analytics.replay" not in path.read_text(encoding="utf-8"), path
+        assert "services.analytics" not in path.read_text(encoding="utf-8"), path

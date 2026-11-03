@@ -101,7 +101,7 @@ Sprint 6: `python -m services.analytics` (the ETL to the dimensional model and t
 
 | Variable | Default | What it does |
 | :--- | :--- | :--- |
-| `ANALYTICS_DATA_DIR` | `generated/analytics` | Root of the analytics lake in local runs (`raw/labels/`, `curated/decisiones/`, `analytics/<table>/`, `views/`), ignored by git. In AWS, `s3://<datalake bucket>`. |
+| `ANALYTICS_DATA_DIR` | `generated/analytics` | Root of the analytics lake in local runs (`raw/labels/`, `curated/decisiones/`, `analytics/<table>/`, `views/`), ignored by git. In AWS, `s3://<datalake bucket>`. The rules API reads `raw/decisiones` and `raw/labels` under it for `POST /rules/simulations` (Compose: `s3://pagoseguro-datalake` in LocalStack). |
 | `ANALYTICS_EXPORT_DAYS` | `30` | Days of cases and reconciliation differences the PostgreSQL export writes to `raw/cases/` and `raw/reconciliation/`. |
 | `LABELS_SOURCE` | `../securepay-generator/generated/instance-0/labels.jsonl` | The generator's labels file that `python -m services.analytics.labels` copies to `raw/labels/fecha=<day>/`. |
 | `ATHENA_WORKGROUP` | `securepay-dev-analytics` | Athena workgroup of the views (results in `s3://<datalake>/athena-results/`). |

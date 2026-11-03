@@ -6,7 +6,7 @@ No database or Valkey needed: it only reads /openapi.json.
 from fastapi.testclient import TestClient
 
 from services.rules_api.main import app
-from services.rules_api.schemas import RuleChange
+from services.rules_api.schemas import RuleChange, Simulation, SimulationRequest
 from shared.rule_catalog import CatalogSnapshot, RuleEntry
 
 # Not `with`: the lifespan (database) does not run.
@@ -24,6 +24,7 @@ EXPECTED = {
     ("get", "/rules/versions/{version}"): ["200", "400", "404", "503"],
     ("post", "/rules/versions/{version}/activate"): ["200", "400", "404", "503"],
     ("post", "/rules/publish"): ["200", "503"],
+    ("post", "/rules/simulations"): ["200", "400", "404", "422", "503"],
 }
 
 
@@ -39,7 +40,8 @@ def test_every_status_code_is_documented():
         for method, op in ops.items()
     }
 
-    # FastAPI's automatic 422 is never answered: invalid input is 400.
+    # FastAPI's automatic 422 is never answered: invalid input is 400
+    # (only a simulation over a range answers 422).
     assert documented == EXPECTED
 
 
@@ -59,3 +61,8 @@ def test_examples_are_valid():
         ("post", "/rules/{code}/disable", "200"),
     ]:
         RuleChange.model_validate(_example(method, path, status))
+    Simulation.model_validate(_example("post", "/rules/simulations", "200"))
+    request = _paths()["/rules/simulations"]["post"]["requestBody"]["content"][
+        "application/json"
+    ]["example"]
+    SimulationRequest.model_validate(request)
