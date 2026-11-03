@@ -14,7 +14,7 @@ Each record follows the same format: context, decision, alternatives considered 
 | [ADR-02](#adr-02) | Fargate for the engine, Lambda for everything else | Accepted |
 | [ADR-03](#adr-03) | High-frequency state lives in ElastiCache Serverless for Valkey | Accepted, with checkpoint |
 | [ADR-04](#adr-04) | Messaging is SNS fanned out to three SQS queues | Accepted |
-| [ADR-05](#adr-05) | Spark jobs run on EMR Serverless | Accepted |
+| [ADR-05](#adr-05) | Spark jobs run on AWS Glue 6.0 (was EMR Serverless) | Accepted, amended 2026-11-02 |
 | [ADR-06](#adr-06) | Managed services instead of the self-managed stack in the assignment | Accepted |
 | [ADR-07](#adr-07) | The engine's autoscaling maximum goes from 12 to 24 tasks | Proposed |
 | [ADR-08](#adr-08) | Private subnets go out through NAT Gateway, not VPC endpoints | Accepted, validated with the professor |
@@ -69,9 +69,9 @@ Each record follows the same format: context, decision, alternatives considered 
 
 **Consequences.** All three queues receive the full volume ($31.10/month for SQS). In exchange, each consumer fails and recovers on its own, and SQS absorbs the 300 tx/s peak without slowing the engine. Implemented locally in Sprint 1: see [Messaging](../components/messaging.mdx).
 
-## ADR-05 — Spark jobs run on EMR Serverless {/* #adr-05 */}
+## ADR-05 — Spark jobs run on AWS Glue 6.0 (was EMR Serverless) {/* #adr-05 */}
 
-**Status:** Accepted · **Date:** 2026-10-02
+**Status:** Accepted, amended 2026-11-02 · **Date:** 2026-10-02
 
 **Context.** Five distributed data jobs: Data Lake ETL, daily reconciliation (hard deadline at 07:00), rule effectiveness, shared device network and rule version simulation. The team has no previous Spark experience.
 
@@ -80,6 +80,8 @@ Each record follows the same format: context, decision, alternatives considered 
 **Alternatives.** Spark in containers on Fargate: ~30% cheaper per compute hour, but needs a custom Spark image and manual temp storage. AWS Glue ETL: a minimum charge per run that punishes short jobs. EC2 Spot: cheapest, but can be reclaimed with 2 minutes' notice, unacceptable against the 07:00 deadline.
 
 **Consequences.** A premium per compute hour in exchange for weeks of work the team does not have. Job durations are not measured yet, so the $7.50/month is provisional.
+
+**Amendment (2026-11-02, Sprint 5, MAG-236).** EMR Serverless is not available on AWS's free account plan, which the team's account uses: `CreateApplication` fails with `SubscriptionRequiredException`. AWS Glue is available, so the Spark jobs run on **AWS Glue 6.0** (Spark 4.1.1, Python 3.13, the same Spark as the `pyspark` 4.1.x pin). The reconciliation is the first job: `infra/spark/match_job.py` runs `match.main` unchanged, Step Functions waits for it with `glue:startJobRun.sync`, and Terraform zips the code itself, so no custom image is needed. Glue's minimum charge per run (1 minute, USD 0.308 per DPU-hour, two G.1X workers) costs about a cent a night for a job of a couple of minutes, which removes the objection above. The other four jobs follow the same pattern when they are built. Design pages that still show EMR Serverless (infrastructure, overview, costs) describe the original plan and are updated with those jobs. Step by step: [Deploy to AWS, step 8](../getting-started/deploy-aws-terraform.mdx#8-run-the-nightly-reconciliation).
 
 ## ADR-06 — Managed services instead of the self-managed stack in the assignment {/* #adr-06 */}
 

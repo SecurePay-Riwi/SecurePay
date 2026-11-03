@@ -142,7 +142,7 @@ def save(session, day: date, rows: list[MatchRow], counts: dict, now: datetime) 
 def handler(event, context=None) -> dict:  # Step Functions step 3
     """event = what ingest returned (day, files_read, records, rejected).
     create_schema() on the first call (cold start); match_path =
-    match_dir(RECON_DATA_DIR, day); matched counted from the rows (EMR's
+    match_dir(RECON_DATA_DIR, day); matched counted from the rows (Glue's
     output does not reach Step Functions) -> load_rows + save."""
     global _schema_ready
     event = event or {}
