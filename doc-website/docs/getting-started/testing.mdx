@@ -144,6 +144,8 @@ docker build --provenance=false -t securepay-engine:ci .                        
 
 `ruff check --fix` fixes what it can by itself. The commit that formatted the whole repository is in `.git-blame-ignore-revs`; run `git config blame.ignoreRevsFile .git-blame-ignore-revs` once so `git blame` skips it. If gitleaks flags a real key, rotate it first (it is already in the history); only then add the fingerprint it prints to `.gitleaksignore`. The CI test job has no LocalStack, so the tests that need it are skipped there; run them locally with `docker compose up -d`.
 
+The source repositories (`securepay-seed`, `securepay-generator`, `securepay-csv`, `securepay-apis`) run `lint`, `secret-scan` and `tests` on every pull request too. From the root of each one: `uv run ruff format .`, `uv run ruff check .` and `uv run pytest` ([Contributing](../contributing.mdx#ci-of-the-source-repositories)).
+
 ## Conventions
 
 - Each rule's fraud pattern has a **control case** that sits just on the side that must *not* trigger the rule. If the engine flags a control case, the engine is wrong.

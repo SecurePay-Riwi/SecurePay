@@ -105,6 +105,18 @@ Branches that already exist keep their names. There is no `develop` branch: bran
 
 Evidence of a blocked merge (E-09): [PR #88](https://github.com/SecurePay-Riwi/SecurePay/pull/88), a pull request with a lint error on purpose, closed without merging.
 
+### CI of the source repositories
+
+The four source repositories (`securepay-seed`, `securepay-generator`, `securepay-csv` and `securepay-apis`) have their own `.github/workflows/ci.yml`, the same checks as SecurePay without the ones that only apply here (no image, no Terraform, no deploy: they only produce data). It runs on every pull request to `main` and on every push to `main`:
+
+| Job | What it does | Fails when |
+| --- | --- | --- |
+| `lint` | `uv run ruff check .` and `uv run ruff format --check .`, with the same rules as SecurePay (`[tool.ruff]` in each `pyproject.toml`) | Ruff finds an error or a file is not formatted |
+| `secret-scan` | gitleaks 8.28.0 over the whole git history | Any commit holds something that looks like a key, token or password |
+| `tests` | `uv run pytest` | A test fails. They need no PostgreSQL, internet or LocalStack; the LocalStack ones skip themselves |
+
+Before pushing to one of them, from its root: `uv run ruff format .`, `uv run ruff check .` and `uv run pytest`.
+
 ### DAG validation
 
 The project has no Airflow DAGs: the nightly reconciliation is a Step Functions state machine with an AWS Glue job ([ADR-05](./architecture/decisions.mdx), `infra/terraform/modules/reconciliation`). The `tests` job checks that pipeline instead of a DAG:
