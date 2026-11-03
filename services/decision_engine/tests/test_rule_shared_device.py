@@ -5,7 +5,7 @@ The unit tests build RuleContext and RuleEntry by hand. The last ones
 need Valkey (record_device) and the seed in PostgreSQL (the API).
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -26,7 +26,7 @@ from shared.db import get_session
 from shared.models import Cuenta, ListaRestrictiva, Usuario
 from shared.rule_catalog import RuleEntry, default_catalog
 
-BASE = datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc)
+BASE = datetime(2026, 10, 13, 12, 0, tzinfo=UTC)
 DAY_MS = 24 * 3600 * 1000
 
 client = TestClient(app)
@@ -180,7 +180,7 @@ def _withdrawal(account, device_id, date) -> dict:
 
 
 def test_fourth_account_on_a_device_raises_the_risk_score(accounts, device):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     decisions = []
     for i, account in enumerate(accounts):
         response = client.post(

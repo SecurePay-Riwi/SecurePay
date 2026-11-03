@@ -5,7 +5,7 @@ Valkey; the engine reads them and evaluates each enabled rule with its
 parameters. Not part of the published securepay-shared package.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -157,7 +157,7 @@ def default_catalog() -> CatalogSnapshot:
     """Catalog used until the rules API publishes one (version 0)."""
     return CatalogSnapshot(
         version=0,
-        created_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+        created_at=datetime(2026, 10, 1, tzinfo=UTC),
         author="code",
         rules=DEFAULT_RULES,
     )

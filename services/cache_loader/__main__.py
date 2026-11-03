@@ -23,7 +23,7 @@ def main() -> None:
     wait = threading.Event()
 
     # PostgreSQL may still be starting with the rest of the stack.
-    for attempt in range(30):
+    for _ in range(30):
         try:
             loader.handler()
             return

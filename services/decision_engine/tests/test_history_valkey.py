@@ -1,22 +1,22 @@
 """Per-account history (history.py) and the velocity rule that counts
 over it (rules/velocity.py)."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
 import valkey
 
 from services.decision_engine import history
-from services.decision_engine.rules import velocity
 from services.decision_engine.history import (
-    to_ms,
+    incoming,
     incoming_key,
     outgoing_key,
-    incoming,
     record_incoming,
     record_outgoing,
+    to_ms,
 )
+from services.decision_engine.rules import velocity
 from services.decision_engine.rules.velocity import max_in_window
 from shared.cache import get_cache
 from shared.rule_catalog import VelocityParams
@@ -27,7 +27,7 @@ WINDOW_MS = WINDOW * 60 * 1000
 LIMIT = VelocityParams().limit
 
 
-BASE = datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc)
+BASE = datetime(2026, 10, 13, 12, 0, tzinfo=UTC)
 
 
 def minuto(m):

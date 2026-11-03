@@ -5,7 +5,7 @@ than 30 minutes, are held and open a case.
 Needs the seed loaded in PostgreSQL and Valkey.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -13,9 +13,9 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func
 
-from services.decision_engine.rules import mule
 from services.decision_engine.history import Incoming
 from services.decision_engine.main import app
+from services.decision_engine.rules import mule
 from shared.cache import get_cache
 from shared.config import MONEDA_DECIMALES
 from shared.db import get_session
@@ -116,9 +116,9 @@ def _receive(accounts, minutes, senders=None):
     the sender at the same position in `senders` (default: one each)."""
     mule_account, others = accounts[0], accounts[1:]
     senders = senders or others
-    base = datetime.now(timezone.utc)
+    base = datetime.now(UTC)
 
-    for sender, m in zip(senders, minutes):
+    for sender, m in zip(senders, minutes, strict=False):
         decision = _post(_transfer(sender, mule_account, 100, base + timedelta(minutes=m)))
         assert decision["decision"] == "APPROVE"
     return base
@@ -194,7 +194,7 @@ def test_moving_the_money_by_p2p_is_not_a_withdrawal(accounts):
 
 def test_velocity_hold_does_not_open_a_case(accounts):
     sender, receiver = accounts[1], accounts[0]
-    base = datetime.now(timezone.utc)
+    base = datetime.now(UTC)
 
     decisions = [
         _post(_transfer(sender, receiver, 1, base + timedelta(minutes=m)))

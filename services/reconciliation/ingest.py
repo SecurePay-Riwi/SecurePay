@@ -11,9 +11,19 @@ import logging
 import re
 from datetime import UTC, date, datetime, timedelta
 
-from services.reconciliation import RECON_DATA_DIR, STATEMENTS_SOURCE, records_dir, storage
+from services.reconciliation import (
+    RECON_DATA_DIR,
+    STATEMENTS_SOURCE,
+    records_dir,
+    storage,
+)
 from services.reconciliation.parsers import READERS
-from shared.reconciliation import PARTNER_UTC_OFFSET, RejectedRow, StatementRecord, to_json
+from shared.reconciliation import (
+    PARTNER_UTC_OFFSET,
+    RejectedRow,
+    StatementRecord,
+    to_json,
+)
 
 log = logging.getLogger(__name__)
 

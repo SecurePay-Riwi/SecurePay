@@ -13,11 +13,16 @@ securepay-csv, which writes these files (AGENTS.md, rule 4).
 
 import csv
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
 from shared.config import MONEDA_DECIMALES
-from shared.reconciliation import PARTNER_UTC_OFFSET, Partner, RejectedRow, StatementRecord
+from shared.reconciliation import (
+    PARTNER_UTC_OFFSET,
+    Partner,
+    RejectedRow,
+    StatementRecord,
+)
 
 
 class LineError(ValueError):
@@ -90,7 +95,7 @@ def _time(text: str, fmt: str, zone: timezone) -> datetime:
         local = datetime.strptime(text.strip(), fmt)
     except ValueError:
         raise LineError("date is not valid") from None
-    return local.replace(tzinfo=zone).astimezone(timezone.utc)
+    return local.replace(tzinfo=zone).astimezone(UTC)
 
 
 def _required(value: str, name: str) -> str:
@@ -232,7 +237,7 @@ class BancoAndino(Reader):
         return self._record(
             file_name, number, statement_day, reference=reference, partner_reference=bank_ref,
             tx_type="RECARGA", currency=currency, amount=_amount(amount, currency),
-            at=_time(at, "%Y-%m-%dT%H:%M:%SZ", timezone.utc),
+            at=_time(at, "%Y-%m-%dT%H:%M:%SZ", UTC),
         )
 
 
@@ -319,7 +324,7 @@ class QrPagos(Reader):
         return self._record(
             file_name, number, statement_day, reference=reference, partner_reference=qr_ref,
             tx_type="QR", currency=currency, amount=_minor_units(units, currency),
-            at=_time(at, "%Y-%m-%d %H:%M:%S", timezone.utc),
+            at=_time(at, "%Y-%m-%d %H:%M:%S", UTC),
         )
 
 

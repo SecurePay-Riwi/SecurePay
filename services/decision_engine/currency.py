@@ -22,7 +22,7 @@ import logging
 import os
 import threading
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from boto3.dynamodb.types import TypeDeserializer
@@ -71,7 +71,7 @@ _thread: threading.Thread | None = None
 
 def utc_day(moment: datetime) -> date:
     """The day of a transaction: its date in UTC."""
-    return moment.astimezone(timezone.utc).date()
+    return moment.astimezone(UTC).date()
 
 
 def parse_items(items: list[dict]) -> dict[date, dict[str, Decimal]]:
@@ -229,5 +229,5 @@ def to_usd(amount: Decimal, currency: str, on: date | None = None) -> Decimal:
     """The amount in USD at the rate of day `on` (today in UTC if not
     given), rounded to cents."""
     if on is None:
-        on = datetime.now(timezone.utc).date()
+        on = datetime.now(UTC).date()
     return convert(amount, rate_for(currency, on))

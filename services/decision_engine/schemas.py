@@ -95,7 +95,7 @@ class TransactionRequest(BaseModel):
             try:
                 normalizado = valor.quantize(unidad)
             except InvalidOperation:
-                raise ValueError(f"{campo} no es un valor válido.")
+                raise ValueError(f"{campo} no es un valor válido.") from None
 
             if normalizado != valor:
                 raise ValueError(

@@ -5,9 +5,9 @@ says; the small files written here cover each format and each bad line.
 """
 
 import io
-from pathlib import Path
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from pathlib import Path
 from uuid import uuid4
 
 import pytest

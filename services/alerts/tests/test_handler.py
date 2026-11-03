@@ -6,7 +6,6 @@ No database needed: the jobs and the session are replaced.
 from datetime import datetime
 
 import pytest
-
 from sqlalchemy.exc import OperationalError
 
 from services.alerts import account_history, compliance_summary, escalation, handler

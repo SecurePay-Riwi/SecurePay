@@ -6,7 +6,7 @@ The unit tests build RuleContext and RuleEntry by hand. The last one
 needs the seed in PostgreSQL and Valkey (the API).
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -26,7 +26,7 @@ from shared.db import get_session
 from shared.models import Cuenta, ListaRestrictiva, Usuario
 from shared.rule_catalog import default_catalog
 
-BASE = datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc)
+BASE = datetime(2026, 10, 13, 12, 0, tzinfo=UTC)
 
 client = TestClient(app)
 
@@ -173,7 +173,7 @@ def _withdrawal(account, amount_usd, date) -> dict:
 
 def test_three_withdrawals_over_the_limit_are_approved_with_a_case(account, eventos_publicados):
     # The generator's pattern: USD 3400 to 3900 at hours 0, 3 and 7.
-    base = datetime.now(timezone.utc)
+    base = datetime.now(UTC)
     decisions = []
     for amount, hours in ((3500, 0), (3600, 3), (3700, 7)):
         response = client.post(

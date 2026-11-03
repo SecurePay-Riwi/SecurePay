@@ -66,7 +66,7 @@ def test_partner_day_needs_a_time_zone():
 
 def test_age_ranges_cover_every_day():
     assert [label for label, *_ in AGE_RANGES] == ["0-1", "2-7", "8+"]
-    for (_, _, high), (_, low, _) in zip(AGE_RANGES, AGE_RANGES[1:]):
+    for (_, _, high), (_, low, _) in zip(AGE_RANGES, AGE_RANGES[1:], strict=False):
         assert low == high + 1
     assert AGE_RANGES[-1][2] is None
 

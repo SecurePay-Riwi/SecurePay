@@ -3,8 +3,16 @@ import logging
 from contextlib import asynccontextmanager
 
 import valkey
-from fastapi import Body, FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
+from services.decision_engine import currency, publisher, security_events
+from services.decision_engine.decision_service import (
+    InvalidReference,
+    process_transaction,
+)
 from services.decision_engine.docs.app import APP
 from services.decision_engine.docs.health import HEALTH
 from services.decision_engine.docs.security import (
@@ -12,6 +20,7 @@ from services.decision_engine.docs.security import (
     SECURITY_REQUEST_EXAMPLES,
 )
 from services.decision_engine.docs.transactions import EVALUATE, REQUEST_EXAMPLES
+from services.decision_engine.idempotency import EnProceso, IdReutilizado
 from services.decision_engine.schemas import (
     HealthResponse,
     SecurityEventRequest,
@@ -19,16 +28,6 @@ from services.decision_engine.schemas import (
     TransactionRequest,
     TransactionResponse,
 )
-from services.decision_engine.decision_service import (
-    InvalidReference,
-    process_transaction,
-)
-from services.decision_engine import currency, publisher, security_events
-from services.decision_engine.idempotency import EnProceso, IdReutilizado
-from fastapi import Request
-from fastapi.encoders import jsonable_encoder
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
 
 logging.basicConfig(
     level=logging.INFO,

@@ -17,7 +17,6 @@ from services.decision_engine.idempotency import (
 )
 from shared.cache import get_cache
 
-
 RESULTADO = {"decision": "APPROVE", "decision_reason": "Prueba"}
 
 

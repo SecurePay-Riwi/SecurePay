@@ -15,10 +15,10 @@ import threading
 
 from sqlalchemy.exc import OperationalError
 
+from services.consumers import analytics, cases, history
 from shared import db
 from shared.aws import cliente
 from shared.cases import create_schema
-from services.consumers import analytics, cases, history
 
 log = logging.getLogger("services.consumers")
 

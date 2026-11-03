@@ -1,6 +1,6 @@
 
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from threading import Barrier
 from time import perf_counter
@@ -9,13 +9,11 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 from sqlalchemy import func
 
+from services.decision_engine import catalog, currency, publisher
 from services.decision_engine import idempotency as idem
-from services.decision_engine import publisher
-from services.decision_engine import catalog
-from services.decision_engine import currency
 from services.decision_engine.main import app
-from services.decision_engine.schemas import TransactionRequest
 from services.decision_engine.publisher import MARCA_FALLA, Publicador
+from services.decision_engine.schemas import TransactionRequest
 from shared.cache import get_cache
 from shared.db import get_session
 from shared.models import (
@@ -25,7 +23,6 @@ from shared.models import (
     ListaRestrictiva,
     Usuario,
 )
-
 
 client = TestClient(app)
 
@@ -100,7 +97,7 @@ def _payload_qr(cuenta: Cuenta, amount: str | None = None) -> dict:
             "destination_balance_before": None,
             "destination_balance_after": None,
             "device_id": str(dispositivo.dispositivo_id),
-            "transaction_date": datetime.now(timezone.utc).isoformat(),
+            "transaction_date": datetime.now(UTC).isoformat(),
         }
     finally:
         session.close()
@@ -360,7 +357,7 @@ def _decisiones(payloads: list[dict]) -> list[str]:
 
 
 def _minutos(*minutos) -> list[datetime]:
-    base = datetime.now(timezone.utc)
+    base = datetime.now(UTC)
     return [base + timedelta(minutes=m) for m in minutos]
 
 
@@ -530,7 +527,7 @@ def test_decision_stored_before_rules_fields_is_still_replayed():
         "transaction_id": payload["id"],
         "decision": "APPROVE",
         "decision_reason": "Decisión vieja.",
-        "processed_at": datetime.now(timezone.utc).isoformat(),
+        "processed_at": datetime.now(UTC).isoformat(),
     })
 
     response = client.post("/transactions", json=payload)
@@ -696,7 +693,7 @@ def test_restricted_list_precheck_covers_all_parties_before_velocity(monkeypatch
         destination_balance_before="100.00",
         destination_balance_after="110.00",
         device_id=uuid4(),
-        transaction_date=datetime.now(timezone.utc),
+        transaction_date=datetime.now(UTC),
     )
 
     result = decision_service._decide(payload, catalog.current())

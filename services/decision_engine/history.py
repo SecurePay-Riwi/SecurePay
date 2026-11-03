@@ -121,7 +121,7 @@ def record(key, member, date, retention_ms, return_history):
 
 def _pairs(raw):
     """Valkey's reply alternates member and score."""
-    return zip(raw[0::2], raw[1::2])
+    return zip(raw[0::2], raw[1::2], strict=True)
 
 
 def record_outgoing(account_id, tx_id, tx_type, amount, date) -> list[Outgoing]:

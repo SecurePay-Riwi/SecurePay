@@ -2,7 +2,7 @@
 it. Unit tests: no PostgreSQL, Valkey or LocalStack.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -22,7 +22,7 @@ from shared.rule_catalog import (
     default_catalog,
 )
 
-BASE = datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc)
+BASE = datetime(2026, 10, 13, 12, 0, tzinfo=UTC)
 
 
 def _snapshot(*entries: RuleEntry, version: int = 7) -> CatalogSnapshot:
