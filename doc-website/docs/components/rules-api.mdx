@@ -55,9 +55,23 @@ The versions are immutable, so the answer is the same years later. `GET /rules/v
 | `GET` | `/rules/versions/{version}` | The whole catalog of one version | `200`, `404` |
 | `POST` | `/rules/versions/{version}/activate` | A new version with the rules of an old one | `200`, `404` |
 | `POST` | `/rules/publish` | Publishes the latest version to Valkey again | `200`, `503` |
+| `POST` | `/rules/simulations` | Replays one day of the history with a candidate catalog and compares it with the current one (or `against_version`); writes nothing (HU-24) | `200`, `400`, `404`, `422` |
 | `GET` | `/health` | Up, with its database | `200`, `503` |
 
-Every endpoint answers `503` when PostgreSQL is down, and `400` with `{"detail", "errors"}` for invalid input (the same format as the engine). `params` are validated against the rule `type` in `shared/rule_catalog.py`; `versions` and `publish` are not valid codes.
+Every endpoint answers `503` when PostgreSQL is down, and `400` with `{"detail", "errors"}` for invalid input (the same format as the engine). `params` are validated against the rule `type` in `shared/rule_catalog.py`; `versions`, `publish` and `simulations` are not valid codes.
+
+## Simulating a version (HU-24)
+
+`POST /rules/simulations` tries a catalog before activating it: `{"day", "candidate", "against_version"?}`, where `candidate` is a whole `CatalogSnapshot` or its list of rules. The route replays the transactions of `day` from the lake (`raw/decisiones` under `ANALYTICS_DATA_DIR`, plus the day before so the 24-hour history starts full) with the engine's own rules in memory, once per catalog, and answers the decisions, cases and rule metrics of each side, how many transactions change (`changes`, e.g. `{"HOLD->APPROVE": 2}`), the money the candidate would let through (`released_usd`) or stop (`stopped_usd`) and up to 10 examples. It never writes a rule or a version and never publishes to Valkey (`test_simulations.py` checks it). One day at a time (decision D5): `from`/`to` give `422`. `account_takeover` does not fire in a simulation: device and password changes are not in the lake.
+
+The route is the only part of the API that imports analytics code (`simulation.py` → `services.analytics.simulate`, inside the function, contract C5), and with it the engine's rule modules; the code is described on the [Analytics](./analytics.mdx#simulating-a-rule-version-hu-24) page.
+
+```bash
+# The demo of D2: splitting back to APPROVE (the version before sprint 6) against the current HOLD
+curl -X POST localhost:8002/rules/simulations -H 'Content-Type: application/json' \
+  -d '{"day": "2026-10-05", "candidate": [...the rules, splitting with "action": "APPROVE"...]}'
+# {"changed": 2, "changes": {"HOLD->APPROVE": 2}, "released_usd": "7324.67", ...}
+```
 
 ```bash
 # Hold the third transfer in 10 minutes instead of the sixth
@@ -74,4 +88,4 @@ curl localhost:8002/rules/versions?limit=1
 
 ## Run locally
 
-Needs PostgreSQL and Valkey. With Docker Compose: `docker compose up --build -d rules-api`.
+Needs PostgreSQL and Valkey (and the lake in LocalStack for the simulations). With Docker Compose: `docker compose up --build -d rules-api`.

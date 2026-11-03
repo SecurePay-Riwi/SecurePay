@@ -99,6 +99,7 @@ levanta por separado:
 | Generar los extractos de los socios | `uv run python -m securepay_csv.partner_statements` (en `securepay-csv`) | Salida del generador (paso 9 o 12) | 13 |
 | Conciliar un día con los socios | `uv run python -m services.reconciliation --day 2026-10-05` | PostgreSQL; los extractos (paso 13) y las decisiones en LocalStack | 13b |
 | Construir la analítica de un día | `uv run python -m services.analytics --day 2026-10-05` | Java 17+; las decisiones (LocalStack o `--raw`) | 13c |
+| Simular una versión de reglas sobre un día | `uv run python -m services.analytics.simulate --day 2026-10-05 --candidate candidate.json` (o `POST /rules/simulations` en la API de reglas) | PostgreSQL con el seed; las decisiones del día (`--raw`) | 13c |
 | Medir las reglas contra la historia etiquetada | `uv run python -m services.analytics.metrics --kaggle` (o `--events` y `--labels` del generador) | PostgreSQL con el seed (y su ETL de Kaggle para `--kaggle`) | 13c |
 | Levantar el servicio de listas restrictivas | `uv run uvicorn securepay_apis.restricted_list.main:app --port 8001` (en `securepay-apis`) | El archivo que exporta el seed | 14 |
 | Consultar las tasas de cambio | `uv run python -m securepay_apis.exchange_rates` (en `securepay-apis`) | Internet | 15 |
@@ -593,6 +594,24 @@ uv run python -m services.analytics.metrics \
     --events ../securepay-generator/generated/instance-0/events.jsonl \
     --labels ../securepay-generator/generated/instance-0/labels.jsonl
 ```
+
+Simulate a rule version before activating it (HU-24): the day is
+replayed with the current catalog and with `candidate.json` (a
+`CatalogSnapshot` or its list of rules), and the output says how many
+decisions change and how much money the candidate would let through.
+Nothing is written. The rules API does the same in
+`POST /rules/simulations`, one day at a time.
+
+``` bash
+uv run python -m services.analytics.simulate --day 2026-10-05 \
+    --candidate candidate.json --raw services/analytics/tests/fixtures \
+    --reference services/analytics/tests/fixtures \
+    --security services/analytics/tests/fixtures/security_events.jsonl
+```
+
+Over the fixture day, with splitting back to `APPROVE` in
+`candidate.json`: `"changed": 2`, `"changes": {"HOLD->APPROVE": 2}`,
+`"released_usd": "7324.67"`.
 
 Detalles: páginas
 [Analytics](https://securepay-riwi.github.io/SecurePay/docs/components/analytics) y

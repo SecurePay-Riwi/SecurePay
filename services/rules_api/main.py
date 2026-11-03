@@ -18,13 +18,15 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from sqlalchemy.exc import OperationalError
 
-from services.rules_api import docs, publisher, store
+from services.rules_api import docs, publisher, simulation, store
 from services.rules_api.schemas import (
     Health,
     Published,
     RuleChange,
     RuleCreate,
     RuleUpdate,
+    Simulation,
+    SimulationRequest,
     VersionPage,
     VersionSummary,
 )
@@ -33,7 +35,9 @@ from shared.rule_catalog import ALWAYS_ENABLED, CatalogSnapshot, RuleEntry
 logger = logging.getLogger(__name__)
 
 # Paths under /rules that a rule code would hide.
-RESERVED_CODES = {"versions", "publish"}
+RESERVED_CODES = {"versions", "publish", "simulations"}
+
+ONE_DAY = "A simulation covers one day (D5): send day, not from and to."
 
 INVALID = "The request contains invalid rule data."
 
@@ -60,11 +64,14 @@ _default_openapi = app.openapi
 
 def openapi() -> dict:
     """FastAPI documents a 422 for every endpoint with input, but invalid
-    input gets 400 here (validation_exception_handler)."""
+    input gets 400 here (validation_exception_handler). Only a 422 that
+    docs.py documents stays (a simulation over a range)."""
     schema = _default_openapi()
     for operations in schema["paths"].values():
         for operation in operations.values():
-            operation["responses"].pop("422", None)
+            answer = operation["responses"].get("422", {})
+            if answer.get("description") == "Validation Error":
+                operation["responses"].pop("422")
     return schema
 
 
@@ -243,6 +250,25 @@ def publish_latest():
     except valkey.exceptions.ValkeyError as exc:
         raise HTTPException(status_code=503, detail="Valkey is not available.") from exc
     return Published(version=snapshot.version, published=True)
+
+
+@app.post("/rules/simulations", response_model=Simulation, **docs.SIMULATE)
+def simulate_catalog(body: SimulationRequest):
+    """Replay one day with the candidate and with the current catalog (or
+    against_version) and compare them (HU-24). Never writes rules,
+    versions or Valkey."""
+    if body.day is None or body.from_ is not None or body.to is not None:
+        raise HTTPException(status_code=422, detail=ONE_DAY)
+    if body.against_version is None:
+        current = store.latest()
+    else:
+        current = store.version(body.against_version)
+        if current is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Catalog version {body.against_version} does not exist.",
+            )
+    return simulation.run(body.day, current, body.candidate)
 
 
 @app.get("/rules/{code}", response_model=RuleEntry, **docs.GET_RULE)

@@ -273,3 +273,110 @@ PUBLISH = {
         ),
     },
 }
+
+SPLITTING_APPROVE = {
+    **DEFAULT_RULES[4].model_dump(mode="json"),
+    "action": "APPROVE",
+}
+
+SIMULATION_EXAMPLE = {
+    "day": "2026-10-05",
+    "transactions": 34,
+    "current": {
+        "rules_version": "1",
+        "decisions": {"APPROVE": 27, "HOLD": 5, "REJECT": 2},
+        "cases": 5,
+        "amount_usd": {"APPROVE": "15914.27", "HOLD": "8355.70", "REJECT": "75.07"},
+        "metrics": [
+            {
+                "rule": "splitting",
+                "label_source": "generator",
+                "hits": 2,
+                "true_positives": 2,
+                "false_positives": 0,
+                "precision": "1.0000",
+                "false_positive_rate": "0.0000",
+                "rule_version": 1,
+                "rules_version": "1",
+            }
+        ],
+    },
+    "candidate": {
+        "rules_version": "candidate",
+        "decisions": {"APPROVE": 29, "HOLD": 3, "REJECT": 2},
+        "cases": 5,
+        "amount_usd": {"APPROVE": "23238.94", "HOLD": "1031.03", "REJECT": "75.07"},
+        "metrics": [],
+    },
+    "changed": 2,
+    "changes": {"HOLD->APPROVE": 2},
+    "released_usd": "7324.67",
+    "stopped_usd": "0.00",
+    "examples": [
+        {
+            "transaction_id": "6143631e-facf-5849-903d-367643704736",
+            "type": "RETIRO",
+            "amount": "3700.00",
+            "currency": "USD",
+            "amount_usd": "3700.00",
+            "current": {
+                "decision": "HOLD",
+                "rules_triggered": ["splitting"],
+                "opens_case": True,
+                "risk_score": 40,
+            },
+            "candidate": {
+                "decision": "APPROVE",
+                "rules_triggered": ["splitting"],
+                "opens_case": True,
+                "risk_score": 40,
+            },
+        }
+    ],
+}
+
+SIMULATE = {
+    "summary": "Simulate a catalog over one day of the history",
+    "description": (
+        "Replays the transactions of `day` (and the day before, so the "
+        "24-hour history starts full) with the engine's own rules, once "
+        "with `candidate` and once with the current catalog (or "
+        "`against_version`), and compares them: decisions, cases, the rule "
+        "metrics against the labels, how many transactions change and how "
+        "much money the candidate would let through (`released_usd`). "
+        "`candidate` is a whole catalog or its list of rules. Nothing is "
+        "written: no rule, no catalog version, nothing published to Valkey. "
+        "One day at a time (D5): a range gives 422. The transactions come "
+        "from the lake's `raw/decisiones` (`ANALYTICS_DATA_DIR`); device "
+        "and password changes are not there, so `account_takeover` does "
+        "not fire in a simulation."
+    ),
+    "tags": ["Simulations"],
+    "openapi_extra": {
+        "requestBody": {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "day": "2026-10-05",
+                        "candidate": [
+                            r.model_dump(mode="json")
+                            if r.code != "splitting"
+                            else SPLITTING_APPROVE
+                            for r in DEFAULT_RULES
+                        ],
+                    }
+                }
+            }
+        }
+    },
+    "responses": {
+        200: _ok("Both catalogs over the day, and what changes.", SIMULATION_EXAMPLE),
+        400: INVALID,
+        404: NO_VERSION,
+        422: _error(
+            "A range instead of one day.",
+            "A simulation covers one day (D5): send day, not from and to.",
+        ),
+        503: DB_DOWN,
+    },
+}
