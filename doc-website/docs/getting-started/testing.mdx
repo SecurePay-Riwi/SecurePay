@@ -129,7 +129,7 @@ Every pull request to `main` runs the same checks in GitHub Actions (`.github/wo
 ```bash
 uv run ruff format --check .                          # format (ruff format . fixes it)
 uv run ruff check .                                   # lint
-docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.28.0 git /repo --redact   # secret scan
+docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.28.0 git /repo --log-opts="HEAD" --redact   # secret scan
 uv run pytest                                          # tests (steps 1 and 2 above first)
 docker build --provenance=false -t securepay-engine:ci .                         # image
 ```
