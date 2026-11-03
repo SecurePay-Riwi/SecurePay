@@ -404,3 +404,95 @@ There is no order yet; we have a list of what the client wants:
 - PR #56 merged: the rules API; rules are created, changed, enabled, disabled and versioned in PostgreSQL, and the engine reads the live catalog from Valkey, keeping the last valid one if Valkey fails (HU-19 to HU-22, Yulianis; storage in PostgreSQL, Habith).
 - PR #57 merged: each decision records the version of every rule that decided it (`rule_versions`), with an end-to-end test from the rules API to the engine (HU-23, Habith).
 - Sprint 3 closed with nine of ten stories done. HU-15 (splitting) moves to Sprint 4: the rule is merged, but the compliance case it must open is created by the cases consumer (HU-25). See the [Sprint 3 backlog](./product-backlog/sprint-backlog-3.mdx).
+- PR #59 merged: this site brought up to date with Sprint 3 (PRs #51 to #57), and the Sprint 4, 5 and 6 backlogs filled from Jira.
+
+---
+
+**10/31/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Sprint 4 start: cases and compliance  
+
+**Description:**  
+- PR #60 merged ("step 0"): the case contract in the code first: the case tables and states in `shared/cases.py`, the cases API and the alerts task skeletons, the evidence archive and `amount_usd` in every decision (Habith).
+- PR #61 merged: the cases consumer opens one case for every decision with `opens_case`, which closes HU-15's compliance case (HU-25, Habith).
+- PR #62 merged: a restricted list hit writes one compliance report per listed owner, sent to compliance in one summary (HU-34, RN-06, Habith).
+- PR #63 merged: the 30-day account history in PostgreSQL, written by the history consumer and read by `GET /accounts/{account_id}/transactions` (HU-28, Habith).
+- PR #64 merged: the accounts related to an account through a shared device (HU-29, Habith).
+
+---
+
+**11/01/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Sprint 4 stories merged and Sprint 5 start  
+
+**Description:**  
+- PRs #65 and #66 merged: the engine image on ECR and the engine on ECS Fargate behind a load balancer, with the Valkey cluster client for ElastiCache Serverless (HU-57, Jorge).
+- PR #67 merged: immutable case evidence in S3 with Object Lock, kept 10 years (HU-32, RN-12, Jorge).
+- PR #68 merged: the analysts' case inbox, assignment and resolution (HU-26, HU-27, HU-30, Yulianis).
+- PR #69 merged: the suspicious operations report in JSON and CSV (HU-35, Yulianis).
+- PR #70 merged: test fixes for Windows and for the full stack (Jorge).
+- PR #71 merged: a case not resolved in 4 hours is escalated to the supervisor by the alerts task (HU-31, RN-09, Jorge).
+- PR #72 merged: Sprint 4 closed on this site; every story is in `main`.
+- PR #73 merged ("step 0" of Sprint 5): the reconciliation contract in the code first (`shared/reconciliation.py`, the fixture day), the rate fields of the decision and the cache key names (Habith).
+
+---
+
+**11/02/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Sprint 5 stories merged: reconciliation, exchange rates and CI/CD  
+
+**Description:**  
+- PR #74 merged: the engine reads accounts, merchants and the restricted list from Valkey, loaded once a day from PostgreSQL by the cache loader; it no longer reads the database (HU-67, Habith).
+- PR #75 merged: the consumers and the alerts task deployed as Lambdas (HU-68, Jorge).
+- PR #76 merged: each decision uses the exchange rate of the transaction's day, loaded from DynamoDB (HU-42, RN-11, Habith).
+- PR #77 merged: cases and the account history keep the original amount, the USD amount and the rate used (HU-43, RN-11, Habith).
+- PR #78 merged: the reconciliation match by reference, amount and date in Spark (HU-37, RN-10, Habith).
+- PR #79 merged: the readers of the four partner statement formats (HU-36, Jorge).
+- PR #80 merged: the differences missing at the partner, missing at PagoSeguro and in the amount, with their age, for treasury (HU-38 to HU-41, Yulianis).
+- PR #81 merged: the nightly reconciliation in AWS: Step Functions at 02:00 Bogotá and the Spark job on AWS Glue, because EMR is not available on the free account plan (HU-36, Jorge). PR #83 amends ADR-05 from EMR to Glue.
+- PR #82 merged: the backup folders left from the repository split removed (Jorge).
+- PR #84 merged: the application CI/CD pipeline: lint, secret scan, tests and image on every PR, and the deploy to AWS with OIDC (HU-65, Jorge).
+- PR #86 merged: the cache loader Lambda and the exchange rates table in AWS; the temporary engine-to-RDS rule removed (MAG-356, Jorge).
+- PR #87 merged: an end-to-end test of the reconciliation: ingest, match and store (Habith).
+- PR #89 merged: `main` is protected; a PR needs the lint, secret scan, tests, image and Terraform checks to merge (HU-65, Habith).
+
+---
+
+**11/03/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Sprint 6 analytics stories merged  
+
+**Description:**  
+- PR #90 merged: the GitHub OIDC trust of the deploy role uses GitHub's immutable subject, with the guide to test the deploy in AWS (MAG-246, Jorge).
+- PR #91 merged ("step 0"): the analytics contract in the code first: the lake layers and the dimensional model in `shared/analytics.py`, the Spark ETL in `services/analytics/`, view `q1`, the labels, the engine's replay in memory and the fixture day. Splitting now holds and opens a case (decision D2) (Habith).
+- PR #92 merged: precision and false positives per rule (view `q2`) and fraud detected against missed per pattern (view `q3`), measured in Python over a replay and in Spark over the lake (HU-44 to HU-46, Habith).
+- PR #93 merged: `POST /rules/simulations` and `python -m services.analytics.simulate` replay one day with a candidate catalog and compare it with the current one, without writing anything. Over the fixture day, splitting back to `APPROVE` lets USD 7,324.67 through (HU-24, Habith).
+- PR #94 merged: the CI of the four source repositories on the Contributing and Testing pages (MAG-246).

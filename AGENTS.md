@@ -151,7 +151,7 @@ stop and ask instead of working around it.
 
 ---
 
-## Sprint state (as of 2026-11-02)
+## Sprint state (as of 2026-11-03)
 
 ### Sprint 1 — Done ✅
 - Seed + generator + Kaggle ETL + partner statements + exchange rates + restricted list API
@@ -217,7 +217,7 @@ HU-58 moved to Sprint 6. Backlog: `doc-website/docs/product-backlog/sprint-backl
 | HU-65 | MAG-246 | Application CI/CD pipeline | Jorge |
 
 ### Sprint 6 — In progress (Analytics + Closure)
-"Step 0" (branch `feature/MAG-245-analytics-step-0`) puts the analytics
+"Step 0" (PR #91) puts the analytics
 contract in the code first: `shared/analytics.py` (C1, C2),
 `services/analytics/` (ETL, the decisions' builder, view `q1`, the empty
 builders and export of Yulianis, labels, replay and metrics), the fixture
@@ -225,14 +225,14 @@ day, `history.use_backend()` and `reference_data.use_source()`, splitting
 to `HOLD` + case (D2) and `new_differences` in the reconciliation (D8).
 Plan: https://claude.ai/artifact/Xz8cuN9u3epB5Nyt5QXqBY.
 
-| HU | Jira | Description | Owner |
-|----|------|-------------|-------|
-| HU-44, HU-45, HU-46 | MAG-296..298 | Precision, false positives (view q2) and fraud detected vs missed (view q3) per rule | Habith |
-| HU-24 | MAG-245 | Simulate a rule version over the history | Habith |
-| HU-51, HU-52, HU-47 | MAG-303, MAG-304, MAG-299 | Cases (q4), reconciliation (q5), device risk | Yulianis |
-| HU-48 → HU-50, HU-53 | MAG-300..302, MAG-305 | Power BI pages (q1, q2, q3, q6) | Yulianis |
-| HU-66, HU-58 | MAG-247, MAG-244 | Data CI/CD; EKS vs Fargate | Jorge |
-| HU-59, HU-60, HU-61 | MAG-306..308 | Metrics and alarms; load test; final costs and runbook | Jorge |
+| HU | Jira | Description | Owner | PR |
+|----|------|-------------|-------|----|
+| HU-44, HU-45, HU-46 | MAG-296..298 | Precision, false positives (view q2) and fraud detected vs missed (view q3) per rule | Habith | #92 |
+| HU-24 | MAG-245 | Simulate a rule version over the history | Habith | #93 |
+| HU-51, HU-52, HU-47 | MAG-303, MAG-304, MAG-299 | Cases (q4), reconciliation (q5), device risk | Yulianis | — |
+| HU-48 → HU-50, HU-53 | MAG-300..302, MAG-305 | Power BI pages (q1, q2, q3, q6) | Yulianis | — |
+| HU-66, HU-58 | MAG-247, MAG-244 | Data CI/CD; EKS vs Fargate | Jorge | — |
+| HU-59, HU-60, HU-61 | MAG-306..308 | Metrics and alarms; load test; final costs and runbook | Jorge | — |
 
 ---
 
