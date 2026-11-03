@@ -24,15 +24,10 @@ locals {
     cache         = "arn:${local.aws}:elasticache:${local.region}:${local.account}:serverlesscache:${local.p}-cache"
     cache_user    = "arn:${local.aws}:elasticache:${local.region}:${local.account}:user:${local.p}"
     state_machine = "arn:${local.aws}:states:${local.region}:${local.account}:stateMachine:${local.p}"
-    firehose      = "arn:${local.aws}:firehose:${local.region}:${local.account}:deliverystream/${local.p}"
     ecs           = "arn:${local.aws}:ecs:${local.region}:${local.account}"
     glue          = "arn:${local.aws}:glue:${local.region}:${local.account}"
     athena        = "arn:${local.aws}:athena:${local.region}:${local.account}:workgroup/${local.p}"
     role          = "arn:${local.aws}:iam::${local.account}:role/${local.p}"
-    # The EMR Serverless application id is only known once it exists; until
-    # then the roles are scoped to the applications of this account.
-    emr_app     = "arn:${local.aws}:emr-serverless:${local.region}:${local.account}:/applications/*"
-    emr_job_run = "arn:${local.aws}:emr-serverless:${local.region}:${local.account}:/applications/*/jobruns/*"
   }
 
   bucket = {
@@ -58,14 +53,6 @@ locals {
     list-loader         = true
     statement-reader    = false
     difference-writer   = true
-  }
-
-  pass_emr_role = {
-    Sid       = "PassRoleToEmrJob"
-    Effect    = "Allow"
-    Action    = "iam:PassRole"
-    Resource  = "${local.arn.role}-emr-jobs"
-    Condition = { StringEquals = { "iam:PassedToService" = "emr-serverless.amazonaws.com" } }
   }
 
   ecr_token = {

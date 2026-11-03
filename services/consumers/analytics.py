@@ -8,9 +8,11 @@ Si SQS entrega un mensaje dos veces, la línea queda repetida en raw: la
 capa raw guarda lo que llegó sin tocarlo y la curated elimina duplicados
 por id de transacción.
 
-En AWS la escritura pasará por Kinesis Data Firehose, que junta objetos
-de ~5 MB (bitácora, pregunta Q7): un objeto por lote serían 13 millones de
-PUT al mes. En local se escribe directo en S3.
+In AWS the queue mapping sends batches of up to 1,000 decisions (or what
+arrives in 60 seconds), so each S3 object is big: batches of 10 would be
+~13 million PUTs a month. Firehose was planned for this, but it is not on
+AWS's free plan (modules/lambdas, analytics_batch_size). Locally the runner
+keeps batches of 10.
 """
 
 import json

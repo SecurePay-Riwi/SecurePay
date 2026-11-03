@@ -91,6 +91,23 @@ variable "consumer_max_concurrency" {
   default     = 5
 }
 
+variable "analytics_batch_size" {
+  description = "Decisions per analytics batch, written as one S3 object (Firehose is not on the free plan). A batch above 10 needs a batching window; Lambda sends fewer when the batch passes 6 MB."
+  type        = number
+  default     = 1000
+
+  validation {
+    condition     = var.analytics_batch_size >= 1 && var.analytics_batch_size <= 10000
+    error_message = "A standard SQS queue allows batches of 1 to 10000."
+  }
+}
+
+variable "analytics_batching_window_seconds" {
+  description = "Longest wait to fill an analytics batch. The queues' visibility timeout must cover 6 x timeout_seconds plus this."
+  type        = number
+  default     = 60
+}
+
 variable "memory_mb" {
   description = "Memory of every Lambda (logbook 3.11: 512 MB)."
   type        = number
@@ -98,7 +115,7 @@ variable "memory_mb" {
 }
 
 variable "timeout_seconds" {
-  description = "Timeout of every Lambda here. The queues' visibility timeout must be at least this."
+  description = "Timeout of every Lambda here. The queues' visibility timeout must be at least this (AWS recommends 6 x this, plus the analytics batching window)."
   type        = number
   default     = 60
 }
