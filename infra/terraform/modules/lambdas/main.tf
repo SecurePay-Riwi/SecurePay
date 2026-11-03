@@ -1,4 +1,5 @@
-# The consumers and the alerts task as Lambdas (HU-68). They run the same
+# The consumers, the alerts task, the cache loader and the reconciliation
+# steps as Lambdas (HU-68, HU-67, HU-36). They run the same
 # image as the engine: awslambdaric is the entry point and the command is
 # the handler that already exists, so there is no Lambda-only code.
 #
@@ -60,6 +61,17 @@ locals {
       in_vpc      = true
       queue       = null
       environment = merge(local.database, { RECON_DATA_DIR = "s3://${var.datalake_bucket}" })
+    }
+    # Copies accounts, merchants and the restricted list from PostgreSQL
+    # into the cache once a day (HU-67); the engine never reads PostgreSQL.
+    list-loader = {
+      command = "services.cache_loader.loader.handler"
+      in_vpc  = true
+      queue   = null
+      environment = merge(local.database, {
+        VALKEY_URL     = var.cache_url
+        VALKEY_CLUSTER = "true"
+      })
     }
   }
 
@@ -159,6 +171,29 @@ resource "aws_scheduler_schedule" "alerts" {
 
     retry_policy {
       maximum_retry_attempts = 0
+    }
+  }
+}
+
+# The cache loader once a day. The keys live REFDATA_TTL_HOURS (48 h), so a
+# failed night still leaves a day of margin; Scheduler retries it twice and
+# the load is safe to run again.
+resource "aws_scheduler_schedule" "list_loader" {
+  count = local.deploy ? 1 : 0
+
+  name                = "${var.name_prefix}-list-loader"
+  schedule_expression = var.list_loader_schedule
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_lambda_function.this["list-loader"].arn
+    role_arn = var.role_arns["scheduler"]
+
+    retry_policy {
+      maximum_retry_attempts = 2
     }
   }
 }

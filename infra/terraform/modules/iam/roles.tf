@@ -115,6 +115,7 @@ locals {
       service = "lambda.amazonaws.com"
       statements = [
         { Sid = "CacheWithIam", Effect = "Allow", Action = "elasticache:Connect", Resource = [local.arn.cache, "${local.arn.cache_user}-list-loader"] },
+        { Sid = "DatabasePassword", Effect = "Allow", Action = "ssm:GetParameter", Resource = "${local.arn.parameter}/rds/list_loader" },
       ]
     }
 
@@ -223,20 +224,10 @@ locals {
     } if !in_vpc
   }
 
-  # Temporary, with security_groups.engine_reads_database: ECS hands the
-  # engine its DATABASE_URL while the engine still reads PostgreSQL.
-  temporary_database_url = {
-    Sid      = "TemporaryDatabaseUrl"
-    Effect   = "Allow"
-    Action   = "ssm:GetParameters"
-    Resource = "${local.arn.parameter}/rds/master-url"
-  }
-
   policies = {
     for name, role in local.roles : name => concat(
       role.statements,
-      contains(keys(local.lambda_logs), name) ? [local.lambda_logs[name]] : [],
-      name == "engine-execution" && var.engine_reads_database ? [local.temporary_database_url] : []
+      contains(keys(local.lambda_logs), name) ? [local.lambda_logs[name]] : []
     )
   }
 }

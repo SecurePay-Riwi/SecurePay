@@ -35,9 +35,20 @@ variable "queue_arns" {
 }
 
 variable "database_url" {
-  description = "DATABASE_URL of the cases, history, alerts and difference-writer Lambdas. Temporary: the master user in dev (security.mdx, Encryption and secrets)."
+  description = "DATABASE_URL of the cases, history, alerts, difference-writer and list-loader Lambdas. Temporary: the master user in dev (security.mdx, Encryption and secrets)."
   type        = string
   sensitive   = true
+}
+
+variable "cache_url" {
+  description = "VALKEY_URL of the cache, for the cache loader (list-loader)."
+  type        = string
+}
+
+variable "list_loader_schedule" {
+  description = "When the cache loader copies the reference data into the cache (UTC; 01:00 Bogota, before the 02:00 reconciliation)."
+  type        = string
+  default     = "cron(0 6 * * ? *)"
 }
 
 variable "business_alerts_topic_arn" {
