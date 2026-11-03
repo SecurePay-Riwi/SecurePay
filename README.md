@@ -377,7 +377,10 @@ Detalle en Docusaurus (Contributing y Testing).
 
 Cada repo de fuentes corre sus propias pruebas con `uv run pytest` y
 ninguna necesita servicios, internet ni los CSV reales (las de integración
-con LocalStack se omiten si no está levantado).
+con LocalStack se omiten si no está levantado). Cada uno tiene también su
+`.github/workflows/ci.yml` (`lint`, `secret-scan` y `tests`, sin deploy) con
+las mismas reglas de ruff: antes de un PR, `uv run ruff format .`,
+`uv run ruff check .` y `uv run pytest` en la raíz de ese repo.
 
 PostgreSQL: el proyecto instala **Psycopg 3** (`psycopg[binary]`) y
 `shared/db.py` fuerza ese controlador (`postgresql+psycopg://`) aunque tu

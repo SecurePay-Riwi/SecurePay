@@ -690,6 +690,10 @@ every repository in the SecurePay-Riwi organization.
   (`.github/workflows/ci.yml`: jobs `lint`, `secret-scan`, `tests`, `image`, `terraform`)
   runs the same on the PR and must be green to merge. Do not add per-file
   ruff ignores for someone else's code; fix it or ask.
+- **Source repositories:** each has its own `.github/workflows/ci.yml`
+  (`lint`, `secret-scan`, `tests`, no deploy) with SecurePay's ruff rules;
+  run `uv run ruff format .`, `uv run ruff check .` and `uv run pytest`
+  there before a PR.
 
 ---
 
