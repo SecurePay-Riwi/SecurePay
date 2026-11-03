@@ -446,6 +446,7 @@ Then in GitHub: **SecurePay → Settings → Secrets and variables → Actions �
 | Situation | Result |
 | --- | --- |
 | Dev destroyed (the role does not exist) or the variable is not set | Green, with the notice "Nothing deployed" |
+| `Not authorized to perform sts:AssumeRoleWithWebIdentity` in "Get AWS credentials" (green, with the notice "Nothing deployed") | The token's `sub` does not match the role's trust. CloudTrail shows the one GitHub sent: `aws cloudtrail lookup-events --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRoleWithWebIdentity --max-results 1`; compare it with `github_immutable_subject` in `modules/iam` |
 | The image tag is already in ECR (a rerun of the same commit) | The image is reused; tags are immutable |
 | The service or a Lambda does not exist yet (no image tag in `terraform.tfvars`) | Green, with a notice for each one |
 | The new tasks fail their health checks | The ECS circuit breaker rolls back and the job fails with "Rollback" |
