@@ -406,7 +406,7 @@ The engine converts each amount to USD with the rate of its day, which it reads 
 
    `rates.json` says `{"date": "<day>"}` (the last day Frankfurter published; on weekends, Friday) and the scan returns that day with `COP`, `EUR`, `JPY` and `USD`. The engine loads the table when it starts and every hour, so it uses the new day within the hour.
 
-**Tested on AWS on November 3, 2026** (securepay-apis image `f055943`, built and pushed by hand, with the partial apply below): the run returned `{"date": "2026-11-03"}` and the table got that day with `COP` 3206.84, `EUR` 0.89316, `JPY` 158.01 and `USD` 1, with the Frankfurter URL as `source`. The first run failed with `AccessDeniedException ... dynamodb:BatchWriteItem`: the code writes with a batch and the role only allowed `PutItem`, so the role now allows both.
+**Tested on AWS on November 3, 2026** (securepay-apis image `f055943`, built and pushed by hand, with the partial apply below): the run returned `{"date": "2026-11-03"}` and the table got that day with `COP` 3206.84, `EUR` 0.89316, `JPY` 158.01 and `USD` 1, with the Frankfurter URL as `source`. The first run failed with `AccessDeniedException ... dynamodb:BatchWriteItem`: the code writes with a batch and the role only allowed `PutItem`, so the role now allows both. The partial apply created 88 resources plus the 3 of the Lambda, and `terraform destroy` removed the 91.
 
 **Only this Lambda, without the rest of dev.** The function depends only on ECR, IAM and the table, so it can be tested without RDS, NAT, the cache or Fargate, for cents and in a few minutes:
 
