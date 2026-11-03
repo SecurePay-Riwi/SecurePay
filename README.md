@@ -99,6 +99,7 @@ levanta por separado:
 | Generar los extractos de los socios | `uv run python -m securepay_csv.partner_statements` (en `securepay-csv`) | Salida del generador (paso 9 o 12) | 13 |
 | Conciliar un día con los socios | `uv run python -m services.reconciliation --day 2026-10-05` | PostgreSQL; los extractos (paso 13) y las decisiones en LocalStack | 13b |
 | Construir la analítica de un día | `uv run python -m services.analytics --day 2026-10-05` | Java 17+; las decisiones (LocalStack o `--raw`) | 13c |
+| Medir las reglas contra la historia etiquetada | `uv run python -m services.analytics.metrics --kaggle` (o `--events` y `--labels` del generador) | PostgreSQL con el seed (y su ETL de Kaggle para `--kaggle`) | 13c |
 | Levantar el servicio de listas restrictivas | `uv run uvicorn securepay_apis.restricted_list.main:app --port 8001` (en `securepay-apis`) | El archivo que exporta el seed | 14 |
 | Consultar las tasas de cambio | `uv run python -m securepay_apis.exchange_rates` (en `securepay-apis`) | Internet | 15 |
 
@@ -575,6 +576,19 @@ decisions the analytics consumer left in LocalStack.
 ``` bash
 uv run python -m services.analytics.labels --day 2026-10-05
 uv run python -m services.analytics --day 2026-10-05 --raw s3://pagoseguro-datalake
+```
+
+Measure the rules (precision, false positives, fraud detected and
+missed, HU-44 to HU-46) by replaying a labeled history with the current
+catalog. `--kaggle` replays the PaySim and Sparkov rows of the seed and
+writes `raw/metrics/kaggle/`, which the next ETL run adds to the views
+`q2` and `q3`; the generator's run is only printed.
+
+``` bash
+uv run python -m services.analytics.metrics --kaggle --limit 50000
+uv run python -m services.analytics.metrics \
+    --events ../securepay-generator/generated/instance-0/events.jsonl \
+    --labels ../securepay-generator/generated/instance-0/labels.jsonl
 ```
 
 Detalles: páginas

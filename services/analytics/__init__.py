@@ -13,6 +13,7 @@ The pieces and their owners (contract in shared/analytics.py):
     export.py               PostgreSQL -> raw/cases, raw/reconciliation (Yulianis, C6)
     labels.py               generator labels and Kaggle rows (C4)  (Habith)
     replay.py, metrics.py   the engine over the history (C5)       (Habith, HU-44 to HU-46)
+    build_metrics.py        rule_metrics, pattern_coverage (Spark) (Habith, HU-44 to HU-46)
     views.py, sql/          the views q1..q6 and their controls (C3)
 
 Locally `uv run python -m services.analytics --day 2026-10-05` runs the

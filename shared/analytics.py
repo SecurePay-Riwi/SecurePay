@@ -11,6 +11,7 @@ securepay-shared package.
                raw/labels/fecha=<day>/labels.jsonl       generator labels (C4)
                raw/cases/fecha=<day>/*.jsonl             PostgreSQL export (C6)
                raw/reconciliation/fecha=<day>/*.jsonl    PostgreSQL export (C6)
+               raw/metrics/kaggle/<table>.jsonl          Kaggle replay metrics (C5)
     CURATED    curated/decisiones/fecha=<day>/           Parquet, one row per transaction
     ANALYTICS  analytics/<table>/[fecha=<day>/]          Parquet, the tables below
 
@@ -29,6 +30,7 @@ RAW_CASES = "raw/cases"  # fecha=<day>/cases.jsonl, case_events.jsonl (C6)
 RAW_RECONCILIATION = (
     "raw/reconciliation"  # fecha=<day>/differences.jsonl, runs.jsonl (C6)
 )
+RAW_METRICS = "raw/metrics"  # kaggle/<table>.jsonl: a replay's metrics (HU-44)
 CURATED_DECISIONS = (
     "curated/decisiones"  # fecha=<day>/ Parquet, one row per transaction_id
 )
@@ -392,9 +394,9 @@ TABLES: dict[str, Table] = {
         ),
         Table(
             name="rule_metrics",
-            grain="one rule, label source and catalog version of a replay",
+            grain="one rule, label source and catalog version",
             partition=None,
-            source="services/analytics/metrics.py over the replay (C5)",
+            source=f"fact_decision, fact_label, fact_rule_hit, dim_rule; {RAW_METRICS}/kaggle (the replay, C5)",
             owner="Habith (HU-44, HU-45)",
             columns=(
                 _c("rule", "string", "Rule code."),
@@ -414,9 +416,9 @@ TABLES: dict[str, Table] = {
         ),
         Table(
             name="pattern_coverage",
-            grain="one fraud pattern, label source and catalog version of a replay",
+            grain="one fraud pattern, label source and catalog version",
             partition=None,
-            source="services/analytics/metrics.py over the replay (C5)",
+            source=f"fact_decision, fact_label, fact_rule_hit; {RAW_METRICS}/kaggle (the replay, C5)",
             owner="Habith (HU-46)",
             columns=(
                 _c("pattern", "string", "Fraud pattern of the label."),

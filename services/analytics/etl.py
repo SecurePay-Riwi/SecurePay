@@ -19,6 +19,7 @@ from services.analytics import (
     build_cases,
     build_decisions,
     build_devices,
+    build_metrics,
     build_reconciliation,
 )
 from services.analytics import spark as sp
@@ -30,6 +31,7 @@ BUILDERS = (
     build_cases.build,  # Yulianis (HU-51): fact_case
     build_reconciliation.build,  # Yulianis (HU-52): fact_difference, dim_partner
     build_devices.build,  # Yulianis (HU-47): dim_device
+    build_metrics.build,  # Habith (HU-44 to HU-46): rule_metrics, pattern_coverage
 )
 
 
