@@ -22,6 +22,9 @@ CacheUnavailable when Valkey does not answer; the engine then answers
 with RN-01's default decision (decision D2 of sprint 5).
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 
 import valkey
@@ -53,6 +56,25 @@ class Account:
     status: str
 
 
+# Another source of the same three reads, for replaying the engine
+# without Valkey (services/analytics/replay.py, contract C5). None: the
+# cache, as always in the engine.
+_source: ContextVar = ContextVar("reference_source", default=None)
+
+
+@contextmanager
+def use_source(source) -> Iterator[None]:
+    """Read accounts, merchants and the restricted list from `source`
+    inside the block: an object with get_account(account_id),
+    merchant_exists(merchant_id) and on_restricted_list(documents), with
+    the same answers as the functions below."""
+    token = _source.set(source)
+    try:
+        yield
+    finally:
+        _source.reset(token)
+
+
 def _read(command, *args):
     try:
         return command(*args)
@@ -62,6 +84,8 @@ def _read(command, *args):
 
 def get_account(account_id) -> Account | None:
     """The account, or None if the cache does not have it."""
+    if (source := _source.get()) is not None:
+        return source.get_account(account_id)
     data = _read(get_cache().hgetall, account_key(account_id))
     if not data:
         return None
@@ -75,6 +99,8 @@ def get_account(account_id) -> Account | None:
 
 
 def merchant_exists(merchant_id) -> bool:
+    if (source := _source.get()) is not None:
+        return source.merchant_exists(merchant_id)
     return bool(_read(get_cache().exists, merchant_key(merchant_id)))
 
 
@@ -85,6 +111,8 @@ def on_restricted_list(documents: set[str]) -> bool | None:
     missing): an empty set is not a key, so only the mark tells "nobody
     is listed" from "the list is not there".
     """
+    if (source := _source.get()) is not None:
+        return source.on_restricted_list(documents)
     if documents:
         hits = _read(get_cache().smismember, RESTRICTED_DOCS, sorted(documents))
         if any(hits):

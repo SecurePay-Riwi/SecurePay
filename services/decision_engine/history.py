@@ -28,6 +28,9 @@ engine reads the exchange-rates table.
 """
 
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 
 from shared.cache import get_cache
@@ -62,7 +65,81 @@ end
 return {}
 """
 
-_script = None
+
+class ValkeyHistory:
+    """The engine's backend: every history key in Valkey."""
+
+    def __init__(self):
+        self._script = None
+
+    def record(self, key, member, t_ms, retention_ms, return_history) -> list:
+        """_RECORD in one call. Valkey's reply: member, score, member..."""
+        if self._script is None:
+            self._script = get_cache().register_script(_RECORD)
+        return self._script(
+            keys=[key],
+            args=[
+                member,
+                t_ms,
+                retention_ms,
+                retention_ms // 1000,
+                1 if return_history else 0,
+            ],
+        )
+
+    def read(self, key) -> list[tuple[str, float]]:
+        return get_cache().zrange(key, 0, -1, withscores=True)
+
+
+class InMemoryHistory:
+    """The same sorted sets in a dict, for replaying the engine over the
+    history without Valkey (services/analytics/replay.py, contract C5).
+    Same order (score, then member) and same trim as _RECORD: what is
+    older than the retention, counted from the newest event, goes away.
+    Not thread safe: one replay per instance."""
+
+    def __init__(self):
+        self._sets: dict[str, dict[str, int]] = {}
+
+    def record(self, key, member, t_ms, retention_ms, return_history) -> list:
+        members = self._sets.setdefault(key, {})
+        members[member] = t_ms
+        cutoff = max(members.values()) - retention_ms
+        for m in [m for m, t in members.items() if t < cutoff]:
+            del members[m]
+        if not return_history:
+            return []
+        return [item for m, t in self._sorted(key) for item in (m, t)]
+
+    def read(self, key) -> list[tuple[str, float]]:
+        return self._sorted(key)
+
+    def _sorted(self, key) -> list[tuple[str, int]]:
+        members = self._sets.get(key, {})
+        return sorted(members.items(), key=lambda item: (item[1], item[0]))
+
+
+_valkey = ValkeyHistory()
+_backend: ContextVar[ValkeyHistory | InMemoryHistory | None] = ContextVar(
+    "history_backend", default=None
+)
+
+
+def backend() -> ValkeyHistory | InMemoryHistory:
+    """Valkey, unless use_backend() put another one in this context."""
+    return _backend.get() or _valkey
+
+
+@contextmanager
+def use_backend(new_backend) -> Iterator[None]:
+    """Write and read the history in `new_backend` inside the block (the
+    replay of services/analytics/ uses InMemoryHistory). Outside it, and
+    in the engine, the backend is Valkey: nothing changes there."""
+    token = _backend.set(new_backend)
+    try:
+        yield
+    finally:
+        _backend.reset(token)
 
 
 @dataclass(frozen=True)
@@ -107,21 +184,14 @@ def record(key, member, date, retention_ms, return_history):
     """Add one member to a sorted set of the history and trim what is
     older than the retention, counted from the newest event. Returns the
     retained history when asked. Every history key is written through
-    here."""
-    global _script
-    if _script is None:
-        _script = get_cache().register_script(_RECORD)
+    here, in backend()."""
+    return backend().record(key, member, to_ms(date), retention_ms, return_history)
 
-    return _script(
-        keys=[key],
-        args=[
-            member,
-            to_ms(date),
-            retention_ms,
-            retention_ms // 1000,
-            1 if return_history else 0,
-        ],
-    )
+
+def read(key) -> list[tuple[str, float]]:
+    """Every member of a history key with its score, oldest first. Every
+    history key is read through here, in backend()."""
+    return backend().read(key)
 
 
 def _pairs(raw):
@@ -156,7 +226,7 @@ def record_incoming(account_id, tx_id, sender_id, amount, date) -> None:
 
 def incoming(account_id) -> list[Incoming]:
     """Transfers that came into the account, in chronological order."""
-    raw = get_cache().zrange(incoming_key(account_id), 0, -1, withscores=True)
+    raw = read(incoming_key(account_id))
     result = []
     for m, t in raw:
         id_, sender, amount = m.split("|")

@@ -13,7 +13,6 @@ import os
 from dataclasses import dataclass
 
 from services.decision_engine import history
-from shared.cache import get_cache
 
 SECURITY_MINUTES = int(os.getenv("HISTORY_SECURITY_MINUTES", "60"))
 
@@ -48,7 +47,7 @@ def record(event) -> None:
 
 def recent(account_id) -> list[SecurityEvent]:
     """Retained security events of the account, oldest first."""
-    raw = get_cache().zrange(security_key(account_id), 0, -1, withscores=True)
+    raw = history.read(security_key(account_id))
     result = []
     for m, t in raw:
         id_, type_, device_id = m.split("|")

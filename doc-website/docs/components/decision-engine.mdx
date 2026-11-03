@@ -115,7 +115,7 @@ Thresholds below are the catalog defaults.
 | Velocity | `HOLD` | More than 5 outgoing **P2P** transfers in 10 minutes from the same account, measured by event time. |
 | Mule account | `HOLD` and opens a case | A **withdrawal** of 80 % or more of the balance, after `P2P` transfers from 3 or more different accounts, all in less than 30 minutes. |
 | Shared device | `APPROVE`, `risk_score` +30 | The transaction's device was used by more than 3 accounts in the last 30 days. |
-| Splitting | `APPROVE`, opens a case, `risk_score` +40 | 3 or more outgoing transactions (`P2P`, `QR`, `RETIRO`) from the same account in 24 hours, each below USD 10000, adding up to more than USD 10000. |
+| Splitting | `HOLD`, opens a case, `risk_score` +40 (`APPROVE` + case until sprint 5) | 3 or more outgoing transactions (`P2P`, `QR`, `RETIRO`) from the same account in 24 hours, each below USD 10000, adding up to more than USD 10000. |
 | Account takeover | `HOLD` | A device change and a password change of the source account in the 60 minutes before a `P2P`, `QR` or withdrawal of more than USD 200. See [Account takeover](#account-takeover). |
 | Default decision | `APPROVE` below USD 50, `HOLD` from USD 50 | The rules did not answer in 120 ms, or an account or the merchant is not in the cache, or the cache does not answer. Never `REJECT`. |
 | Restricted list not loaded | `HOLD` whatever the amount | `{restricted}:loaded_at` is missing and the restricted list rule is enabled. |
@@ -164,7 +164,7 @@ def evaluate(ctx: RuleContext, rule: RuleEntry) -> TriggeredRule | None:
 | `velocity` | `velocity` | RN-02 | `window_minutes` 10, `limit` 5 | `HOLD` | no | 0 |
 | `mule` | `mule` | RN-03 | `window_minutes` 30, `min_senders` 3, `withdrawn_pct` 80 | `HOLD` | yes | 0 |
 | `shared_device` | `shared_device` | RN-04 (HU-14) | `window_days` 30, `max_accounts` 3 | `APPROVE` | no | 30 |
-| `splitting` | `splitting` | RN-05 (HU-15) | `window_hours` 24, `min_transactions` 3, `daily_limit_usd` 10000 | `APPROVE` | yes | 40 |
+| `splitting` | `splitting` | RN-05 (HU-15) | `window_hours` 24, `min_transactions` 3, `daily_limit_usd` 10000 | `HOLD` | yes | 40 |
 | `account_takeover` | `account_takeover` | RN-07 (HU-17) | `window_minutes` 60, `min_amount_usd` 200 | `HOLD` | no | 0 |
 | `default_timeout` | `default_timeout` | RN-01 | `limit_usd` 50 | (default decision) | no | 0 |
 
@@ -402,7 +402,7 @@ if len(amounts) >= p.min_transactions and total > p.daily_limit_usd:
 | `min_transactions` | 3 | Transactions below the limit needed. |
 | `daily_limit_usd` | 10000 | The daily limit: each one below it, the sum **above** it. |
 
-`tests/test_rule_splitting.py` covers 2 transactions (no), 3 adding up to exactly the limit (no) and over it (yes, `APPROVE` with a case and score 40), one at the limit, the one decided at the limit, one 25 hours before, one recorded later, COP, JPY and EUR amounts, thresholds changed in the catalog and, through the API, the generator's pattern of three withdrawals.
+`tests/test_rule_splitting.py` covers 2 transactions (no), 3 adding up to exactly the limit (no) and over it (yes, `HOLD` with a case and score 40), one at the limit, the one decided at the limit, one 25 hours before, one recorded later, COP, JPY and EUR amounts, thresholds changed in the catalog and, through the API, the generator's pattern of three withdrawals.
 
 ## Security events
 

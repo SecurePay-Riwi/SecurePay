@@ -34,6 +34,7 @@ SecurePay/                  ← this repo: the product (engine, consumers, infra
 │   ├── cases.py            ← case tables, states and create_schema() (used only by services/)
 │   ├── evidence.py         ← case evidence archive, archive() (used only by services/)
 │   ├── reconciliation.py   ← reconciliation records, tables and create_schema() (used only by services/)
+│   ├── analytics.py        ← analytics lake layers, paths and the dimensional model TABLES (used only by services/)
 │   └── refdata.py          ← cache keys of accounts, merchants and the restricted list (used only by services/)
 ├── services/
 │   ├── decision_engine/    ← FastAPI antifraud engine (rules in rules/, catalog in catalog.py)
@@ -42,6 +43,7 @@ SecurePay/                  ← this repo: the product (engine, consumers, infra
 │   ├── alerts/             ← alerts task: escalation, compliance summary, history purge
 │   ├── reconciliation/     ← nightly reconciliation: ingest, match (Spark), store (Sprint 5)
 │   ├── cache_loader/       ← loads accounts, merchants and the restricted list into Valkey (HU-67)
+│   ├── analytics/          ← analytics ETL (Spark), views q1..q6, labels, replay and metrics (Sprint 6)
 │   └── consumers/          ← SNS/SQS consumers and analytics
 ├── tests/                  ← end-to-end tests that run more than one service
 │                             (test_rule_catalog_e2e.py: rules API + engine)
@@ -80,7 +82,7 @@ files, never imports: each one finds the others' output in `../securepay-<repo>/
 dependencies = ["securepay-shared>=0.1.0"]
 ```
 
-`cache.py`, `events.py`, `rule_catalog.py`, `cases.py`, `evidence.py`, `reconciliation.py` and `refdata.py` are **not** part of the published package — they are only
+`cache.py`, `events.py`, `rule_catalog.py`, `cases.py`, `evidence.py`, `reconciliation.py`, `analytics.py` and `refdata.py` are **not** part of the published package — they are only
 used by `services/` and stay in this repo.
 
 ---
@@ -213,6 +215,70 @@ HU-58 moved to Sprint 6. Backlog: `doc-website/docs/product-backlog/sprint-backl
 | HU-68 | MAG-351 | Deploy the consumers and the alerts task as Lambdas (the AWS part of HU-31: EventBridge every 5 minutes, `business-alerts` e-mails filtered by `audience`, S3 permissions for the evidence) | Jorge |
 | HU-36 | MAG-236 | Read the partners' daily files; nightly orchestration (Step Functions at 02:00 Bogotá) | Jorge |
 | HU-65 | MAG-246 | Application CI/CD pipeline | Jorge |
+
+### Sprint 6 — In progress (Analytics + Closure)
+"Step 0" (branch `feature/MAG-245-analytics-step-0`) puts the analytics
+contract in the code first: `shared/analytics.py` (C1, C2),
+`services/analytics/` (ETL, the decisions' builder, view `q1`, the empty
+builders and export of Yulianis, labels, replay and metrics), the fixture
+day, `history.use_backend()` and `reference_data.use_source()`, splitting
+to `HOLD` + case (D2) and `new_differences` in the reconciliation (D8).
+Plan: https://claude.ai/artifact/Xz8cuN9u3epB5Nyt5QXqBY.
+
+| HU | Jira | Description | Owner |
+|----|------|-------------|-------|
+| HU-44, HU-45, HU-46 | MAG-296..298 | Precision, false positives (view q2) and fraud detected vs missed (view q3) per rule | Habith |
+| HU-24 | MAG-245 | Simulate a rule version over the history | Habith |
+| HU-51, HU-52, HU-47 | MAG-303, MAG-304, MAG-299 | Cases (q4), reconciliation (q5), device risk | Yulianis |
+| HU-48 → HU-50, HU-53 | MAG-300..302, MAG-305 | Power BI pages (q1, q2, q3, q6) | Yulianis |
+| HU-66, HU-58 | MAG-247, MAG-244 | Data CI/CD; EKS vs Fargate | Jorge |
+| HU-59, HU-60, HU-61 | MAG-306..308 | Metrics and alarms; load test; final costs and runbook | Jorge |
+
+---
+
+## Analytics (Sprint 6)
+
+Read this before touching `shared/analytics.py` or `services/analytics/`.
+Pages: `doc-website/docs/components/analytics.mdx` and
+`doc-website/docs/reference/analytics-model.mdx` (the data dictionary).
+
+- **One shape.** `shared/analytics.py` holds the layer paths (`RAW_*`,
+  `CURATED_DECISIONS`, `ANALYTICS`, `layer_path()`, `table_path()`),
+  `LabelSource`, `Column`/`Table`, `TABLES` (every table of the model,
+  nothing else), `CURATED_DECISION` and `spark_schema()`. Nobody else
+  defines tables, columns or types; a new column is a small PR on this
+  file with its row on `analytics-model.mdx`
+  (`shared/tests/test_analytics_contract.py` checks both).
+- **Builders:** `build(spark, day, raw, output) -> {table: rows}`, one line
+  each in `etl.BUILDERS` (decisions first). They write with
+  `services/analytics/spark.py` (`write()` applies the schema and replaces
+  the day's `fecha=<day>/` folder; `read()`), so a day can run again.
+  Spark reads and writes local folders, and `s3://` only on Glue; raw
+  `s3://` (LocalStack) is read through `services/reconciliation/storage.py`.
+  pyspark is imported inside the functions.
+- **Curated:** the events of `raw/decisiones/fecha=<day-1..day+1>` whose
+  `transaction_date` (UTC) is the day, the first of each `transaction_id`
+  (earliest `processed_at`). `fact_rule_hit` takes decision and score from
+  `dim_rule` by `(rule, rule_version)`.
+- **Views (C3):** `sql/q<N>_<name>.sql` is an Athena `CREATE OR REPLACE
+  VIEW`, `sql/control/q<N>.sql` the same numbers another way; SQL that
+  runs in Trino and Spark. `test_views.py` has one case per view against
+  `tests/fixtures/expected_views.json`.
+- **Replay (C5):** `replay.replay(snapshot, transactions, reference,
+  security_events=())` calls `decision_service._decide` inside
+  `history.use_backend(InMemoryHistory())` and
+  `reference_data.use_source(ReferenceData)` (context variables; the
+  engine always uses Valkey). Nobody outside `services/analytics/` imports
+  it (the rules API only in its simulation route, HU-24).
+- **Labels (C4):** the generator's `generated/instance-<n>/labels.jsonl`
+  is copied to `raw/labels/fecha=<day>/` (`python -m
+  services.analytics.labels`). Kaggle rows: `transacciones` has no dataset
+  column; `labels.kaggle_source()` uses the `kaggle_paysim_` /
+  `kaggle_fraudtest_` pattern, else the seed's id
+  (`uuid5(SEED_NAMESPACE, "hist:fraudtest:<row>")`).
+- **Fixtures:** `services/analytics/tests/fixtures/` is one day
+  (2026-10-05) built by `make_fixtures.py` with the engine's rules; do not
+  edit them without Habith. Its `README.md` lists the day.
 
 ---
 
@@ -392,7 +458,10 @@ Read this before touching `shared/reconciliation.py`,
 - **Differences and treasury (HU-38 to HU-41, Yulianis):**
   `store.classify()` is pure (no database); `save()` is one session and
   one commit, upserts the run of the day (creating it when nobody marked
-  it `RUNNING`) and keeps the first `detected_at`; `handler()` creates
+  it `RUNNING`) and keeps the first `detected_at`; it returns
+  `differences` (all of the day) and `new_differences` (rows inserted by
+  this run, `RETURNING`; the treasury e-mail says "Differences of the
+  day: X (new: Y)", sprint 6 D8); `handler()` creates
   the tables on its first call and reads `match_dir(RECON_DATA_DIR, day)`
   (yesterday in Bogotá without `day`). Routes: `GET
   /reconciliation/differences` (`PENDING` by default, by `run_day` then
@@ -530,8 +599,9 @@ Read this before adding or changing a rule in `services/decision_engine/`.
 - Splitting (`rules/splitting.py`, HU-15) reads `out:{account}`: 3 or
   more outgoing transactions (`P2P`, `QR`, `RETIRO`) in 24 h, each below
   USD 10000 (converted with `currency.to_usd()`), adding up to more than
-  it, and the one being decided is one of them. By default `APPROVE`
-  with `opens_case` (score 40). Thresholds: the catalog's `splitting`
+  it, and the one being decided is one of them. By default `HOLD`
+  with `opens_case` (score 40; `APPROVE` until sprint 5, changed by
+  decision D2 of sprint 6). Thresholds: the catalog's `splitting`
   entry.
 - Account takeover (`rules/account_takeover.py`, HU-17) runs on `P2P`, `QR`
   and `RETIRO` above USD 200: a `DEVICE_CHANGE` and a `PASSWORD_CHANGE` in

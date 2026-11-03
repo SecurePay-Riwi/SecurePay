@@ -36,7 +36,7 @@ de las fuentes lo instalan como dependencia (`import securepay_shared`).
 Trae `models` (SQLAlchemy), `db` (conexión a PostgreSQL), `config` (variables
 y constantes) y `aws` (clientes de boto3). `shared/cache.py`,
 `shared/events.py`, `shared/rule_catalog.py`, `shared/cases.py`,
-`shared/evidence.py` y `shared/reconciliation.py` no van en el paquete:
+`shared/evidence.py`, `shared/reconciliation.py` y `shared/analytics.py` no van en el paquete:
 solo los usa `services/`.
 
 ## Descripción
@@ -55,6 +55,7 @@ El repositorio reúne los componentes trabajados hasta el momento:
 - API independiente para crear, modificar, activar/desactivar y consultar versiones de reglas antifraude (`services/rules_api/`, puerto 8002).
 - Sprint 4 (closed): case tables (`shared/cases.py`), cases API (`services/cases_api/`, port 8003) and alerts task (`services/alerts/`). Done: opening cases (HU-25), restricted list reports (HU-34), the 30-day history of each account (HU-28, `GET /accounts/{account_id}/transactions`), the accounts related through a device (HU-29, `GET /accounts/{account_id}/related-accounts`) and the analyst's work: the inbox (HU-26, `GET /cases`), assigning (HU-27, `PUT /cases/{case_id}/assignee`) and resolving (HU-30, `POST /cases/{case_id}/resolution`), and the escalation to the supervisor of the cases open over 4 hours (HU-31: every 5 minutes the alerts task sends one summary per run; with `CASE_DUE_MINUTES=2` it shows locally in a few minutes), the suspicious operations report (HU-35, `GET /reports/suspicious`), the immutable case evidence (HU-32) and the engine on ECS/Fargate (HU-57). Running the consumers and the alerts task as Lambdas in AWS is HU-68 (Sprint 5, see "Infraestructura en AWS").
 - Sprint 5 (in progress): nightly reconciliation with the payment partners (`shared/reconciliation.py`, `services/reconciliation/`, `uv run python -m services.reconciliation --day 2026-10-05`). Step 0 is in place: the shared contract, a reference match in plain Python and a fixture day in `services/reconciliation/tests/fixtures/`.
+- Sprint 6 (in progress): analytics (`shared/analytics.py`, `services/analytics/`, `uv run python -m services.analytics --day 2026-10-05`). Step 0 is in place: the dimensional model in code, the decisions' builder, view `q1`, the replay of the engine in memory and a fixture day in `services/analytics/tests/fixtures/`. Splitting now holds the transaction and opens a case (HOLD + case, sprint 6 decision D2).
 - Seed de datos maestros para PostgreSQL y generador de transacciones de prueba.
 - Pruebas automatizadas para los componentes del proyecto.
 - Simulación local de mensajería con SNS/SQS y almacenamiento en S3 mediante LocalStack.
@@ -97,6 +98,7 @@ levanta por separado:
 | Levantar los consumidores | `uv run python -m services.consumers` | LocalStack | 11b |
 | Generar los extractos de los socios | `uv run python -m securepay_csv.partner_statements` (en `securepay-csv`) | Salida del generador (paso 9 o 12) | 13 |
 | Conciliar un día con los socios | `uv run python -m services.reconciliation --day 2026-10-05` | PostgreSQL; los extractos (paso 13) y las decisiones en LocalStack | 13b |
+| Construir la analítica de un día | `uv run python -m services.analytics --day 2026-10-05` | Java 17+; las decisiones (LocalStack o `--raw`) | 13c |
 | Levantar el servicio de listas restrictivas | `uv run uvicorn securepay_apis.restricted_list.main:app --port 8001` (en `securepay-apis`) | El archivo que exporta el seed | 14 |
 | Consultar las tasas de cambio | `uv run python -m securepay_apis.exchange_rates` (en `securepay-apis`) | Internet | 15 |
 
@@ -555,6 +557,29 @@ uv run python -m services.reconciliation --day 2026-10-05
 
 Detalles: página
 [Reconciliation](https://securepay-riwi.github.io/SecurePay/docs/components/reconciliation).
+
+### Paso 13c --- Construir la analítica de un día (Sprint 6)
+
+Builds `curated/decisiones/` and the tables of the dimensional model
+(`shared/analytics.py`) under `ANALYTICS_DATA_DIR`, and writes the views
+for Power BI to `generated/analytics/views/`. Needs Java 17 or later.
+The fixture day works with nothing else running:
+
+``` bash
+uv run python -m services.analytics --day 2026-10-05 --raw services/analytics/tests/fixtures
+```
+
+With the local stack: copy the generator's labels and read the
+decisions the analytics consumer left in LocalStack.
+
+``` bash
+uv run python -m services.analytics.labels --day 2026-10-05
+uv run python -m services.analytics --day 2026-10-05 --raw s3://pagoseguro-datalake
+```
+
+Detalles: páginas
+[Analytics](https://securepay-riwi.github.io/SecurePay/docs/components/analytics) y
+[Analytics model](https://securepay-riwi.github.io/SecurePay/docs/reference/analytics-model).
 
 ### Paso 14 --- Levantar el servicio de listas restrictivas (repo `securepay-apis`)
 

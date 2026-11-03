@@ -1,0 +1,120 @@
+{
+  "accounts": {
+    "cdbaa38e-960e-5e2c-be35-fa97a7cc277a": {
+      "currency": "COP",
+      "user_id": "09e0eba1-bff1-57da-9476-3f1dbb232165",
+      "document": "1000000001",
+      "status": "activa"
+    },
+    "f13a7065-9218-5f50-9a06-7561bab68539": {
+      "currency": "USD",
+      "user_id": "902157c2-0917-5ed6-87cf-8fc147ce690d",
+      "document": "1000000002",
+      "status": "activa"
+    },
+    "535c606e-dfad-5d28-8c07-177c962c67d0": {
+      "currency": "EUR",
+      "user_id": "864d9ecb-db90-5eb4-9198-7ec709d942db",
+      "document": "1000000003",
+      "status": "activa"
+    },
+    "d290cb14-2b7d-5fa8-ad83-12f4f69d9051": {
+      "currency": "JPY",
+      "user_id": "343ad1b9-8942-5424-8a09-900c5dc5d3d9",
+      "document": "1000000004",
+      "status": "activa"
+    },
+    "5964e32f-99ea-597f-9375-372a215731e7": {
+      "currency": "COP",
+      "user_id": "204afdbc-6b3a-5a55-82b7-5833d717f24e",
+      "document": "1000000005",
+      "status": "activa"
+    },
+    "280584d0-40a1-5411-a15a-86874004d70a": {
+      "currency": "USD",
+      "user_id": "183472cc-db2b-5098-85e4-50b4d591b174",
+      "document": "1000000006",
+      "status": "activa"
+    },
+    "5b677253-c0f8-5cf4-96cc-7417f41f2dda": {
+      "currency": "USD",
+      "user_id": "7793d351-fbc7-5180-855b-aa3a211b1b24",
+      "document": "1000000007",
+      "status": "activa"
+    },
+    "0357e71b-c7f1-56d3-b586-2251e143f8ca": {
+      "currency": "USD",
+      "user_id": "51187962-c00b-5540-9cee-1ef2a741d721",
+      "document": "1000000008",
+      "status": "activa"
+    },
+    "1a87acb6-b560-584f-810a-106098dd2289": {
+      "currency": "USD",
+      "user_id": "39c8e1a1-9a9c-52be-802b-f83b65594716",
+      "document": "1000000009",
+      "status": "activa"
+    },
+    "9c9d07ef-6f1f-55cb-a287-dd1a9fc0fceb": {
+      "currency": "USD",
+      "user_id": "76129e0a-283e-5798-8832-e18dd39f750f",
+      "document": "1000000010",
+      "status": "activa"
+    },
+    "12795f29-cc93-5732-b6a9-9cdec6af1f34": {
+      "currency": "EUR",
+      "user_id": "c6358420-f7a0-53cd-9b89-723d4772974c",
+      "document": "1000000011",
+      "status": "activa"
+    },
+    "63c5b7eb-08a3-560a-811c-2ed86d1a6b26": {
+      "currency": "EUR",
+      "user_id": "6904db7f-51c6-50e4-b5b4-653d7d78c306",
+      "document": "1000000012",
+      "status": "activa"
+    },
+    "11a9f58e-7862-5ab5-8da3-2db4492ced2f": {
+      "currency": "COP",
+      "user_id": "b9090ec6-d464-5ce8-b16a-7af5cd44e16b",
+      "document": "1000000013",
+      "status": "activa"
+    },
+    "6e588e33-fa22-51f3-8056-481ad86a12c4": {
+      "currency": "USD",
+      "user_id": "9aba2250-ce27-5f19-82c3-4c168b320cf2",
+      "document": "1000000014",
+      "status": "activa"
+    },
+    "51f8d2eb-3265-5ce2-9e41-697de2cf907b": {
+      "currency": "COP",
+      "user_id": "83a7cbbc-345e-527a-abb7-d1299c74a4e4",
+      "document": "1000000015",
+      "status": "activa"
+    },
+    "1da0b2ec-2c47-5b2e-bb7b-3ea1ff768c92": {
+      "currency": "USD",
+      "user_id": "49d2dc1e-1f58-520d-ab6a-fa78567cf125",
+      "document": "1000000016",
+      "status": "activa"
+    },
+    "f86558ea-e2fc-5fea-b6a2-5f6e14f9941b": {
+      "currency": "EUR",
+      "user_id": "acd051a6-da05-58ad-8bce-4a696ffec134",
+      "document": "1000000017",
+      "status": "activa"
+    },
+    "3e4c14a9-8214-5866-be2b-aa23f249daa3": {
+      "currency": "JPY",
+      "user_id": "36388cd4-ece8-574f-9054-ba1dfdaa1711",
+      "document": "1000000018",
+      "status": "activa"
+    }
+  },
+  "merchants": [
+    "ba5b8c65-dc57-5d1d-a2a9-a7ba0a78bd82",
+    "be91d427-d539-5292-a54c-34ea013c69d9"
+  ],
+  "restricted_documents": [
+    "1000000013",
+    "1000000014"
+  ]
+}

@@ -1,0 +1,16 @@
+{"id": 1, "case_id": "9917c97b-b54a-5e48-9710-499bdb3bf794", "type": "CREATED", "actor": "system", "at": "2026-10-05T09:00:01.050000+00:00", "data": {}}
+{"id": 2, "case_id": "9917c97b-b54a-5e48-9710-499bdb3bf794", "type": "ASSIGNED", "actor": "ana", "at": "2026-10-05T09:20:01.050000+00:00", "data": {"from": null, "to": "ana"}}
+{"id": 3, "case_id": "9917c97b-b54a-5e48-9710-499bdb3bf794", "type": "RESOLVED", "actor": "ana", "at": "2026-10-05T10:30:01.050000+00:00", "data": {"outcome": "FRAUD", "final_decision": "REJECT", "note": "Reviewed by ana."}}
+{"id": 4, "case_id": "9917c97b-b54a-5e48-9710-499bdb3bf794", "type": "EVIDENCE_ARCHIVED", "actor": "system", "at": "2026-10-05T10:30:03.050000+00:00", "data": {"bucket": "securepay-dev-evidence", "key": "cases/2026/10/9917c97b-b54a-5e48-9710-499bdb3bf794.json", "retain_until": "2036-10-05T00:00:00+00:00"}}
+{"id": 5, "case_id": "48c86d7a-cbf5-5cff-ba1c-6a614264092a", "type": "CREATED", "actor": "system", "at": "2026-10-05T12:00:01.050000+00:00", "data": {}}
+{"id": 6, "case_id": "48c86d7a-cbf5-5cff-ba1c-6a614264092a", "type": "ESCALATED", "actor": "system", "at": "2026-10-05T16:03:01.050000+00:00", "data": {"due_at": "2026-10-05T16:00:01.050000+00:00"}}
+{"id": 7, "case_id": "48c86d7a-cbf5-5cff-ba1c-6a614264092a", "type": "ASSIGNED", "actor": "luis", "at": "2026-10-05T16:05:01.050000+00:00", "data": {"from": null, "to": "luis"}}
+{"id": 8, "case_id": "48c86d7a-cbf5-5cff-ba1c-6a614264092a", "type": "RESOLVED", "actor": "luis", "at": "2026-10-05T16:10:01.050000+00:00", "data": {"outcome": "LEGITIMATE", "final_decision": "APPROVE", "note": "Reviewed by luis."}}
+{"id": 9, "case_id": "48c86d7a-cbf5-5cff-ba1c-6a614264092a", "type": "EVIDENCE_ARCHIVED", "actor": "system", "at": "2026-10-05T16:10:03.050000+00:00", "data": {"bucket": "securepay-dev-evidence", "key": "cases/2026/10/48c86d7a-cbf5-5cff-ba1c-6a614264092a.json", "retain_until": "2036-10-05T00:00:00+00:00"}}
+{"id": 10, "case_id": "f22fed89-4a95-59f4-bb82-84aafe10a5ca", "type": "CREATED", "actor": "system", "at": "2026-10-05T11:20:01.050000+00:00", "data": {}}
+{"id": 11, "case_id": "f22fed89-4a95-59f4-bb82-84aafe10a5ca", "type": "ESCALATED", "actor": "system", "at": "2026-10-05T15:23:01.050000+00:00", "data": {"due_at": "2026-10-05T15:20:01.050000+00:00"}}
+{"id": 12, "case_id": "b88d07c1-a7fd-580a-98f2-5b37f7644686", "type": "CREATED", "actor": "system", "at": "2026-10-05T20:00:01.050000+00:00", "data": {}}
+{"id": 13, "case_id": "b88d07c1-a7fd-580a-98f2-5b37f7644686", "type": "ASSIGNED", "actor": "ana", "at": "2026-10-05T20:10:01.050000+00:00", "data": {"from": null, "to": "ana"}}
+{"id": 14, "case_id": "b88d07c1-a7fd-580a-98f2-5b37f7644686", "type": "RESOLVED", "actor": "ana", "at": "2026-10-05T20:30:01.050000+00:00", "data": {"outcome": "FRAUD", "final_decision": "REJECT", "note": "Reviewed by ana."}}
+{"id": 15, "case_id": "b88d07c1-a7fd-580a-98f2-5b37f7644686", "type": "EVIDENCE_ARCHIVED", "actor": "system", "at": "2026-10-05T20:30:03.050000+00:00", "data": {"bucket": "securepay-dev-evidence", "key": "cases/2026/10/b88d07c1-a7fd-580a-98f2-5b37f7644686.json", "retain_until": "2036-10-05T00:00:00+00:00"}}
+{"id": 16, "case_id": "4db60490-84fb-5d5a-9c0c-e8e8018c9358", "type": "CREATED", "actor": "system", "at": "2026-10-05T23:30:01.050000+00:00", "data": {}}
