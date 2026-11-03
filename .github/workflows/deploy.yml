@@ -126,6 +126,34 @@ jobs:
           fi
           echo "Engine running ${IMAGE}"
 
+      # db-bootstrap first: the new image may need new tables or grants
+      # (services/db_bootstrap/grants.py), and the other Lambdas would get
+      # "permission denied" until the next terraform apply (MAG-361).
+      - name: Update the database users and grants
+        if: steps.aws.outcome == 'success'
+        env:
+          IMAGE: ${{ steps.image.outputs.uri }}
+        run: |
+          function="${NAME_PREFIX}-db-bootstrap"
+          if ! output=$(aws lambda update-function-code --function-name "${function}" \
+              --image-uri "${IMAGE}" 2>&1 > /dev/null); then
+            if grep -q ResourceNotFoundException <<< "${output}"; then
+              echo "::notice title=Lambda not deployed::${function} does not exist."
+              exit 0
+            fi
+            echo "${output}"
+            exit 1
+          fi
+          aws lambda wait function-updated --function-name "${function}"
+          error=$(aws lambda invoke --function-name "${function}" --payload '{}' \
+            --cli-binary-format raw-in-base64-out bootstrap.json \
+            --query FunctionError --output text)
+          cat bootstrap.json
+          if [ "${error}" != "None" ]; then
+            echo "::error title=db-bootstrap failed::See /aws/lambda/${function} in CloudWatch."
+            exit 1
+          fi
+
       - name: Deploy the Lambdas
         if: steps.aws.outcome == 'success'
         env:

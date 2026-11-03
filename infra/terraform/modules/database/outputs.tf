@@ -25,8 +25,24 @@ output "master_url_parameter_arn" {
   value       = aws_ssm_parameter.master_url.arn
 }
 
-output "master_url" {
-  description = "DATABASE_URL of the master user. Temporary, for the dev Lambdas (security.mdx, Encryption and secrets); never printed."
-  value       = aws_ssm_parameter.master_url.value
-  sensitive   = true
+output "master_username" {
+  value = aws_db_instance.this.username
+}
+
+output "parameter_path" {
+  description = "Parent path of the database passwords: <path>/master-password and <path>/<user>."
+  value       = local.parameter_path
+}
+
+output "instance_resource_id" {
+  description = "Changes when the database is created again; db-bootstrap runs again then."
+  value       = aws_db_instance.this.resource_id
+}
+
+output "password_versions" {
+  description = "Hash of the version of every password parameter (not of the passwords): it changes when a password changes, so db-bootstrap runs again."
+  value = sha256(jsonencode(merge(
+    { master = aws_ssm_parameter.master_password.version },
+    { for user, parameter in aws_ssm_parameter.component_password : user => parameter.version },
+  )))
 }
