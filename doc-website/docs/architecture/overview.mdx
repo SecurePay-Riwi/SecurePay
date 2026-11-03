@@ -52,7 +52,6 @@ Grouped by layer. Why each one was chosen, and what was discarded, is in [AWS in
 | :--- | :--- |
 | **SNS** | The `decisiones` topic copies every decision to the three queues. Other topics refresh the cache when a rule changes and send emails to compliance, the supervisor, treasury and the tech team. |
 | **SQS** | Three independent queues (`casos`, `historial`, `analitica`), each with its dead-letter queue, so one consumer falling behind does not stop the others. |
-| **Kinesis Data Firehose** | Batches the analytics decisions into files of ~5 MB before writing them to the raw layer. |
 
 ### Processing and orchestration
 

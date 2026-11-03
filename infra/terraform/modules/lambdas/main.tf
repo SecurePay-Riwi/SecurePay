@@ -78,6 +78,13 @@ locals {
 
   deployed  = local.deploy ? local.functions : {}
   consumers = { for name, f in local.deployed : name => f if f.queue != null }
+
+  # The analytics consumer writes one S3 object per batch: large batches
+  # keep the raw layer in few, big files (Firehose did this, but it is not
+  # on the free plan). The other consumers keep batches of 10.
+  batching = {
+    analytics-consumer = { size = var.analytics_batch_size, window = var.analytics_batching_window_seconds }
+  }
 }
 
 # Created before the functions, so Lambda never makes one without retention.
@@ -127,15 +134,18 @@ resource "aws_lambda_function" "this" {
   }
 }
 
-# One mapping per queue: batches of 10, and only the messages listed in
-# batchItemFailures go back to the queue (decisions.mdx, consumers).
+# One mapping per queue: batches of 10 (analytics: up to
+# analytics_batch_size, waiting at most analytics_batching_window_seconds),
+# and only the messages listed in batchItemFailures go back to the queue
+# (decisions.mdx, consumers).
 resource "aws_lambda_event_source_mapping" "this" {
   for_each = local.consumers
 
-  event_source_arn        = var.queue_arns[each.value.queue]
-  function_name           = aws_lambda_function.this[each.key].arn
-  batch_size              = 10
-  function_response_types = ["ReportBatchItemFailures"]
+  event_source_arn                   = var.queue_arns[each.value.queue]
+  function_name                      = aws_lambda_function.this[each.key].arn
+  batch_size                         = try(local.batching[each.key].size, 10)
+  maximum_batching_window_in_seconds = try(local.batching[each.key].window, null)
+  function_response_types            = ["ReportBatchItemFailures"]
 
   dynamic "scaling_config" {
     for_each = each.value.in_vpc ? [1] : []

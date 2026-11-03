@@ -39,7 +39,7 @@ The engine publishes the decision to the `decisiones` SNS topic, which fans it o
 | :--- | :--- | :--- |
 | `casos` | Opens a case when a rule that requires one fired. | PostgreSQL |
 | `historial` | Keeps 30 days of transactions per account, one row per account of each transaction (D3, HU-28). | PostgreSQL (`account_transactions`) |
-| `analitica` | Drops the transaction in the raw layer of the Data Lake. | S3 (through Kinesis Data Firehose in AWS) |
+| `analitica` | Drops the transaction in the raw layer of the Data Lake. | S3 (one file per batch of up to 1,000 decisions in AWS) |
 
 Keeping them separate means that if analytics falls behind, cases are still created. Details in [Messaging](../components/messaging.mdx).
 
@@ -50,7 +50,7 @@ Keeping them separate means that if analytics falls behind, cases are still crea
 | **Valkey** (ElastiCache Serverless) | Idempotency keys (1 hour), time windows and 24-hour sums, devices per account, active rules, the restricted list | The engine, the history consumer, the cache refresh and the daily list load | The engine, on every transaction |
 | **PostgreSQL** (RDS) | Users, accounts, devices, merchants, versioned rules, cases and their events, reconciliation differences | The seed, the rules and cases APIs, the cases consumer, the alerts task, the reconciliation | The APIs, the alerts task, the cache refresh |
 | **DynamoDB** | Device–account pairs for 30 days, the daily exchange rates | The history consumer, the exchange rates task | The engine (loads every day's rate at startup, refreshes daily), cache rebuilds |
-| **S3 Data Lake, `raw`** | Every decision (`raw/decisiones/`) and the partner statements (`raw/extractos/`), as they arrived | Firehose, the partners | The Spark ETL and the reconciliation |
+| **S3 Data Lake, `raw`** | Every decision (`raw/decisiones/`) and the partner statements (`raw/extractos/`), as they arrived | The analytics consumer, the partners | The Spark ETL and the reconciliation |
 | **S3 Data Lake, `curated` and `analytics`** | Clean Parquet, reconciliation results and the dimensional model | The Spark jobs | Athena and Power BI |
 | **S3 evidence bucket** | One locked file per closed case, for 10 years | The cases API, when a case closes | The cases API, when someone looks up a closed case |
 
@@ -75,13 +75,13 @@ Tables, keys and paths in detail: [Data model](../reference/data-model.mdx).
 | Data Lake ETL | Daily | EventBridge → EMR Serverless |
 | Rule effectiveness | Weekly | EventBridge → EMR Serverless |
 | Shared device network | Weekly | EventBridge → EMR Serverless |
-| Rule simulation | On demand | Rules API → EMR Serverless |
+| Rule simulation | On demand | Rules API, in Python inside its Lambda (no Spark) |
 
 **The nightly reconciliation, step by step.**
 
 1. At 02:00 **EventBridge Scheduler** starts the **Step Functions** state machine.
 2. A **Lambda** finds and reads the day's files of the four partners in `raw/extractos/`, and validates them.
-3. A **Spark** job on EMR Serverless compares them with the decisions of the day, with the tolerances for rounding and time zones, and writes the differences to the `curated` layer.
+3. A **Spark** job on AWS Glue 6.0 compares them with the decisions of the day, with the tolerances for rounding and time zones, and writes the differences to the `curated` layer.
 4. A second **Lambda** classifies the differences, stores them in PostgreSQL and sends treasury the result.
 5. Each step retries on its own. If the process has not finished at 06:30, an alarm fires, which leaves half an hour before the 07:00 deadline.
 

@@ -49,18 +49,9 @@ locals {
       statements = [
         { Sid = "ReadAnalyticsQueue", Effect = "Allow", Action = local.sqs_read, Resource = "${local.arn.queue}-analytics" },
         # One JSON Lines object per batch, as services/consumers/analytics.py
-        # writes it. Firehose (firehose-raw below) waits for the load test.
+        # writes it. The queue mapping groups up to 1,000 decisions per batch
+        # (modules/lambdas), so no Firehose: it is not on the free plan.
         { Sid = "WriteRawDecisions", Effect = "Allow", Action = "s3:PutObject", Resource = "${local.bucket.datalake}/raw/decisiones/*" },
-      ]
-    }
-
-    firehose-raw = {
-      service = "firehose.amazonaws.com"
-      statements = [
-        # The prefix is the one the analytics code writes (raw/decisiones/).
-        { Sid = "WriteRawDecisions", Effect = "Allow", Action = ["s3:PutObject", "s3:AbortMultipartUpload"], Resource = "${local.bucket.datalake}/raw/decisiones/*" },
-        { Sid = "DestinationBucket", Effect = "Allow", Action = ["s3:GetBucketLocation", "s3:ListBucket", "s3:ListBucketMultipartUploads"], Resource = local.bucket.datalake },
-        { Sid = "DeliveryErrors", Effect = "Allow", Action = "logs:PutLogEvents", Resource = "${local.arn.log_group}/aws/kinesisfirehose/${local.p}-decisions-raw:*" },
       ]
     }
 
@@ -69,9 +60,10 @@ locals {
       statements = [
         { Sid = "DatabasePassword", Effect = "Allow", Action = "ssm:GetParameter", Resource = "${local.arn.parameter}/rds/rules_api" },
         { Sid = "AnnounceRuleChange", Effect = "Allow", Action = "sns:Publish", Resource = "${local.arn.topic}-rule-changed" },
-        { Sid = "StartSimulation", Effect = "Allow", Action = "emr-serverless:StartJobRun", Resource = local.arn.emr_app },
-        { Sid = "SimulationStatus", Effect = "Allow", Action = "emr-serverless:GetJobRun", Resource = local.arn.emr_job_run },
-        local.pass_emr_role,
+        # The simulation (HU-24) replays raw/decisiones with the generator's
+        # labels in Python inside this Lambda: it lists the files, then reads them.
+        { Sid = "FindSimulationFiles", Effect = "Allow", Action = "s3:ListBucket", Resource = local.bucket.datalake, Condition = { StringLike = { "s3:prefix" = ["raw/decisiones/*", "raw/labels/*"] } } },
+        { Sid = "ReadSimulationFiles", Effect = "Allow", Action = "s3:GetObject", Resource = ["${local.bucket.datalake}/raw/decisiones/*", "${local.bucket.datalake}/raw/labels/*"] },
       ]
     }
 
@@ -169,21 +161,6 @@ locals {
       ]
     }
 
-    emr-jobs = {
-      service = "emr-serverless.amazonaws.com"
-      statements = [
-        { Sid = "ReadDataLake", Effect = "Allow", Action = ["s3:GetObject", "s3:ListBucket"], Resource = [local.bucket.datalake, "${local.bucket.datalake}/*"] },
-        { Sid = "WriteCuratedAndAnalytics", Effect = "Allow", Action = ["s3:PutObject", "s3:DeleteObject"], Resource = ["${local.bucket.datalake}/curated/*", "${local.bucket.datalake}/analytics/*"] },
-        { Sid = "ReadJobCode", Effect = "Allow", Action = "s3:GetObject", Resource = "${local.bucket.artifacts}/jobs/*" },
-        {
-          Sid      = "RegisterTables"
-          Effect   = "Allow"
-          Action   = ["glue:GetDatabase", "glue:GetTable", "glue:GetTables", "glue:CreateTable", "glue:UpdateTable", "glue:GetPartition", "glue:GetPartitions", "glue:CreatePartition", "glue:BatchCreatePartition"]
-          Resource = ["${local.arn.glue}:catalog", "${local.arn.glue}:database/${local.glue_database}", "${local.arn.glue}:table/${local.glue_database}/*"]
-        },
-      ]
-    }
-
     scheduler = {
       service = "scheduler.amazonaws.com"
       # Only schedules of this account may use it (confused deputy).
@@ -191,8 +168,6 @@ locals {
       statements = [
         { Sid = "ScheduledTasks", Effect = "Allow", Action = "lambda:InvokeFunction", Resource = ["${local.arn.function}-exchange-rates", "${local.arn.function}-alerts", "${local.arn.function}-list-loader"] },
         { Sid = "Reconciliation", Effect = "Allow", Action = "states:StartExecution", Resource = "${local.arn.state_machine}-reconciliation" },
-        { Sid = "SparkJobs", Effect = "Allow", Action = "emr-serverless:StartJobRun", Resource = local.arn.emr_app },
-        local.pass_emr_role,
       ]
     }
 

@@ -32,11 +32,11 @@ Rule: only what talks to the database or the cache runs inside the VPC, because 
 
 | Inside the VPC (application subnets) | Why | Outside the VPC | Why it can be outside |
 | :--- | :--- | :--- | :--- |
-| Decision engine (Fargate) | Reads and writes the cache | Analytics consumer | Only writes to Firehose |
+| Decision engine (Fargate) | Reads and writes the cache | Analytics consumer | Only writes its batches to S3 |
 | Admin task (Fargate, on demand) | Schema migrations and seed against the database | Restricted list service | Only reads its file in S3 at startup |
 | Case consumer | Writes cases to the database | Exchange rate task | Calls Frankfurter on the internet and writes to DynamoDB |
 | History consumer | Writes to DynamoDB and the cache | Statement reading (reconciliation) | Only reads the S3 raw layer |
-| Rules API | Reads and writes rules in the database | Spark jobs (EMR Serverless) | Only read and write S3 and the Glue catalog |
+| Rules API | Reads and writes rules in the database | Spark jobs (AWS Glue) | Only read and write S3 and the Glue catalog |
 | Cases API | Reads and writes cases in the database | | |
 | Alerts Lambda | Reads and updates cases in the database | | |
 | Daily list load | Writes the list to the cache | | |
@@ -55,10 +55,10 @@ Rule: only what talks to the database or the cache runs inside the VPC, because 
 **2. What happens next (asynchronous path).**
 1. SNS delivers the decision to the three SQS queues. That traffic is internal to AWS and does not touch the VPC.
 2. The Lambda service reads the queues and starts the consumers. The case and history consumers run with a network interface in the application subnets, from where they reach the database (5432) and the cache (6379 and 6380). The history consumer writes to DynamoDB through the gateway endpoint.
-3. The analytics consumer runs outside the VPC and writes to Firehose, which batches the records and drops the files in the Data Lake raw layer.
+3. The analytics consumer runs outside the VPC and writes each batch (up to 1,000 decisions, gathered by the queue mapping) as one file in the Data Lake raw layer.
 
 **3. Scheduled processes.**
-1. EventBridge Scheduler triggers the Lambdas, Step Functions and the EMR jobs. None of those triggers goes through the VPC.
+1. EventBridge Scheduler triggers the Lambdas, Step Functions and the Spark jobs. None of those triggers goes through the VPC.
 2. The Lambdas inside the VPC (alerts, list load) go out through the NAT when they call something public: the alerts Lambda publishes to SNS and calls the engine through the load balancer to review transactions approved by fallback; the list load Lambda calls the list service through API Gateway.
 3. The Spark jobs have no VPC configuration: they read and write S3 and Glue directly.
 
@@ -121,9 +121,9 @@ Team members reach resources inside the VPC through **AWS Systems Manager Sessio
 | 2 | `rol-motor` | ECS (`ecs-tasks.amazonaws.com`) | Publish decisions, use the cache, read the day's exchange rate and send traces |
 | 3 | `rol-consumidor-casos` | Lambda | Read the cases queue and write cases to the database |
 | 4 | `rol-consumidor-historial` | Lambda | Read the history queue and write the 30-day account history to the database |
-| 5 | `rol-consumidor-analitica` | Lambda | Read the analytics queue and write the raw decisions to the Data Lake (Firehose once the load test sizes it) |
-| 6 | `rol-firehose-raw` | Firehose | Write to `raw/decisiones/` in the Data Lake |
-| 7 | `rol-api-reglas` | Lambda | Read and write rules, announce the change and launch the simulation on EMR |
+| 5 | `rol-consumidor-analitica` | Lambda | Read the analytics queue and write the raw decisions to the Data Lake, one file per batch |
+| 6 | — | — | Was `rol-firehose-raw`: removed in Sprint 6, Firehose is not on AWS's free plan |
+| 7 | `rol-api-reglas` | Lambda | Read and write rules, announce the change and read the raw decisions and labels to simulate a rule version |
 | 8 | `rol-api-casos` | Lambda | Read and write cases and store the evidence on closing |
 | 9 | `rol-actualiza-reglas-cache` | Lambda | Read the active rule from the database and write it to the cache |
 | 10 | `rol-alertas` | Lambda | Review and escalate cases, send emails and review transactions approved by fallback |
@@ -133,7 +133,7 @@ Team members reach resources inside the VPC through **AWS Systems Manager Sessio
 | 14 | `rol-lee-extractos` | Lambda | Read the partners' statements |
 | 15 | `rol-escribe-diferencias` | Lambda | Read the reconciliation result, write differences and notify treasury |
 | 16 | `rol-conciliacion` | Step Functions | Invoke the two reconciliation Lambdas and the Spark job |
-| 17 | `rol-emr-jobs` | EMR Serverless | Read and write the Data Lake and the Glue catalog |
+| 17 | `rol-glue-jobs` | AWS Glue | Read the Data Lake and write the curated layer (was `rol-emr-jobs`: EMR is not on AWS's free plan) |
 | 18 | `rol-scheduler` | EventBridge Scheduler | Trigger the scheduled tasks |
 | 19 | `rol-admin-ejecucion` | ECS | Pull the admin image, write logs and inject the master password |
 | 20 | `rol-admin` | ECS | Used by the seed code: export the restricted list to the provider's bucket |
@@ -141,7 +141,7 @@ Team members reach resources inside the VPC through **AWS Systems Manager Sessio
 | 22 | `rol-despliegue-apis` | GitHub Actions (OIDC), securepay-apis | Publish the securepay-apis image and update the exchange-rates Lambda. Nothing else |
 | 23 | `usuario-powerbi` | IAM user (Power BI Desktop) | Query the analytics layer through Athena |
 
-That is 22 roles and one user, compared with 12 in version 1.0. What changed: the engine's execution role was split from its application role; the escalation task became the alerts Lambda (which also reviews transactions approved by fallback); the daily list load, the list service, Firehose, the rule refresh in the cache, EventBridge Scheduler and the admin task were added; and statement ingestion was split into the two reconciliation Lambdas. The Power BI user is the only long-lived credential (Power BI Desktop does not assume roles): read only, with keys rotated every 90 days.
+That is 21 roles and one user, compared with 12 in version 1.0 (number 6 is kept empty so the numbers below do not change). What changed: the engine's execution role was split from its application role; the escalation task became the alerts Lambda (which also reviews transactions approved by fallback); the daily list load, the list service, the rule refresh in the cache, EventBridge Scheduler and the admin task were added; and statement ingestion was split into the two reconciliation Lambdas. The Power BI user is the only long-lived credential (Power BI Desktop does not assume roles): read only, with keys rotated every 90 days.
 
 ### Detailed permissions per role
 
@@ -186,17 +186,9 @@ Since Sprint 4 the history is the PostgreSQL table `account_transactions` (team 
 | Action | Resource | Purpose |
 | :--- | :--- | :--- |
 | `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` | queue `analitica` | Read the queue |
-| `s3:PutObject` | `pagoseguro-prod-datalake/raw/decisiones/*` | Write one JSON Lines object per batch, as the code does today. `firehose:PutRecordBatch` on `decisiones-raw` replaces it when Firehose is deployed (after the load test) |
+| `s3:PutObject` | `pagoseguro-prod-datalake/raw/decisiones/*` | Write one JSON Lines object per batch. The queue mapping gathers up to 1,000 decisions or 60 seconds per batch, so the raw layer gets few, big files without Firehose |
 
-**6. `rol-firehose-raw`** (assumed by Firehose)
-
-| Action | Resource | Purpose |
-| :--- | :--- | :--- |
-| `s3:PutObject`, `s3:AbortMultipartUpload` | `pagoseguro-prod-datalake/raw/decisiones/*` | Write the batched files |
-| `s3:GetBucketLocation`, `s3:ListBucket`, `s3:ListBucketMultipartUploads` | bucket `pagoseguro-prod-datalake` | What Firehose requires on the destination bucket |
-| `logs:PutLogEvents` | the stream's log group | Record failed deliveries |
-
-The Firehose documentation also includes `s3:GetObject`; it is left out because the stream does not transform records or read what it writes. If Firehose requires it during testing, it is added, scoped to the same prefix.
+**6.** Removed in Sprint 6 (was `rol-firehose-raw`): Amazon Data Firehose is not on AWS's free plan, and the analytics queue mapping now does the batching (role 5).
 
 **7. `rol-api-reglas`** · VPC networking · own logs
 
@@ -204,9 +196,8 @@ The Firehose documentation also includes `s3:GetObject`; it is left out because 
 | :--- | :--- | :--- |
 | `ssm:GetParameter` | parameter `/pagoseguro/prod/rds/api_reglas` | Password of the database user `api_reglas`: read and write rules and versions |
 | `sns:Publish` | `tema:regla-cambiada` | Tell the cache that the active rule changed |
-| `emr-serverless:StartJobRun` | the EMR application | Launch the simulation of a rule version |
-| `emr-serverless:GetJobRun` | the application's job runs (`/applications/<id>/jobruns/*`) | Check the simulation's status |
-| `iam:PassRole` | `rol-emr-jobs`, only if the target is `emr-serverless.amazonaws.com` | Hand the job its role |
+| `s3:ListBucket` | bucket `pagoseguro-prod-datalake`, only the `raw/decisiones/` and `raw/labels/` prefixes | Find the files of the simulated day and the labels |
+| `s3:GetObject` | `pagoseguro-prod-datalake/raw/decisiones/*` and `/raw/labels/*` | Read them. The simulation replays the day in Python inside this Lambda, without Spark, so it needs no EMR or Glue permissions |
 
 **8. `rol-api-casos`** · VPC networking · own logs
 
@@ -284,16 +275,18 @@ It requests the full list from the list service over HTTPS (`GET /lista`), witho
 | `glue:StartJobRun`, `glue:GetJobRun`, `glue:GetJobRuns`, `glue:BatchStopJobRun` | the Glue job `conciliacion-cruce` | Step 2 and waiting for it (`.sync` integration). The match runs on AWS Glue: EMR is not available on AWS's free account plan (Sprint 5, HU-36) |
 | `sns:Publish` | `tema:alertas-negocio` | Step 4: e-mail treasury the day's result (`audience = treasury`) |
 
-The Glue job runs with its own role, `rol-glue-jobs` (assumed by AWS Glue): `s3:GetObject` and `s3:ListBucket` on the Data Lake, `s3:PutObject` and `s3:DeleteObject` on `curated/*`, `s3:GetObject` on the artifacts bucket's `jobs/` prefix and its logs in `/aws-glue/*`. Terraform hands it the role when it creates the job (`iam:PassRole` to `glue.amazonaws.com`); Step Functions does not.
+The Glue job runs with its own role, `rol-glue-jobs` (role 17). Terraform hands it the role when it creates the job (`iam:PassRole` to `glue.amazonaws.com`); Step Functions does not.
 
-**17. `rol-emr-jobs`** (assumed by EMR Serverless)
+**17. `rol-glue-jobs`** (assumed by AWS Glue)
 
 | Action | Resource | Purpose |
 | :--- | :--- | :--- |
-| `s3:GetObject`, `s3:ListBucket` | `pagoseguro-prod-datalake` (the whole bucket) | Read the three layers |
-| `s3:PutObject`, `s3:DeleteObject` | `pagoseguro-prod-datalake/curated/*` and `/analytics/*` | Write the curated and analytics layers. `DeleteObject` because Spark replaces partitions. It never writes to `raw/` |
+| `s3:GetObject`, `s3:ListBucket` | `pagoseguro-prod-datalake` (the whole bucket) | Read the layers |
+| `s3:PutObject`, `s3:DeleteObject` | `pagoseguro-prod-datalake/curated/*` | Write the curated layer. `DeleteObject` because Spark replaces partitions. It never writes to `raw/` |
 | `s3:GetObject` | artifacts bucket, `jobs/` prefix | Read the jobs' code |
-| `glue:GetDatabase`, `glue:GetTable`, `glue:GetTables`, `glue:CreateTable`, `glue:UpdateTable`, `glue:GetPartition`, `glue:GetPartitions`, `glue:CreatePartition`, `glue:BatchCreatePartition` | catalog, database `pagoseguro` and its tables | Register tables and partitions for Athena. No `DeleteTable` or `CreateDatabase`: Terraform creates the database |
+| `logs:CreateLogGroup`, `logs:CreateLogStream`, `logs:PutLogEvents` | `/aws-glue/*` | The job's logs |
+
+Sprint 5 added it for the reconciliation, and Sprint 6 removed `rol-emr-jobs`, which nothing used: EMR Serverless is not on AWS's free plan. Today only the reconciliation match uses it. The other Spark jobs (daily ETL, weekly rule effectiveness and device network) add their permissions, such as `/analytics/*` and the Glue catalog tables for Athena, when they are built on Glue.
 
 **18. `rol-scheduler`** (assumed by EventBridge Scheduler)
 
@@ -301,8 +294,8 @@ The Glue job runs with its own role, `rol-glue-jobs` (assumed by AWS Glue): `s3:
 | :--- | :--- | :--- |
 | `lambda:InvokeFunction` | Lambdas `tasas`, `alertas` and `carga-lista` | Daily tasks and the every-5-minutes task |
 | `states:StartExecution` | state machine `conciliacion` | The 02:00 reconciliation |
-| `emr-serverless:StartJobRun` | the EMR application | Daily ETL, rule effectiveness and device network (weekly) |
-| `iam:PassRole` | `rol-emr-jobs`, only to `emr-serverless.amazonaws.com` | Hand the job its role |
+
+It no longer starts EMR jobs (Sprint 6: EMR is not on AWS's free plan). The other Spark jobs add `glue:StartJobRun` on their own Glue jobs when they are built.
 
 The trust relationship limits the role to schedules in this account (`aws:SourceAccount`), as AWS recommends against the "confused deputy" problem.
 
@@ -476,20 +469,6 @@ This is how they are written in Terraform. `<cuenta>` and the identifiers are pa
       "Action": "states:StartExecution",
       "Resource": "arn:aws:states:us-east-2:<cuenta>:stateMachine:pagoseguro-prod-conciliacion"
     },
-    {
-      "Sid": "JobsDeSpark",
-      "Effect": "Allow",
-      "Action": "emr-serverless:StartJobRun",
-      "Resource": "arn:aws:emr-serverless:us-east-2:<cuenta>:/applications/<id-aplicacion>"
-    },
-    {
-      "Sid": "EntregarRolAlJob",
-      "Effect": "Allow",
-      "Action": "iam:PassRole",
-      "Resource": "arn:aws:iam::<cuenta>:role/pagoseguro-prod-rol-emr-jobs",
-      "Condition": {
-        "StringEquals": { "iam:PassedToService": "emr-serverless.amazonaws.com" }
-      }
     }
   ]
 }
@@ -502,7 +481,7 @@ This is how they are written in Terraform. `<cuenta>` and the identifiers are pa
 
 | What | How |
 | :--- | :--- |
-| Encryption at rest | Enabled on RDS, S3, DynamoDB, SQS, SNS, Firehose and the cache, with AWS managed keys |
+| Encryption at rest | Enabled on RDS, S3, DynamoDB, SQS, SNS and the cache, with AWS managed keys |
 | Encryption in transit | HTTPS on the load balancer and on API Gateway with an ACM certificate; SSL/TLS required on PostgreSQL (`rds.force_ssl = 1` in the parameter group); encryption in transit enabled on the cache; the buckets reject requests without TLS |
 | Secrets | In Parameter Store, type `SecureString`. They are read at runtime by the component's role (next table) |
 | What is never stored | No credentials in the repository or inside the images. The pipeline fails if it detects a secret |

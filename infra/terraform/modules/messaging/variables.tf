@@ -10,9 +10,9 @@ variable "queues" {
 }
 
 variable "visibility_timeout_seconds" {
-  description = "How long a message read by a consumer stays hidden. AWS asks for at least the Lambda timeout and recommends 6 times it (60 s x 6)."
+  description = "How long a message read by a consumer stays hidden. AWS asks for at least the Lambda timeout and recommends 6 times it plus the batching window (60 s x 6 + 60 s of the analytics batches)."
   type        = number
-  default     = 360
+  default     = 420
 }
 
 variable "max_receive_count" {
