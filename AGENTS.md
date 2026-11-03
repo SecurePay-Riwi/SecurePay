@@ -45,6 +45,7 @@ SecurePay/                  ← this repo: the product (engine, consumers, infra
 │   └── consumers/          ← SNS/SQS consumers and analytics
 ├── tests/                  ← end-to-end tests that run more than one service
 │                             (test_rule_catalog_e2e.py: rules API + engine)
+│                             (test_reconciliation_e2e.py: ingest + match + store)
 ├── infra/                  ← spark/ (build of the reconciliation's Spark job), LocalStack setup (init scripts create the SNS/SQS
 │                             messaging, S3 buckets and the exchange-rates DynamoDB
 │                             table; add the service to SERVICES in Compose), Docker Compose
