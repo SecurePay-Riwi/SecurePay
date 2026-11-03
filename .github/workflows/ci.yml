@@ -62,7 +62,7 @@ jobs:
       # Exit code 1 on any finding fails the build. A secret that was rotated
       # goes to .gitleaksignore with its fingerprint.
       - name: Scan the history for secrets
-        run: ./gitleaks git . --redact --no-banner --exit-code 1
+        run: ./gitleaks git . --redact --no-banner --verbose --exit-code 1
 
   tests:
     runs-on: ubuntu-latest
