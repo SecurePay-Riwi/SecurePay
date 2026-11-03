@@ -91,7 +91,7 @@ levanta por separado:
 | Subir los CSV de Kaggle al Data Lake | `uv run python -m securepay_csv.kaggle_datasets` (en `securepay-csv`) | LocalStack (y el token de Kaggle si faltan los CSV); no usa PostgreSQL | 8c |
 | Generar transacciones de prueba | `uv run python -m securepay_generator` (en `securepay-generator`) | Seed hecho | 9 |
 | Correr las pruebas | `uv run pytest` | Seed hecho; Valkey y LocalStack para algunas | 10 |
-| Revisar el código (lint) | `uv run ruff check .` | Nada encendido | 10 |
+| Revisar el código (lint y formato) | `uv run ruff format .` y `uv run ruff check .` | Nada encendido | 10 |
 | Cargar la caché del motor (cuentas, comercios, lista restrictiva) | `uv run python -m services.cache_loader` | Seed hecho y Valkey | 11 |
 | Levantar el motor de decisión | `uv run uvicorn services.decision_engine.main:app --reload` | Valkey con la caché cargada (y LocalStack para publicar); no usa PostgreSQL | 11 |
 | Levantar los consumidores | `uv run python -m services.consumers` | LocalStack | 11b |
@@ -361,6 +361,7 @@ usan SNS, SQS y S3 de mentira y no lo necesitan.
 
 ``` bash
 uv run pytest
+uv run ruff format .
 uv run ruff check .
 ```
 

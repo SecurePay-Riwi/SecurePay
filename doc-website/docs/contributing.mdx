@@ -76,7 +76,7 @@ Branches that already exist keep their names. There is no `develop` branch: bran
 ## Pull requests
 
 1. Branch from an up-to-date `main`.
-2. Run `uv run ruff check .` and `uv run pytest` with PostgreSQL (seeded), Valkey and LocalStack up. The CI runs both on the PR anyway (see below).
+2. Run `uv run ruff format .`, `uv run ruff check .` and `uv run pytest` with PostgreSQL (seeded), Valkey and LocalStack up. The CI runs both on the PR anyway (see below).
 3. Update the repository `README.md`, these docs and `AGENTS.md` when you add setup steps, environment variables or ways to run something.
 4. Keep it small: ideally under 10 files and a few hundred lines. Open it as **Draft** while it is in progress, with a title in the commit format.
 5. The description follows the organization template ([`pull_request_template.md`](https://github.com/SecurePay-Riwi/.github/blob/main/pull_request_template.md)): Context (with the Jira key), Type of change, Before / After, How and why, Missing, How to test (exact commands, where they run and the expected result) and Checklist.
@@ -88,7 +88,7 @@ Branches that already exist keep their names. There is no `develop` branch: bran
 
 | Job | What it does | Fails when |
 | --- | --- | --- |
-| `lint` | `uv run ruff check .` | Ruff finds an error (rules in `[tool.ruff.lint]` of `pyproject.toml`) |
+| `lint` | `uv run ruff check .` and `uv run ruff format --check .` | Ruff finds an error (rules in `[tool.ruff.lint]` of `pyproject.toml`) or a file is not formatted |
 | `secret-scan` | gitleaks over the whole git history | Any commit holds something that looks like a key, token or password |
 | `tests` | `uv run pytest` with PostgreSQL 16 seeded by `securepay-seed`, Valkey and Java 17 for Spark | A test fails (LocalStack tests are skipped) |
 | `image` | `docker build --provenance=false .` | The engine image does not build |

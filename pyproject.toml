@@ -31,8 +31,8 @@ spark = [
 default-groups = ["dev", "spark"]
 
 [tool.ruff]
-# Lint only (no formatter yet). More rule families (I, UP, B) can be added
-# later in their own PR, so the PRs that are open now get no conflicts.
+# Linter and formatter. CI runs "ruff check ." and "ruff format --check .";
+# "ruff check --fix ." and "ruff format ." fix most of it locally.
 target-version = "py312"
 extend-exclude = ["doc-website"]
 
