@@ -34,9 +34,6 @@ module "security_groups" {
   name_prefix = local.name_prefix
   vpc_id      = module.network.vpc_id
   engine_port = var.engine_port
-
-  # Temporary: the engine still reads PostgreSQL (security.mdx).
-  engine_reads_database = var.engine_reads_database
 }
 
 # Budget alert (alarm 10 in infrastructure.mdx). AWS refreshes costs a few
@@ -75,7 +72,6 @@ module "iam" {
   name_prefix                 = local.name_prefix
   environment                 = var.environment
   create_github_oidc_provider = var.create_github_oidc_provider
-  engine_reads_database       = var.engine_reads_database
 }
 
 module "storage" {
@@ -150,8 +146,8 @@ module "ecs" {
     VALKEY_URL               = module.cache.url
     VALKEY_CLUSTER           = "true"
     SNS_DECISIONES_TOPIC_ARN = module.messaging.decisions_topic_arn
+    RATES_TABLE              = module.storage.exchange_rates_table
   }
-  engine_secrets = var.engine_reads_database ? { DATABASE_URL = module.database.master_url_parameter_arn } : {}
 
   admin_repository_url     = module.ecr.repository_urls["admin"]
   admin_image_tag          = var.admin_image_tag
@@ -179,7 +175,8 @@ module "messaging" {
   alarm_emails      = var.budget_emails
 }
 
-# The cases, history and analytics consumers and the alerts task (HU-68),
+# The consumers and the alerts task (HU-68), the reconciliation steps
+# (HU-36) and the daily cache loader (HU-67),
 # with the engine's image. Created once lambda_image_tag is set.
 module "lambdas" {
   source = "../../modules/lambdas"
@@ -191,6 +188,7 @@ module "lambdas" {
   app_subnet_ids           = module.network.app_subnet_ids
   lambda_security_group_id = module.security_groups.ids["lambda"]
   queue_arns               = module.messaging.queue_arns
+  cache_url                = module.cache.url
 
   # Temporary: the master user, like the engine (security.mdx). One user
   # per component is pending.

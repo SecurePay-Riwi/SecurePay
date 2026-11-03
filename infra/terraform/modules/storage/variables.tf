@@ -4,7 +4,7 @@ variable "name_prefix" {
 }
 
 variable "force_destroy" {
-  description = "Let terraform destroy delete buckets that still hold objects (true in dev only). Objects under Object Lock retention still block it until the retention ends."
+  description = "Let terraform destroy delete buckets that still hold objects and the exchange-rates table (true in dev only). Objects under Object Lock retention still block it until the retention ends."
   type        = bool
   default     = false
 }

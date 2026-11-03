@@ -91,11 +91,6 @@ variable "domain_name" {
   default     = null
 }
 
-variable "engine_reads_database" {
-  description = "Temporary: the engine still reads PostgreSQL, so dev opens sg-engine -> sg-rds 5432 and hands it DATABASE_URL. Set false once the cache holds that data."
-  type        = bool
-  default     = true
-}
 
 variable "lambda_image_tag" {
   description = "Tag of the engine image the Lambdas run (usually the same as engine_image_tag). Unset: no Lambda yet."

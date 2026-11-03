@@ -209,7 +209,7 @@ The engine image goes to ECR tagged with the short git commit, the admin image (
    curl.exe -k -X POST "https://$ALB/transactions" -H "Content-Type: application/json" --data-binary "@smoke-transaction.json"
    ```
 
-   It must return a decision (`"decision":"APPROVE"`, with `rules_version` and `processed_at`). Sending it again returns the same decision with `"idempotent_replay":true`: whichever task gets it, the answer comes from the shared cache.
+   It must return a decision (`"decision":"APPROVE"`, with `rules_version` and `processed_at`). Until the cache loader of step 7 runs, the cache holds no accounts, so the engine answers with the default decision (`"by_default":true`, the reason names the missing account): the engine never reads PostgreSQL (HU-67). Sending it again returns the same decision with `"idempotent_replay":true`: whichever task gets it, the answer comes from the shared cache.
 
 7. Stop one engine task and watch ECS replace it:
 
@@ -228,7 +228,7 @@ The engine image goes to ECR tagged with the short git commit, the admin image (
 
 ## 7. Run the consumers and the alerts task as Lambdas
 
-The engine publishes every decision to `securepay-dev-decisions`, which copies it to three queues. Each queue has its Lambda: `securepay-dev-cases-consumer` and `-history-consumer` write to RDS from the application subnets, and `-analytics-consumer` writes the decisions to `raw/decisiones/` in the Data Lake from outside the VPC. `securepay-dev-alerts` runs every 5 minutes (EventBridge Scheduler): it escalates overdue cases to the supervisor, sends the restricted list summary to compliance, purges the 30-day history and retries the evidence. The four run the engine image of step 6 with another command (`python -m awslambdaric <handler>`), and create the case tables in RDS the first time they write.
+The engine publishes every decision to `securepay-dev-decisions`, which copies it to three queues. Each queue has its Lambda: `securepay-dev-cases-consumer` and `-history-consumer` write to RDS from the application subnets, and `-analytics-consumer` writes the decisions to `raw/decisiones/` in the Data Lake from outside the VPC. `securepay-dev-alerts` runs every 5 minutes (EventBridge Scheduler): it escalates overdue cases to the supervisor, sends the restricted list summary to compliance, purges the 30-day history and retries the evidence. `securepay-dev-list-loader` copies accounts, merchants and the restricted list from RDS into the cache once a day at 01:00 Bogotá (HU-67). They run the engine image of step 6 with another command (`python -m awslambdaric <handler>`), and the consumers and the alerts task create the case tables in RDS the first time they write.
 
 1. If your Terraform user was created before November 2026, paste again the whole [`terraform-user-policy.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/terraform-user-policy.json) in its inline policy `securepay-terraform-iam` (step 2.3): it now also lets Terraform hand the roles to Lambda and to EventBridge Scheduler (statement `PassRolesToServices`, which now names the three services; the policy must stay under the 2,048 characters IAM allows inline).
 
@@ -243,7 +243,16 @@ The engine publishes every decision to `securepay-dev-decisions`, which copies i
    terraform apply
    ```
 
-   It must say `15 to add`: the 4 functions and their 4 log groups, the 3 queue mappings, the schedule, the alerts invoke settings, its error metric filter and its alarm. **Lambda → Functions** shows the four, "Image" package type.
+   It must say `18 to add`: the 5 functions and their 5 log groups, the 3 queue mappings, the two schedules (alerts and cache loader), the alerts invoke settings, its error metric filter and its alarm. **Lambda → Functions** shows the five, "Image" package type. (From `main` today the same apply also creates step 8, so it says `29 to add`.)
+
+   Load the cache now instead of waiting for 01:00. It prints how many accounts, merchants and listed documents it wrote:
+
+   ```powershell
+   aws lambda invoke --function-name securepay-dev-list-loader --payload "{}" --cli-binary-format raw-in-base64-out list-loader.json
+   Get-Content list-loader.json
+   ```
+
+   Without this load the engine answers with default decisions and the restricted list test below returns `HOLD` instead of `REJECT`. Valkey keeps nothing when the cache is recreated, so run it again after a new `apply` that replaces the cache.
 
 3. Send a withdrawal from an account whose owner is on the restricted list ([`restricted-transaction.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/envs/dev/restricted-transaction.json); the seed is deterministic, so the account is the same in every environment):
 
@@ -408,7 +417,7 @@ Once the lock of the last uploaded version has passed, destroy everything and ty
 terraform destroy
 ```
 
-It ends with `Destroy complete! Resources: 210 destroyed` after step 8 with one treasury address (the 184 of the first `apply` plus the 26 of the Lambdas and the reconciliation). The Glue job and its files go with it. The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
+It ends with `Destroy complete! Resources: 214 destroyed` after step 8 with one treasury address (the 185 of the first `apply` plus the 29 of the Lambdas and the reconciliation). The Glue job and its files go with it. The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
 
 **Check that nothing is left.** This must print nothing:
 
@@ -422,7 +431,7 @@ In the console, NAT gateways must show "Deleted", **EC2 → Elastic IPs** must b
 
 ## Automatic deploys from GitHub Actions
 
-Steps 6 and 7 build and push the image by hand. Once dev exists, `.github/workflows/deploy.yml` does the same on every merge to `main`: it assumes the role `securepay-dev-deploy` with GitHub's OIDC token (no AWS keys in GitHub; the role only trusts the `main` branch), pushes the engine image to `securepay-dev-engine` tagged with the short commit, registers a new revision of the engine task definition with that image, rolls out the ECS service `engine` and updates the six Lambdas of steps 7 and 8. Terraform still creates and destroys the environment.
+Steps 6 and 7 build and push the image by hand. Once dev exists, `.github/workflows/deploy.yml` does the same on every merge to `main`: it assumes the role `securepay-dev-deploy` with GitHub's OIDC token (no AWS keys in GitHub; the role only trusts the `main` branch), pushes the engine image to `securepay-dev-engine` tagged with the short commit, registers a new revision of the engine task definition with that image, rolls out the ECS service `engine` and updates the seven Lambdas of steps 7 and 8. Terraform still creates and destroys the environment.
 
 **Once:** create the repository variable with the role ARN (anyone with admin access to the repository). Get the ARN:
 
@@ -441,7 +450,7 @@ Then in GitHub: **SecurePay → Settings → Secrets and variables → Actions �
 | The service or a Lambda does not exist yet (no image tag in `terraform.tfvars`) | Green, with a notice for each one |
 | The new tasks fail their health checks | The ECS circuit breaker rolls back and the job fails with "Rollback" |
 
-A later `terraform apply` puts back the image tag of `terraform.tfvars`; set it to the deployed commit if you apply again. Cost: the deploy itself is free (GitHub Actions); while it rolls out, two engine tasks run side by side for a few minutes.
+A later `terraform apply` puts back the image tag of `terraform.tfvars` in the engine and the Lambdas: run **Deploy** again after every `apply` (or set the tags to the deployed commit). Cost: the deploy itself is free (GitHub Actions); while it rolls out, two engine tasks run side by side for a few minutes.
 
 ## Rules
 

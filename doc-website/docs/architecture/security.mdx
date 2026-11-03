@@ -83,8 +83,8 @@ One group per function, and the rules are written between groups instead of betw
 | `sg-cache` | 6379 and 6380/TCP from `sg-motor` and `sg-lambda` | None |
 
 **Changes from version 1.0:**
-- **The engine no longer reaches the database.** The engine never queries PostgreSQL: it reads the active rules and the restricted list from the cache, and the day's exchange rate from DynamoDB. The components that read the database to fill the cache are Lambdas (rule refresh, list load). The 5432 rule was removed from `sg-motor`, and so was the inbound rule from `sg-motor` in `sg-rds`. Today the engine code still reads accounts, owners and the restricted list from PostgreSQL (the rules already come from the cache); this is temporary until the list and the account data are loaded into the cache.
-  - **Temporary rule in dev (agreed on 2026-10-31).** So that the engine can decide in AWS before that load exists, the Terraform variable `engine_reads_database` (true in `envs/dev`, false by default) adds 5432/TCP from `sg-engine` to `sg-rds` (egress and ingress) and lets `engine-execution` read the `DATABASE_URL` parameter `/securepay/<env>/rds/master-url`. It goes back to false, and both rules disappear, once the restricted list and the account data are in the cache.
+- **The engine no longer reaches the database.** The engine never queries PostgreSQL: it reads the active rules and the restricted list from the cache, and the day's exchange rate from DynamoDB. The components that read the database to fill the cache are Lambdas (rule refresh, list load). The 5432 rule was removed from `sg-motor`, and so was the inbound rule from `sg-motor` in `sg-rds`. Since HU-67 the engine code reads accounts, owners and the restricted list from the cache too, loaded once a day by the `list-loader` Lambda.
+  - **Temporary rule in dev, removed (2026-10-31 to 2026-11-03).** While the engine still read PostgreSQL, the Terraform variable `engine_reads_database` opened 5432/TCP from `sg-engine` to `sg-rds` and let `engine-execution` read `/securepay/<env>/rds/master-url`. MAG-356 removed the variable and both rules once HU-67 was in `main`.
   - **Temporary in dev too: the Lambdas use the master user (agreed on 2026-11-02, HU-68).** The cases, history and alerts Lambdas get `DATABASE_URL` of the master user as an environment variable (encrypted at rest, but visible to whoever may read the function's configuration). The component users (`cases_consumer`, `alerts`, ...) already have their passwords in Parameter Store; creating them in PostgreSQL with their grants, and reading the password at startup, is pending for every component (engine, Lambdas and admin task).
 - **Port 6380 on the cache.** ElastiCache Serverless uses 6379 (writes and consistent reads) and 6380 (reads from a replica), and many clients open both even if they do not use the second one. With only 6379 the connection could fail.
 - **`sg-admin`**, for the Fargate task that runs the schema migrations and the seed against the database. It had no group before.
@@ -248,6 +248,7 @@ To review the transactions approved by fallback it calls the engine over HTTPS t
 | Action | Resource | Purpose |
 | :--- | :--- | :--- |
 | `elasticache:Connect` | the cache and the user `carga_lista` | Replace the list in the cache |
+| `ssm:GetParameter` | parameter `/rds/list_loader` | Its database password, to read accounts, merchants and the list (in dev it still gets the master `DATABASE_URL`, like the other Lambdas) |
 
 It requests the full list from the list service over HTTPS (`GET /lista`), without IAM.
 
