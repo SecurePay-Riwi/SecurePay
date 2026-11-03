@@ -270,7 +270,7 @@ The engine publishes every decision to `securepay-dev-decisions`, which copies i
    aws logs tail /aws/lambda/securepay-dev-cases-consumer --since 10m
    ```
 
-   It shows `Cases: case <id> opened for transaction 7a2d3b5f-... (restricted_list)` and `1 restricted list report(s)`. The history and analytics Lambdas log their own line (`History: 1 row(s) written`, `Analítica: 1 eventos en s3://...`).
+   It shows `Cases: case <id> opened for transaction 7a2d3b5f-... (restricted_list)` and `1 restricted list report(s)`. The history and analytics Lambdas log their own line (`History: 1 row(s) written`, `Analítica: 1 eventos en s3://...`). The analytics line can take up to a minute: its queue waits up to 60 seconds to fill a batch of 1,000.
 
 5. Within 5 minutes the alerts task sends the compliance summary, **only to the compliance address**. Within 5 more minutes (the case was due 2 minutes after it opened) it escalates the case and sends **one** summary, **only to the supervisor address**:
 

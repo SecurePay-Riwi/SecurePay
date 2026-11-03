@@ -37,7 +37,7 @@ The general rule: **pay for capacity where volume is high and pay per use where 
 | Low-volume components (APIs, consumers, tasks) | **Lambda** (12 functions) | Pay per use: ~$41 against ~$108 with containers always on | Everything on Fargate |
 | Business data: users, rules, cases, reconciliation | **RDS PostgreSQL** `db.t3.micro`, Multi-AZ | Relational, automatic failover; it does not store transactions, so the smallest instance is enough | Aurora (~3 times the cost); self-managed PostgreSQL on EC2 |
 | Durable, infrequent data | **DynamoDB** | Device-account pairs with automatic 30-day expiry, and the daily rates | |
-| Data Lake and evidence | **S3** in three layers (raw, curated, analytics) and **Firehose** to batch the writes | Cheap storage; Firehose avoids millions of small files (~$2 against ~$65/month) | |
+| Data Lake and evidence | **S3** in three layers (raw, curated, analytics); the analytics queue sends batches of up to 1,000 decisions, one file each | Cheap storage; large batches avoid millions of small files (~$0.65 against ~$65/month) without Firehose, which is not on AWS's free plan | |
 | Immutable evidence for 10 years | **S3 Object Lock** in COMPLIANCE mode, Glacier Instant Retrieval class | Nobody can delete it, not even the account administrator; ~83% cheaper than S3 Standard | Locking in the application |
 | Batch jobs with Spark | **EMR Serverless** | Managed Spark, paid per minute of use | Spark on our own containers; Glue ETL (minimum charge per run) |
 | Orchestration and scheduling | **Step Functions** (reconciliation) and **EventBridge Scheduler** | Free at our volume, no servers | Airflow with Celery |
@@ -89,7 +89,7 @@ This is the inventory of what Terraform must create, not of what exists today. D
 | EMR Serverless application | `pagoseguro-prod-spark` | 1 | Spark; stops on its own when idle; no VPC; runs the 5 jobs | Size per job expected (see [Estimated figures](#estimates)) |
 | Step Functions state machine | `conciliacion` | 1 | Standard: reads statements (Lambda), reconciles (Spark, `.sync`), writes differences (Lambda); retries per step | Decided |
 
-**The 12 Lambdas.** In dev, Sprint 5 (HU-68) deploys the first four: the three queue consumers and `alertas`, with the names of [Terraform](./terraform.mdx#names-in-aws) (`securepay-dev-cases-consumer`, ...). Until the load test sizes Firehose, the analytics consumer writes to `raw/decisiones/` directly.
+**The 12 Lambdas.** In dev, Sprint 5 (HU-68) deploys the first four: the three queue consumers and `alertas`, with the names of [Terraform](./terraform.mdx#names-in-aws) (`securepay-dev-cases-consumer`, ...). The analytics consumer writes to `raw/decisiones/` directly, one file per batch of up to 1,000 decisions (no Firehose: it is not on AWS's free plan).
 
 | Lambda | Trigger | In the VPC | Memory and timeout | Role |
 | :--- | :--- | :--- | :--- | :--- |
@@ -127,7 +127,6 @@ This is the inventory of what Terraform must create, not of what exists today. D
 | :--- | :--- | :--- | :--- | :--- |
 | SNS topics | `decisiones`, `regla-cambiada`, `alertas-negocio`, `alarmas-operativas` | 4 | `alertas-negocio` with a filter by recipient (compliance, supervisor, treasury) | Decided |
 | SQS queues | `casos`, `historial`, `analitica` and their `-dlq` | 6 | Raw message delivery from SNS; DLQ after 5 attempts with 14-day retention | Decided |
-| Firehose stream | `decisiones-raw` | 1 | Destination `raw/decisiones/`, files of ~5 MB or every 5 minutes | Decided; enters the cost table after the load test |
 | EventBridge Scheduler schedules | | 7 | Reconciliation (02:00), ETL (daily), exchange rates (daily), list load (daily), alerts (every 5 min), rule effectiveness and device network (weekly) | Decided |
 
 ### Security and operations
@@ -139,7 +138,7 @@ This is the inventory of what Terraform must create, not of what exists today. D
 | Power BI IAM user | 1 | Read only on the analytics layer; keys rotated every 90 days | Designed |
 | Parameter Store parameters | 8 | Master password, 6 component passwords and the Kaggle token (see [Encryption and secrets](./security.mdx#encryption)) | Designed |
 | Cache users | 5 | `motor`, `historial`, `reglas`, `carga_lista` and the disabled default user, in a user group with IAM authentication | Designed |
-| CloudWatch log groups | 15 | One per Lambda, two for ECS and one for Firehose; 30-day retention | Designed |
+| CloudWatch log groups | 14 | One per Lambda and two for ECS; 30-day retention | Designed |
 | Metric filter | 1 | `EVENTO_NO_PUBLICADO` in the engine logs | Designed |
 | CloudWatch alarms | 10 | See [Alarms and thresholds](#alarms) | Designed |
 | Budgets | 2 | 80 % and 100 % of the credit | Decided |
@@ -221,7 +220,7 @@ Some figures in the inventory cannot be known before building and measuring. Eac
 - IAM authentication on the cache: [Authenticating with IAM](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/auth-iam.html)
 - IAM authentication on RDS, ruled out: [IAM database authentication](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.IAMDBAuth.html) (the memory requirement that rules it out on `db.t3.micro`)
 - ECS execution role and secrets: [Amazon ECS task execution IAM role](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html)
-- Firehose to S3: [Controlling access with Amazon Data Firehose](https://docs.aws.amazon.com/firehose/latest/dev/controlling-access.html)
+- SQS batches for Lambda: [Configuring Amazon SQS event source mappings](https://docs.aws.amazon.com/lambda/latest/dg/services-sqs-configure.html)
 - EventBridge Scheduler: [Setting up Amazon EventBridge Scheduler](https://docs.aws.amazon.com/scheduler/latest/UserGuide/setting-up.html)
 - Step Functions with EMR Serverless: [IAM policies for EMR Serverless](https://docs.aws.amazon.com/step-functions/latest/dg/emr-serverless-iam.html)
 - EMR job role: [Job runtime roles for Amazon EMR Serverless](https://docs.aws.amazon.com/emr/latest/EMR-Serverless-UserGuide/security-iam-runtime-role.html)

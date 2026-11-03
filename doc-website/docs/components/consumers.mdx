@@ -8,7 +8,7 @@ description: The three SQS consumers, written as Lambda handlers and run locally
 
 **Folder:** `services/consumers/` · **Run locally:** `uv run python -m services.consumers`
 
-One consumer per queue. Each is a function with the **AWS Lambda signature**, `handler(event, context)`: it receives a batch of up to 10 SQS messages and returns which ones failed (`ReportBatchItemFailures`). In AWS, SQS triggers the Lambda; locally, a runner reads LocalStack and calls the same function.
+One consumer per queue. Each is a function with the **AWS Lambda signature**, `handler(event, context)`: it receives a batch of SQS messages (up to 10; analytics up to 1,000 in AWS) and returns which ones failed (`ReportBatchItemFailures`). In AWS, SQS triggers the Lambda; locally, a runner reads LocalStack and calls the same function.
 
 <div className="decision-grid">
   <InfoCard title="Analytics · `analitica`">
@@ -16,7 +16,7 @@ One consumer per queue. Each is a function with the **AWS Lambda signature**, `h
 
     **Today:** Writes each batch to S3 as JSON Lines.
 
-    **Next:** Go through Kinesis Data Firehose in AWS.
+    **In AWS:** Batches of up to 1,000 decisions, so each file is big (no Firehose: it is not on AWS's free plan).
   </InfoCard>
   <InfoCard title="Cases · `casos`">
     **Handler:** `cases.handler`
@@ -68,7 +68,7 @@ s3://pagoseguro-datalake/raw/decisiones/fecha=2026-10-14/001003-<uuid>.jsonl
 
 If S3 fails, the whole batch is reported as failed and retried. If SQS delivers a message twice, the line is duplicated in `raw`: the raw layer keeps what arrived untouched, and the curated layer removes duplicates by transaction id.
 
-In AWS, writing one object per batch would be ~13 million PUTs a month (~$65), so the analytics consumer will write through Kinesis Data Firehose, which groups ~5 MB objects. Locally it writes straight to S3.
+In AWS, batches of 10 would be ~13 million PUTs a month (~$65) and millions of small files. Kinesis Data Firehose was planned to group them, but it is not on AWS's free plan, so the queue mapping does it instead: the analytics consumer gets up to 1,000 messages per batch, waiting at most 60 seconds to fill it (`analytics_batch_size` and `analytics_batching_window_seconds` in `modules/lambdas`). That is ~130 thousand PUTs a month (~$0.65) and files of 2 to 3 MB; Lambda sends fewer messages if a batch would pass its 6 MB limit. The code does not change: it already writes one file per batch. The queues' visibility timeout is 420 seconds, the 6 × 60 s Lambda timeout AWS recommends plus the 60-second window. The load test confirms the file size. Locally the runner keeps batches of 10.
 
 ## Running them locally
 

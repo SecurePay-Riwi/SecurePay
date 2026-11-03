@@ -57,7 +57,7 @@ Grouped by service, so a service that solves several things is counted once.
 | AWS Glue Data Catalog | Table catalog for Athena | $0.01 | $0.00 |
 | Amazon ECR | Docker image registry | $0.50 | $0.50 |
 | Public IPv4 addresses | 4 addresses (2 NAT + 2 ALB) at $0.005 an hour | $14.60 | — |
-| Amazon Data Firehose | Batches the Data Lake raw layer (one record per batch of 10 decisions) | $3.58 | — |
+| Amazon Data Firehose | Removed in Sprint 6: not on AWS's free plan. The analytics queue batches instead (~$0.65 of S3 PUTs). Recalculated with the final costs after the load test | $3.58 | — |
 | IAM, KMS (AWS keys), VPC, Budgets, CloudTrail | Roles, encryption at rest, network, credit alerts, audit | $0.00 | $0.00 |
 | Power BI Desktop, GitHub Actions, Frankfurter API | Dashboard, CI/CD, exchange rates | $0.00 | $0.00 |
 | **Total** | | **$346.45** | **≈ $17.18** |
