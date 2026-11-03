@@ -4,7 +4,7 @@ Contract C2: reconcile() reads the records of a day and the decisions of
 the window day-1..day+1, and writes one MatchRow per reference.
 
 reconcile() runs in PySpark (HU-37): local[*] in the tests and Compose,
-the cluster's session on EMR Serverless (spark-submit runs main()).
+the job's session on AWS Glue 6.0 (infra/spark/match_job.py runs main()).
 match_day() is the same match in plain Python: the reference the Spark
 tests compare against. pyspark is imported inside the Spark functions,
 so importing this module does not need it (the Docker image has none).
@@ -164,7 +164,7 @@ MATCH_COLUMNS = ("run_day", "partner", "status", "reference", "partner_reference
 
 def session():
     """The Spark session of the match: the cluster's under spark-submit
-    (EMR Serverless), local[*] otherwise. Times are compared in UTC."""
+    (AWS Glue), local[*] otherwise. Times are compared in UTC."""
     from pyspark.sql import SparkSession
 
     return (SparkSession.builder.appName(APP_NAME)
@@ -174,7 +174,7 @@ def session():
 
 def _spark_reads(spark, path: str) -> bool:
     """Whether Spark reads and writes `path` itself: always a local folder,
-    s3:// only on a cluster (EMR reads S3; local mode has no S3 driver,
+    s3:// only on a cluster (Glue reads S3; local mode has no S3 driver,
     so with LocalStack the files go through storage.py)."""
     return not storage.is_s3(path) or not spark.sparkContext.master.startswith("local")
 
@@ -340,7 +340,7 @@ def reconcile(spark, day: date, records_path: str, decisions_path: str, output_p
             "matched": matched, "unmatched": int(counts["total"]) - matched}
 
 
-def main(argv=None) -> None:  # spark-submit / EMR Serverless entry point
+def main(argv=None) -> None:  # spark-submit / AWS Glue entry point
     """--day --records --decisions --output"""
     parser = argparse.ArgumentParser(description="Match a day of partner records with the decisions.")
     parser.add_argument("--day", required=True, type=date.fromisoformat)
