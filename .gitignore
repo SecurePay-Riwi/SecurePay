@@ -26,3 +26,7 @@ dump.rdb
 *.tfvars
 !*.tfvars.example
 crash.log
+
+# Answers of `aws lambda invoke` in the AWS deploy guide (steps 7 and 8)
+infra/terraform/envs/dev/list-loader.json
+infra/terraform/envs/dev/check.json
