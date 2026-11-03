@@ -422,7 +422,7 @@ In the console, NAT gateways must show "Deleted", **EC2 → Elastic IPs** must b
 
 ## Automatic deploys from GitHub Actions
 
-Steps 6 and 7 build and push the image by hand. Once dev exists, `.github/workflows/deploy.yml` does the same on every merge to `main`: it assumes the role `securepay-dev-deploy` with GitHub's OIDC token (no AWS keys in GitHub; the role only trusts the `main` branch), pushes the engine image to `securepay-dev-engine` tagged with the short commit, registers a new revision of the engine task definition with that image, rolls out the ECS service `engine` and updates the four Lambdas of step 7. Terraform still creates and destroys the environment.
+Steps 6 and 7 build and push the image by hand. Once dev exists, `.github/workflows/deploy.yml` does the same on every merge to `main`: it assumes the role `securepay-dev-deploy` with GitHub's OIDC token (no AWS keys in GitHub; the role only trusts the `main` branch), pushes the engine image to `securepay-dev-engine` tagged with the short commit, registers a new revision of the engine task definition with that image, rolls out the ECS service `engine` and updates the six Lambdas of steps 7 and 8. Terraform still creates and destroys the environment.
 
 **Once:** create the repository variable with the role ARN (anyone with admin access to the repository). Get the ARN:
 
