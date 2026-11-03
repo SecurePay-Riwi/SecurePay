@@ -109,8 +109,9 @@ locals {
           }
         }
         ResultSelector = {
-          "matched.$"     = "$.Payload.matched"
-          "differences.$" = "$.Payload.differences"
+          "matched.$"         = "$.Payload.matched"
+          "differences.$"     = "$.Payload.differences"
+          "new_differences.$" = "$.Payload.new_differences"
         }
         ResultPath = "$.store"
         Retry      = local.lambda_retry
@@ -126,7 +127,7 @@ locals {
         Parameters = {
           TopicArn    = var.business_alerts_topic_arn
           "Subject.$" = "States.Format('Reconciliation of {} done', $.ingest.day)"
-          "Message.$" = "States.Format('Reconciliation of {} done. Files read: {}. Records: {}. Rejected rows: {}. Matched: {}. New differences: {}. Pending differences: GET /reconciliation/differences in the cases API.', $.ingest.day, $.ingest.files_read, $.ingest.records, $.ingest.rejected, $.store.matched, $.store.differences)"
+          "Message.$" = "States.Format('Reconciliation of {} done. Files read: {}. Records: {}. Rejected rows: {}. Matched: {}. Differences of the day: {} (new: {}). Pending differences: GET /reconciliation/differences in the cases API.', $.ingest.day, $.ingest.files_read, $.ingest.records, $.ingest.rejected, $.store.matched, $.store.differences, $.store.new_differences)"
           MessageAttributes = {
             audience = { DataType = "String", StringValue = "treasury" }
           }

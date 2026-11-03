@@ -20,7 +20,7 @@ SHARED_DEVICE = TriggeredRule(
     "shared_device", Decision.APPROVE, "shared device reason", score=30
 )
 SPLITTING = TriggeredRule(
-    "splitting", Decision.APPROVE, "splitting reason", score=40, opens_case=True
+    "splitting", Decision.HOLD, "splitting reason", score=40, opens_case=True
 )
 OTHER_HOLD = TriggeredRule("other", Decision.HOLD, "other reason")
 
@@ -92,9 +92,27 @@ def test_shared_device_and_velocity_is_held():
     )
 
 
-def test_splitting_alone_is_approved_with_its_reason():
-    assert choose_decision([SPLITTING]) == (Decision.APPROVE, "splitting reason")
+def test_splitting_alone_is_held_with_its_reason():
+    # Sprint 6, D2: HOLD + case (it was APPROVE + case until sprint 5).
+    assert choose_decision([SPLITTING]) == (Decision.HOLD, "splitting reason")
 
 
-def test_splitting_and_velocity_is_held():
-    assert choose_decision([SPLITTING, VELOCITY]) == (Decision.HOLD, "velocity reason")
+def test_splitting_and_velocity_keeps_the_first_hold_reason():
+    assert choose_decision([SPLITTING, VELOCITY]) == (
+        Decision.HOLD,
+        "splitting reason",
+    )
+
+
+def test_splitting_and_shared_device_is_held():
+    assert choose_decision([SHARED_DEVICE, SPLITTING]) == (
+        Decision.HOLD,
+        "splitting reason",
+    )
+
+
+def test_splitting_and_restricted_list_is_rejected():
+    assert choose_decision([SPLITTING, RESTRICTED]) == (
+        Decision.REJECT,
+        "restricted list reason",
+    )

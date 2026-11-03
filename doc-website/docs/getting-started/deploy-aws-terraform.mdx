@@ -349,7 +349,7 @@ The match runs on AWS Glue, not EMR Serverless: on AWS's free account plan EMR i
    aws s3 ls "s3://$LAKE/curated/" --recursive
    ```
 
-   Expected: `curated/extractos/fecha=2026-10-05/records.jsonl` (11 lines) and `rejects.jsonl` (2), and `curated/conciliacion/fecha=2026-10-05/part-00000.json` (13 lines). The treasury e-mail says `Files read: 4. Records: 11. Rejected rows: 2. Matched: 8. New differences: 6.`, and `reconciliation_differences` in RDS has those 6 rows as `PENDING` (`GET /reconciliation/differences` in the cases API). The first line of the job's output says the Python version it ran with: **AWS Glue → ETL jobs → securepay-dev-reconciliation-match → Runs → the run → Output logs**.
+   Expected: `curated/extractos/fecha=2026-10-05/records.jsonl` (11 lines) and `rejects.jsonl` (2), and `curated/conciliacion/fecha=2026-10-05/part-00000.json` (13 lines). The treasury e-mail says `Files read: 4. Records: 11. Rejected rows: 2. Matched: 8. Differences of the day: 6 (new: 6).`, and `reconciliation_differences` in RDS has those 6 rows as `PENDING` (`GET /reconciliation/differences` in the cases API). The first line of the job's output says the Python version it ran with: **AWS Glue → ETL jobs → securepay-dev-reconciliation-match → Runs → the run → Output logs**.
 
 7. Test the 06:30 check now. The day it checks is yesterday in Bogotá, which has no run, so it must say so:
 

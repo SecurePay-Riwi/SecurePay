@@ -230,7 +230,12 @@ def test_the_fixture_day_gives_the_expected_differences(sessions, report):
             s, DAY, store.load_rows(MATCH), {**COUNTS, "matched": 8}, NOW
         )
 
-    assert result == {"day": "2026-10-05", "matched": 8, "differences": 6}
+    assert result == {
+        "day": "2026-10-05",
+        "matched": 8,
+        "differences": 6,
+        "new_differences": 6,
+    }
     saved = _differences(sessions)
     assert sorted(_key(d) for d in saved) == sorted(
         _key(d) for d in report["expected_differences"]
@@ -288,9 +293,15 @@ def test_save_closes_a_running_run(sessions):
 def test_running_the_day_again_does_not_duplicate(sessions):
     rows = store.load_rows(MATCH)
     with sessions() as s:
-        store.save(s, DAY, rows, COUNTS, NOW)
-        store.save(s, DAY, rows, COUNTS, datetime(2026, 10, 7, 7, 30, tzinfo=UTC))
+        first = store.save(s, DAY, rows, COUNTS, NOW)
+        again = store.save(
+            s, DAY, rows, COUNTS, datetime(2026, 10, 7, 7, 30, tzinfo=UTC)
+        )
         assert len(s.scalars(select(ReconciliationRun)).all()) == 1
+
+    # The day still has its 6 differences; only the first run inserted them (D8).
+    assert (first["differences"], first["new_differences"]) == (6, 6)
+    assert (again["differences"], again["new_differences"]) == (6, 0)
 
     saved = _differences(sessions)
     assert len(saved) == 6
@@ -305,7 +316,7 @@ def test_a_day_with_thousands_of_differences_is_saved(sessions):
         result = store.save(s, DAY, rows, COUNTS, NOW)
         run = s.scalars(select(ReconciliationRun)).one()
 
-    assert result["differences"] == 6000
+    assert (result["differences"], result["new_differences"]) == (6000, 6000)
     assert (run.status, run.differences) == (RunStatus.DONE.value, 6000)
     assert len(_differences(sessions)) == 6000
 
@@ -337,7 +348,12 @@ def test_the_handler_reads_the_match_of_the_day(sessions, tmp_path, monkeypatch)
 
     result = store.handler({"day": "2026-10-05", **COUNTS})
 
-    assert result == {"day": "2026-10-05", "matched": 8, "differences": 6}
+    assert result == {
+        "day": "2026-10-05",
+        "matched": 8,
+        "differences": 6,
+        "new_differences": 6,
+    }
     assert len(_differences(sessions)) == 6
 
 

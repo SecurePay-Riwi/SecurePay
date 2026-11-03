@@ -16,8 +16,9 @@ HU-25); the analyst sees them together through the account.
 Amounts in the history are in the account's currency; each one is
 converted to USD at the rate of the day of the transaction being
 decided (HU-42), the same rate as its own amount_usd. By default the
-rule approves and opens a compliance case (score 40): RN-05 asks for a
-case, not for holding the money.
+rule holds the transaction and opens a compliance case (score 40):
+HOLD + case since sprint 6 (D2, team decision 2026-11-03); with APPROVE
+whoever splits kept moving money while nobody reviewed the case.
 
 Thresholds come from the catalog (SplittingParams).
 """

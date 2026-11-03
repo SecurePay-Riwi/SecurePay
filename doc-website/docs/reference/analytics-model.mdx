@@ -1,0 +1,335 @@
+---
+sidebar_position: 2.5
+title: Analytics model
+description: Data dictionary, lineage and star schema of the analytics lake (sprint 6, E-10), and the six views of the business questions.
+---
+
+# Analytics model
+
+**Contract:** `shared/analytics.py` (C1, C2) · **Builders:** `services/analytics/` · **Views:** `services/analytics/sql/` · **Page of the ETL:** [Analytics](../components/analytics.mdx)
+
+This page is the data dictionary (E-10). Every table, column, type and description below comes from `TABLES` in `shared/analytics.py`; `shared/tests/test_analytics_contract.py` fails if a table or a column of the code is missing here. A new column is a small PR on that file, with its row on this page.
+
+## Layers and lineage
+
+```text
+engine ──SNS──► analytics consumer ──► raw/decisiones/fecha=<arrival day>/*.jsonl ─┐
+generator labels.jsonl ──(services.analytics.labels)──► raw/labels/fecha=<day>/  ──┤
+PostgreSQL cases ──(export.py, C6)──► raw/cases/fecha=<day>/                       ──┤
+PostgreSQL reconciliation ──(export.py, C6)──► raw/reconciliation/fecha=<day>/     ──┤
+                                                                                   ▼
+                        build_decisions ──► curated/decisiones/fecha=<day>/ (Parquet, one row per transaction)
+                                                                                   ▼
+        analytics/<table>/[fecha=<day>/] (Parquet): facts and dimensions below
+                                                                                   ▼
+        sql/q1..q6 (Athena views)  ──►  Power BI (only the views, D6)
+```
+
+| Layer | Path | Format | Written by |
+| :--- | :--- | :--- | :--- |
+| Raw | `raw/decisiones/fecha=<day>/` | JSON lines, the `transaction.decided` event as it came (may repeat) | Analytics consumer |
+| Raw | `raw/labels/fecha=<day>/labels.jsonl` | The generator's labels file, as it is | `python -m services.analytics.labels` |
+| Raw | `raw/cases/fecha=<day>/` | `cases.jsonl`, `case_events.jsonl`: the current state | `export.py` (Yulianis) |
+| Raw | `raw/reconciliation/fecha=<day>/` | `differences.jsonl`, `runs.jsonl`: the current state | `export.py` (Yulianis) |
+| Curated | `curated/decisiones/fecha=<day>/` | Parquet with the schema of `curated_decision` | `build_decisions.py` |
+| Analytics | `analytics/<table>/` | Parquet with the schema of each table | One builder per group of tables |
+
+- **The day of a decision** is its `transaction_date` in UTC. raw/decisiones is partitioned by the day the event *arrived*, so the builder reads `fecha=<day-1..day+1>` and keeps the transactions of the day: a late event lands in its own day.
+- **Deduplication:** raw keeps SQS's repeated deliveries; curated keeps the first event of each `transaction_id` (earliest `processed_at`, then file and line order).
+- **Daily tables** are written to `fecha=<value of the partition column>/` and the partition column also stays inside the file. Running a day again replaces its folder: the same day gives the same result.
+- **Types:** amounts `decimal(18,2)`, rates `decimal(18,8)`, ratios `decimal(9,4)`, days `date`, moments `timestamp` in UTC. Nobody infers a type: every builder writes with `spark_schema(<table>)`.
+
+## Star schema
+
+```text
+                         dim_date (day)
+                              │
+ dim_rule (rule, rule_version)│            dim_merchant (merchant_id, as_of)
+          │                   │                   │
+   fact_rule_hit ──── transaction_id ──── fact_decision ──── device_id ──── dim_device (device_id, as_of)
+                              │                   │
+                         fact_label          fact_case (transaction_id)
+                     (transaction_id)
+
+ fact_difference (run_day, partner) ──── dim_partner (partner)
+ rule_metrics, pattern_coverage: the replay's results (C5), by rule or pattern and label source
+```
+
+## Tables
+
+### `curated_decision`
+
+**Grain:** one row per transaction (the first event of each transaction_id) · **Partition:** daily, `fecha=<day>/` · **Owner:** Habith  
+**Built from:** `raw/decisiones/fecha=<day-1..day+1> (the events whose transaction is of <day>)`
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `transaction_id` | `string` | Transaction id sent by the core (UUID). |
+| `day` | `date` | Day of the transaction in UTC (the partition). |
+| `transaction_at` | `timestamp` | transaction_date of the core, in UTC. |
+| `type` | `string` | P2P, QR, RETIRO or RECARGA. |
+| `channel` | `string` | Where it was made: APP, WEB, CORRESPONSAL, CAJERO. |
+| `source_account_id` | `string` | Account the money leaves (null in RECARGA). |
+| `destination_account_id` | `string` | Account the money reaches (P2P and RECARGA). |
+| `merchant_id` | `string` | Merchant of a QR payment, else null. |
+| `amount` | `decimal(18,2)` | Amount in the transaction's currency. |
+| `currency` | `string` | COP, USD, EUR or JPY. |
+| `source_balance_before` | `decimal(18,2)` | Core's balance before. |
+| `source_balance_after` | `decimal(18,2)` | Core's balance after. |
+| `destination_balance_before` | `decimal(18,2)` | Core's balance before. |
+| `destination_balance_after` | `decimal(18,2)` | Core's balance after. |
+| `device_id` | `string` | Device the transaction came from. |
+| `decision` | `string` | APPROVE, HOLD or REJECT. |
+| `decision_reason` | `string` | Reason of the rule that decided. |
+| `rules_version` | `string` | Catalog version that decided (RN-08). |
+| `rules_triggered` | `array<string>` | Every rule that fired. |
+| `rule_versions` | `string` | JSON object: rule_version of each rule that fired. |
+| `opens_case` | `boolean` | Whether a rule that opens a case fired. |
+| `risk_score` | `int` | Sum of the fired rules' scores, at most 100. |
+| `by_default` | `boolean` | RN-01's default decision was applied. |
+| `amount_usd` | `decimal(18,2)` | Amount in USD at the day's rate (RN-11). |
+| `usd_rate` | `decimal(18,8)` | Units of the currency per USD used. |
+| `rate_date` | `date` | Day of the rate used. |
+| `processed_at` | `timestamp` | When the engine decided (UTC). |
+
+### `fact_decision`
+
+**Grain:** one row per transaction · **Partition:** daily, `fecha=<day>/` · **Owner:** Habith  
+**Built from:** `curated/decisiones/fecha=<day>, raw/labels (label_source)`
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `transaction_id` | `string` | Transaction id sent by the core (UUID). |
+| `day` | `date` | Day of the transaction in UTC (the partition). |
+| `transaction_at` | `timestamp` | transaction_date of the core (UTC). |
+| `type` | `string` | P2P, QR, RETIRO or RECARGA. |
+| `currency` | `string` | COP, USD, EUR or JPY. |
+| `channel` | `string` | APP, WEB, CORRESPONSAL or CAJERO. |
+| `amount` | `decimal(18,2)` | Amount in the original currency. |
+| `amount_usd` | `decimal(18,2)` | Amount in USD (RN-11). |
+| `usd_rate` | `decimal(18,8)` | Units of the currency per USD used. |
+| `rate_date` | `date` | Day of the exchange rate used. |
+| `decision` | `string` | APPROVE, HOLD or REJECT. |
+| `risk_score` | `int` | Sum of the fired rules' scores (0-100). |
+| `rules_version` | `string` | Catalog version that decided (RN-08). |
+| `by_default` | `boolean` | RN-01's default decision was applied. |
+| `opens_case` | `boolean` | A rule that opens a case fired. |
+| `device_id` | `string` | Device of the transaction. |
+| `merchant_id` | `string` | Merchant of a QR payment, else null. |
+| `source_account_id` | `string` | Source account (null in RECARGA). |
+| `destination_account_id` | `string` | Destination account (P2P, RECARGA). |
+| `label_source` | `string` | LabelSource of its label; null when it is not labeled. |
+
+### `fact_rule_hit`
+
+**Grain:** one row per rule fired in a transaction · **Partition:** daily, `fecha=<day>/` · **Owner:** Habith  
+**Built from:** `curated/decisiones/fecha=<day> (rules_triggered, rule_versions)`
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `transaction_id` | `string` | Transaction id sent by the core (UUID). |
+| `day` | `date` | Day of the transaction in UTC (the partition). |
+| `rule` | `string` | Rule code (rules_triggered). |
+| `rule_version` | `int` | rule_version of the rule that fired. |
+| `decision` | `string` | What the rule decides (its catalog action); the transaction's decision for default_timeout. |
+| `score` | `int` | Score the rule adds (its catalog entry). |
+
+### `fact_label`
+
+**Grain:** one row per labeled transaction · **Partition:** daily, `fecha=<day>/` · **Owner:** Habith  
+**Built from:** `raw/labels/fecha=*/labels.jsonl joined with curated/decisiones/fecha=<day>`
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `transaction_id` | `string` | Transaction id sent by the core (UUID). |
+| `day` | `date` | Day of the transaction in UTC (the partition). |
+| `source` | `string` | LabelSource: generator, paysim or sparkov. |
+| `pattern` | `string` | Fraud pattern; null when legitimate. |
+| `is_fraud` | `boolean` | Whether the transaction is fraud. |
+| `expected_rule` | `string` | Rule the source expects to fire; null when none. |
+
+### `fact_case`
+
+**Grain:** one row per case, its current state · **Partition:** daily, `fecha=<day>/` · **Owner:** Yulianis (HU-51)  
+**Built from:** `raw/cases/fecha=<day>/cases.jsonl, case_events.jsonl`
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `case_id` | `string` | Case id. |
+| `transaction_id` | `string` | Transaction id sent by the core (UUID). |
+| `day` | `date` | Day of created_at in UTC (the partition). |
+| `created_at` | `timestamp` | When the case was opened. |
+| `due_at` | `timestamp` | created_at + CASE_DUE_MINUTES (RN-09). |
+| `assigned_to` | `string` | Current assignee; null if none. |
+| `assigned_at` | `timestamp` | Last ASSIGNED event; null if none. |
+| `resolved_at` | `timestamp` | When it was resolved; null if open. |
+| `resolved_by` | `string` | Who resolved it; null if open. |
+| `status` | `string` | OPEN, ESCALATED or RESOLVED. |
+| `outcome` | `string` | FRAUD or LEGITIMATE; null if open. |
+| `final_decision` | `string` | REJECT or APPROVE; null if open. |
+| `escalated` | `boolean` | Whether it was escalated (RN-09). |
+| `escalated_at` | `timestamp` | When it was escalated; null if not. |
+| `minutes_to_resolve` | `int` | Whole minutes from created_at to resolved_at; null if open. |
+| `within_sla` | `boolean` | Resolved in 240 minutes or less (RN-09); null if open. |
+| `rules_triggered` | `array<string>` | Rules that fired. |
+| `risk_score` | `int` | risk_score of the decision. |
+| `amount_usd` | `decimal(18,2)` | Amount in USD of the decision. |
+
+### `fact_difference`
+
+**Grain:** one row per reconciliation difference, its current state · **Partition:** daily, `fecha=<run_day>/` · **Owner:** Yulianis (HU-52)  
+**Built from:** `raw/reconciliation/fecha=<day>/differences.jsonl`
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `difference_id` | `string` | Difference id. |
+| `run_day` | `date` | Day reconciled (the partition). |
+| `partner` | `string` | Partner (shared/reconciliation.py Partner). |
+| `type` | `string` | MISSING_IN_PARTNER, MISSING_IN_PAGOSEGURO or AMOUNT_MISMATCH. |
+| `status` | `string` | PENDING or RESOLVED. |
+| `reference` | `string` | PagoSeguro's transaction id. |
+| `currency` | `string` | Currency of the amounts. |
+| `pagoseguro_amount` | `decimal(18,2)` | Our amount; null if missing. |
+| `partner_amount` | `decimal(18,2)` | Partner's; null if missing. |
+| `amount_difference` | `decimal(18,2)` | partner - pagoseguro (AMOUNT_MISMATCH only). |
+| `age_days` | `int` | Days from run_day to the day of the load. |
+| `age_range` | `string` | AGE_RANGES of shared/reconciliation.py. |
+| `detected_at` | `timestamp` | First time it was detected. |
+| `resolved_at` | `timestamp` | When treasury resolved it. |
+
+### `dim_date`
+
+**Grain:** one day · **Partition:** one folder, rebuilt on every run · **Owner:** Habith  
+**Built from:** `the days of curated/decisiones`
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `day` | `date` | The day. |
+| `year` | `int` | Year. |
+| `month` | `int` | Month (1-12). |
+| `day_of_month` | `int` | Day of the month (1-31). |
+| `weekday` | `int` | ISO weekday: 1 Monday ... 7 Sunday. |
+| `is_weekend` | `boolean` | Saturday or Sunday. |
+
+### `dim_rule`
+
+**Grain:** one rule in one catalog version · **Partition:** one folder, rebuilt on every run · **Owner:** Habith  
+**Built from:** `the rule catalog (shared/rule_catalog.py default_catalog(); published versions from GET /rules/versions/{n})`
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `rule` | `string` | Rule code. |
+| `rule_version` | `int` | rule_version of the entry. |
+| `type` | `string` | Rule type (RuleType). |
+| `action` | `string` | What it decides when it fires. |
+| `opens_case` | `boolean` | Whether it opens a case. |
+| `score` | `int` | Score it adds to risk_score. |
+| `enabled` | `boolean` | Whether it is evaluated. |
+| `rules_version` | `string` | Catalog version. |
+
+### `dim_partner`
+
+**Grain:** one partner · **Partition:** one folder, rebuilt on every run · **Owner:** Yulianis (HU-52)  
+**Built from:** `shared/reconciliation.py (Partner, PARTNER_UTC_OFFSET)`
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `partner` | `string` | Partner code. |
+| `tx_types` | `array<string>` | Transaction types it sees. |
+| `channels` | `array<string>` | Channels it sees. |
+| `utc_offset` | `int` | Hours from UTC of its files' dates. |
+
+### `dim_device`
+
+**Grain:** one device, 30-day window up to the day · **Partition:** daily, `fecha=<as_of>/` · **Owner:** Yulianis (HU-47)  
+**Built from:** `curated/decisiones/fecha=<day-29..day>, raw/cases`
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `device_id` | `string` | Device id. |
+| `accounts_30d` | `int` | Different accounts in 30 days (RN-04). |
+| `transactions_30d` | `int` | Transactions in 30 days. |
+| `held_or_rejected_30d` | `int` | HOLD or REJECT in 30 days. |
+| `cases_30d` | `int` | Cases opened in 30 days. |
+| `shared` | `boolean` | accounts_30d > 3 (RN-04). |
+| `risk_level` | `string` | LOW, MEDIUM or HIGH (rules in analytics-model.mdx). |
+| `as_of` | `date` | Last day of the window (the partition). |
+
+### `dim_merchant`
+
+**Grain:** one merchant, 30-day window up to the day · **Partition:** daily, `fecha=<as_of>/` · **Owner:** Habith  
+**Built from:** `curated/decisiones/fecha=<day-29..day>, raw/labels`
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `merchant_id` | `string` | Merchant id. |
+| `transactions_30d` | `int` | QR payments in 30 days. |
+| `held_or_rejected_30d` | `int` | HOLD or REJECT in 30 days. |
+| `fraud_labeled_30d` | `int` | Labeled as fraud in 30 days. |
+| `as_of` | `date` | Last day of the window (the partition). |
+
+### `rule_metrics`
+
+**Grain:** one rule, label source and catalog version of a replay · **Partition:** one folder, rebuilt on every run · **Owner:** Habith (HU-44, HU-45)  
+**Built from:** `services/analytics/metrics.py over the replay (C5)`
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `rule` | `string` | Rule code. |
+| `rule_version` | `int` | rule_version in the catalog replayed. |
+| `rules_version` | `string` | Catalog version replayed. |
+| `label_source` | `string` | LabelSource of the labels used. |
+| `hits` | `int` | Labeled transactions where the rule fired. |
+| `true_positives` | `int` | Fired and is_fraud. |
+| `false_positives` | `int` | Fired and not is_fraud. |
+| `precision` | `decimal(9,4)` | true_positives / hits; null when hits = 0. |
+| `false_positive_rate` | `decimal(9,4)` | false_positives / labeled legitimate transactions. |
+
+### `pattern_coverage`
+
+**Grain:** one fraud pattern, label source and catalog version of a replay · **Partition:** one folder, rebuilt on every run · **Owner:** Habith (HU-46)  
+**Built from:** `services/analytics/metrics.py over the replay (C5)`
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `pattern` | `string` | Fraud pattern of the label. |
+| `label_source` | `string` | LabelSource of the labels used. |
+| `rules_version` | `string` | Catalog version replayed. |
+| `frauds` | `int` | Labeled frauds of the pattern. |
+| `detected` | `int` | HOLD, REJECT or opens_case. |
+| `missed` | `int` | frauds - detected. |
+| `detection_rate` | `decimal(9,4)` | detected / frauds; null when 0. |
+| `top_rule` | `string` | Rule that detects most of the pattern. |
+
+## Risk levels (dim_device, dim_merchant, view q6)
+
+Defined in step 0 so the fixtures have an answer key; HU-47 and HU-53 (Yulianis) implement them.
+
+| Kind | HIGH | MEDIUM | LOW |
+| :--- | :--- | :--- | :--- |
+| Device | `shared` (more than 3 accounts in 30 days, RN-04) **and** at least one `HOLD`/`REJECT` or case in 30 days | `shared`, **or** at least one `HOLD`/`REJECT` or case | Otherwise |
+| Merchant | At least one payment labeled fraud **and** at least one `HOLD`/`REJECT` in 30 days | One of the two | Otherwise |
+
+The accounts of a device are the main account of each transaction: the source, or in a top-up the destination (as the engine's `dev:{device}`).
+
+## Views (contract C3)
+
+One Athena view per business question, `services/analytics/sql/q<N>_<name>.sql`, with a control query `sql/control/q<N>.sql` that reaches the same numbers without the view. The SQL is the part Athena (Trino) and Spark SQL share, so `test_views.py` runs both over the fixtures and compares them with `services/analytics/tests/fixtures/expected_views.json`. Power BI reads only these views.
+
+| View | Question | Columns | Owner |
+| :--- | :--- | :--- | :--- |
+| `q1_transactions` | Transactions by type, currency and channel | `day`, `type`, `currency`, `channel`, `decision`, `transactions`, `amount_usd` | Habith (step 0) |
+| `q2_rules` | Rules that fire most, with precision and false positives | `rule`, `rule_version`, `hits`, `true_positives`, `false_positives`, `precision`, `false_positive_rate`, `label_source` (from `rule_metrics`) | Habith (HU-45) |
+| `q3_fraud_detection` | Fraud detected and missed, by pattern | `pattern`, `label_source`, `frauds`, `detected`, `missed`, `detection_rate`, `top_rule` (from `pattern_coverage`) | Habith (HU-46) |
+| `q4_cases` | Case resolution times and escalations | `day`, `status`, `outcome`, `cases`, `escalated`, `avg_minutes_to_resolve`, `p90_minutes_to_resolve`, `within_sla_pct` | Yulianis (HU-51) |
+| `q5_reconciliation` | Reconciliation by partner and age of the differences | `run_day`, `partner`, `type`, `status`, `age_range`, `differences`, `amount_difference_total` | Yulianis (HU-52) |
+| `q6_risk` | Riskiest devices and merchants | `kind` (`DEVICE` or `MERCHANT`), `id`, `risk_level`, `accounts_30d`, `transactions_30d`, `held_or_rejected_30d`, `cases_30d`, `rank` | Yulianis (HU-53) |
+
+How the answer key computes each one (`make_fixtures.py`), so the views agree with it:
+
+- **q1:** `COUNT(*)` and `SUM(amount_usd)` of `fact_decision` per day, type, currency, channel and decision.
+- **q2:** for each rule of the catalog replayed (not `default_timeout`) and label source: `hits` = labeled transactions where it fired, `true_positives` = those that are fraud, `false_positives` = the rest, `precision` = tp / hits (null with 0 hits), `false_positive_rate` = fp / labeled legitimate transactions. Ratios with 4 decimals, rounded half up. A transaction without a label does not count.
+- **q3:** per fraud pattern and label source: `detected` = decision `HOLD` or `REJECT`, or `opens_case`; `missed` = the rest; `detection_rate` = detected / frauds; `top_rule` = the rule that fires most among the detected ones (ties: alphabetical; null when none was detected).
+- **q4:** per day of `created_at`, `status` and `outcome`: `escalated` counts the cases with `escalated_at`; `minutes_to_resolve` is whole minutes (rounded down); `avg_minutes_to_resolve` with 2 decimals, `p90_minutes_to_resolve` the nearest-rank 90th percentile, `within_sla_pct` = resolved in 240 minutes or less × 100 / resolved, 2 decimals; null for cases still open.
+- **q5:** per `run_day`, partner, type, status and `age_range` (age counted from `run_day` to the day built): the number of differences and the sum of `amount_difference` (null when the group has none).
+- **q6:** only `HIGH` and `MEDIUM`; `rank` within each kind ordered by level, then `held_or_rejected_30d` and `transactions_30d` descending, then id. Merchants have null `accounts_30d` and `cases_30d`.

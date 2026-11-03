@@ -108,7 +108,10 @@ def classify(row: MatchRow) -> list[dict]:
 
 def save(session, day: date, rows: list[MatchRow], counts: dict, now: datetime) -> dict:
     """Upsert the run of `day` (DONE, counts), insert every classify() result
-    ON CONFLICT DO NOTHING, one commit. Returns {"day", "matched", "differences"}.
+    ON CONFLICT DO NOTHING, one commit. Returns {"day", "matched",
+    "differences", "new_differences"}: differences is every difference of
+    the day, new_differences only the rows this call inserted (a repeated
+    run inserts none; sprint 6, D8).
 
     counts are what ingest and match returned: files_read, records,
     rejected (and matched, otherwise counted from the rows)."""
@@ -136,19 +139,32 @@ def save(session, day: date, rows: list[MatchRow], counts: dict, now: datetime) 
     ).scalar_one()
 
     values = [{**d, "run_id": run_id, "detected_at": now} for d in differences]
+    inserted = 0
     for start in range(0, len(values), INSERT_BATCH):
-        session.execute(
-            insert(ReconciliationDifference)
-            .values(values[start : start + INSERT_BATCH])
-            .on_conflict_do_nothing(
-                index_elements=["run_day", "partner", "type", "reference"]
-            )
+        inserted += len(
+            session.execute(
+                insert(ReconciliationDifference)
+                .values(values[start : start + INSERT_BATCH])
+                .on_conflict_do_nothing(
+                    index_elements=["run_day", "partner", "type", "reference"]
+                )
+                .returning(ReconciliationDifference.id)
+            ).all()
         )
     session.commit()
     log.info(
-        "Reconciliation %s: %d matched, %d differences", day, matched, len(differences)
+        "Reconciliation %s: %d matched, %d differences (%d new)",
+        day,
+        matched,
+        len(differences),
+        inserted,
     )
-    return {"day": day.isoformat(), "matched": matched, "differences": len(differences)}
+    return {
+        "day": day.isoformat(),
+        "matched": matched,
+        "differences": len(differences),
+        "new_differences": inserted,
+    }
 
 
 def handler(event, context=None) -> dict:  # Step Functions step 3
