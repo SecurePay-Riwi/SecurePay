@@ -138,9 +138,10 @@ Team members reach resources inside the VPC through **AWS Systems Manager Sessio
 | 19 | `rol-admin-ejecucion` | ECS | Pull the admin image, write logs and inject the master password |
 | 20 | `rol-admin` | ECS | Used by the seed code: export the restricted list to the provider's bucket |
 | 21 | `rol-despliegue` | GitHub Actions (OIDC) | Publish images and update the service and the Lambdas. No permissions on data |
-| 22 | `usuario-powerbi` | IAM user (Power BI Desktop) | Query the analytics layer through Athena |
+| 22 | `rol-despliegue-apis` | GitHub Actions (OIDC), securepay-apis | Publish the securepay-apis image and update the exchange-rates Lambda. Nothing else |
+| 23 | `usuario-powerbi` | IAM user (Power BI Desktop) | Query the analytics layer through Athena |
 
-That is 21 roles and one user, compared with 12 in version 1.0. What changed: the engine's execution role was split from its application role; the escalation task became the alerts Lambda (which also reviews transactions approved by fallback); the daily list load, the list service, Firehose, the rule refresh in the cache, EventBridge Scheduler and the admin task were added; and statement ingestion was split into the two reconciliation Lambdas. The Power BI user is the only long-lived credential (Power BI Desktop does not assume roles): read only, with keys rotated every 90 days.
+That is 22 roles and one user, compared with 12 in version 1.0. What changed: the engine's execution role was split from its application role; the escalation task became the alerts Lambda (which also reviews transactions approved by fallback); the daily list load, the list service, Firehose, the rule refresh in the cache, EventBridge Scheduler and the admin task were added; and statement ingestion was split into the two reconciliation Lambdas. The Power BI user is the only long-lived credential (Power BI Desktop does not assume roles): read only, with keys rotated every 90 days.
 
 ### Detailed permissions per role
 
@@ -241,7 +242,7 @@ To review the transactions approved by fallback it calls the engine over HTTPS t
 
 | Action | Resource | Purpose |
 | :--- | :--- | :--- |
-| `dynamodb:PutItem` | table `tasas-cambio` | Store the day's exchange rate |
+| `dynamodb:PutItem`, `dynamodb:BatchWriteItem` | table `tasas-cambio` | Store the day's exchange rate (the code writes with a batch) |
 
 **12. `rol-carga-lista`** · VPC networking · own logs
 
@@ -331,12 +332,22 @@ The migrations and the seed connect to the database with the master password inj
 | `ecs:RegisterTaskDefinition`, `ecs:DescribeTaskDefinition` | `*` (ECS does not scope registration by resource) | New task revision |
 | `ecs:UpdateService`, `ecs:DescribeServices` | service `motor` | Deploy the engine |
 | `ecs:RunTask` | task definition `admin` | Run the migrations before deploying |
-| `lambda:UpdateFunctionCode` | the 12 Lambdas | Deploy the Lambdas |
+| `lambda:UpdateFunctionCode` | the Lambdas that run the engine image (all except `tasas`) | Deploy the Lambdas |
 | `iam:PassRole` | `rol-motor-ejecucion`, `rol-motor`, `rol-admin-ejecucion` and `rol-admin`, only to `ecs-tasks.amazonaws.com` | Assign the roles to the new task |
 
 The trust relationship only accepts GitHub tokens for the `SecurePay-Riwi/SecurePay` repository on the `main` branch (the token's `aud` and `sub` conditions). No access keys are stored in GitHub.
 
-**22. `usuario-powerbi`** (read only)
+**22. `rol-despliegue-apis`** (GitHub Actions, securepay-apis)
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `ecr:GetAuthorizationToken` | `*` | Authenticate to the registry |
+| `ecr:BatchCheckLayerAvailability`, `ecr:InitiateLayerUpload`, `ecr:UploadLayerPart`, `ecr:CompleteLayerUpload`, `ecr:PutImage`, `ecr:BatchGetImage` | repository `apis` | Publish the securepay-apis image |
+| `lambda:UpdateFunctionCode`, `lambda:GetFunctionConfiguration` | Lambda `tasas` | Deploy the exchange-rates Lambda |
+
+The trust relationship only accepts GitHub tokens for `SecurePay-Riwi/securepay-apis` on the `main` branch. It is a separate role so that securepay-apis cannot deploy the engine. Another data-source repository that deploys its own image gets its own role the same way (Terraform variable `source_deployers`).
+
+**23. `usuario-powerbi`** (read only)
 
 | Action | Resource | Purpose |
 | :--- | :--- | :--- |

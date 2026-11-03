@@ -91,19 +91,26 @@ RATES_OUTPUT=dynamodb RATES_FROM=2026-10-01 uv run python -m securepay_apis.exch
 ### Production (AWS)
 
 ```text
-EventBridge Scheduler (daily)
+EventBridge Scheduler (daily, 11:00 Bogotá = 16:00 UTC)
     ↓
 Lambda (securepay_apis.exchange_rates.handler.handler)
     ↓
 Frankfurter API
     ↓
-DynamoDB (pagoseguro-exchange-rates)
+DynamoDB (securepay-dev-exchange-rates)
     ↓
 Decision engine (loads the table at startup, refreshes it every hour)
 ```
 
 The Lambda always writes today's rates to DynamoDB. If Frankfurter fails or answers with
-invalid data, nothing is written and the Lambda ends with an error, so EventBridge retries it.
+invalid data, nothing is written and the Lambda ends with an error, so Lambda retries it.
+
+In AWS the function is `securepay-dev-exchange-rates`: this repository's image (`securepay-dev-apis` in
+ECR) with `python -m awslambdaric securepay_apis.exchange_rates.handler.handler`, outside the VPC,
+with `RATES_TABLE=securepay-dev-exchange-rates`. Terraform in SecurePay creates it
+([the Lambdas](../architecture/terraform.mdx#what-it-creates)) and securepay-apis'
+`.github/workflows/deploy.yml` pushes a new image and updates it on every merge to `main`. Steps:
+[Load the daily exchange rates](../getting-started/deploy-aws-terraform.mdx#9-load-the-daily-exchange-rates).
 
 ## Key decisions
 
@@ -190,18 +197,14 @@ Covered cases:
 If the API is unavailable or returns invalid data:
 
 - The client raises an exception. **No partial data is ever written.**
-- In production, the Lambda ends with an error and EventBridge retries it.
+- In production, the Lambda ends with an error and Lambda retries it twice.
 - The decision engine is not affected: it keeps the rates it already loaded until the next successful fetch.
 
 ## Pending
 
 :::tip Not built yet
-- **Terraform:** the table, the Lambda and the EventBridge schedule in AWS. The schedule runs at
-  17:00 Central European Time (10:00 in Bogotá), after Frankfurter publishes.
 - **Stale-rate alarm:** a CloudWatch alarm if the latest item is more than 4 days old (covers
   long holiday weekends).
-- **Engine:** loading the table and converting each transaction with the rate of its date belongs
-  to the engine's sprint-2 story (default decision on timeout).
 :::
 
 ## Related references

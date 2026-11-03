@@ -90,3 +90,8 @@ output "reconciliation_state_machine_arn" {
 output "spark_job_name" {
   value = module.reconciliation.spark_job_name
 }
+
+output "exchange_rates_function_name" {
+  description = "aws lambda invoke --function-name <this> out.json, once after the apply that sets apis_image_tag."
+  value       = module.lambdas.exchange_rates_function_name
+}

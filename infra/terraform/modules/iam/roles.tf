@@ -107,7 +107,8 @@ locals {
     exchange-rates = {
       service = "lambda.amazonaws.com"
       statements = [
-        { Sid = "StoreDailyRate", Effect = "Allow", Action = "dynamodb:PutItem", Resource = "${local.arn.table}-exchange-rates" },
+        # store.save() writes with batch_writer(), which calls BatchWriteItem.
+        { Sid = "StoreDailyRate", Effect = "Allow", Action = ["dynamodb:PutItem", "dynamodb:BatchWriteItem"], Resource = "${local.arn.table}-exchange-rates" },
       ]
     }
 

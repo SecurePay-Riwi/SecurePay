@@ -113,3 +113,28 @@ variable "log_retention_days" {
   type    = number
   default = 7
 }
+
+# The exchange-rates Lambda (HU-42) runs securepay-apis' image, not the
+# engine's, and that repository deploys it with its own workflow.
+
+variable "apis_repository_url" {
+  description = "ECR repository of the securepay-apis image."
+  type        = string
+}
+
+variable "apis_image_tag" {
+  description = "securepay-apis image tag in ECR (the short git commit). Unset: no exchange-rates Lambda yet."
+  type        = string
+  default     = null
+}
+
+variable "exchange_rates_table" {
+  description = "DynamoDB table the exchange-rates Lambda writes and the engine reads."
+  type        = string
+}
+
+variable "exchange_rates_schedule" {
+  description = "When the exchange-rates Lambda runs, in UTC. 16:00 UTC is 11:00 Bogota, after Frankfurter publishes the day's rates (around 16:00 Central European Time)."
+  type        = string
+  default     = "cron(0 16 * * ? *)"
+}

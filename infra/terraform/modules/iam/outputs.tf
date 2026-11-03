@@ -1,6 +1,10 @@
 output "role_arns" {
-  description = "Role ARN by component (engine, cases-consumer, ...), plus deploy."
-  value       = merge({ for name, role in aws_iam_role.this : name => role.arn }, { deploy = aws_iam_role.deploy.arn })
+  description = "Role ARN by component (engine, cases-consumer, ...), plus deploy and deploy-<source> (deploy-apis)."
+  value = merge(
+    { for name, role in aws_iam_role.this : name => role.arn },
+    { deploy = aws_iam_role.deploy.arn },
+    { for name, role in aws_iam_role.source_deploy : "deploy-${name}" => role.arn },
+  )
 }
 
 output "powerbi_user" {
