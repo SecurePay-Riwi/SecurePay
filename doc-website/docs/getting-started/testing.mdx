@@ -125,7 +125,7 @@ pytest prints one character per test while it runs and a summary line at the end
 
 ## In CI
 
-Every pull request to `main` runs the same checks in GitHub Actions (`.github/workflows/ci.yml`): `lint`, `secret-scan`, `tests` and `image`. To run them on your machine before opening the PR, from the root of `SecurePay`:
+Every pull request to `main` runs the same checks in GitHub Actions (`.github/workflows/ci.yml`): `lint`, `secret-scan`, `tests`, `image` and `terraform`. To run them on your machine before opening the PR, from the root of `SecurePay`:
 
 ```bash
 uv run ruff format --check .                          # format (ruff format . fixes it)
@@ -133,6 +133,7 @@ uv run ruff check .                                   # lint
 docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.28.0 git /repo --log-opts="HEAD" --redact   # secret scan
 uv run pytest                                          # tests (steps 1 and 2 above first)
 docker build --provenance=false -t securepay-engine:ci .                         # image
+(cd infra/terraform && terraform fmt -check -recursive && cd envs/dev && terraform init -backend=false && terraform validate)   # terraform
 ```
 
 `ruff check --fix` fixes what it can by itself. The commit that formatted the whole repository is in `.git-blame-ignore-revs`; run `git config blame.ignoreRevsFile .git-blame-ignore-revs` once so `git blame` skips it. If gitleaks flags a real key, rotate it first (it is already in the history); only then add the fingerprint it prints to `.gitleaksignore`. The CI test job has no LocalStack, so the tests that need it are skipped there; run them locally with `docker compose up -d`.
