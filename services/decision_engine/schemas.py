@@ -1,4 +1,3 @@
-
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from enum import Enum
@@ -35,9 +34,7 @@ CAMPOS_DE_DINERO = (
 class TransactionRequest(BaseModel):
     """La transacción tal como la manda el core (generators/core.py)."""
 
-    id: UUID = Field(
-        description="Chosen by the core. It is the idempotency key."
-    )
+    id: UUID = Field(description="Chosen by the core. It is the idempotency key.")
     type: TransactionType = Field(
         description="P2P, QR (payment to a merchant), RECARGA (top-up) or RETIRO (withdrawal)."
     )
@@ -124,8 +121,7 @@ class TransactionRequest(BaseModel):
 
         # Cada cuenta presente debe traer su saldo antes y después.
         if origen and (
-            self.source_balance_before is None
-            or self.source_balance_after is None
+            self.source_balance_before is None or self.source_balance_after is None
         ):
             raise ValueError("Faltan los saldos de la cuenta de origen.")
 
@@ -149,7 +145,7 @@ class TransactionResponse(BaseModel):
     # existieran estos campos se puede seguir repitiendo.
     rules_version: str | None = Field(
         default=None,
-        description="Version of the rule catalog used: \"0\" is the code defaults, N a version published by the rules API. null in decisions stored before it existed.",
+        description='Version of the rule catalog used: "0" is the code defaults, N a version published by the rules API. null in decisions stored before it existed.',
     )
     rules_triggered: list[str] = Field(
         default=[],
@@ -215,9 +211,7 @@ class SecurityEventRequest(BaseModel):
     id: UUID = Field(
         description="Chosen by the core. A resend of the same id is stored once."
     )
-    type: SecurityEventType = Field(
-        description="DEVICE_CHANGE or PASSWORD_CHANGE."
-    )
+    type: SecurityEventType = Field(description="DEVICE_CHANGE or PASSWORD_CHANGE.")
     user_id: UUID = Field(description="Owner of the account.")
     account_id: UUID = Field(
         description="Account the change applies to. It is not checked against "

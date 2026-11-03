@@ -1,4 +1,3 @@
-
 import logging
 from contextlib import asynccontextmanager
 
@@ -60,6 +59,7 @@ def openapi() -> dict:
 
 app.openapi = openapi
 
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(
     request: Request,
@@ -74,6 +74,7 @@ async def validation_exception_handler(
             "errors": jsonable_encoder(exc.errors()),
         },
     )
+
 
 @app.get("/health", response_model=HealthResponse, **HEALTH)
 def health_check():

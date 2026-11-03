@@ -119,7 +119,9 @@ def _receive(accounts, minutes, senders=None):
     base = datetime.now(UTC)
 
     for sender, m in zip(senders, minutes, strict=False):
-        decision = _post(_transfer(sender, mule_account, 100, base + timedelta(minutes=m)))
+        decision = _post(
+            _transfer(sender, mule_account, 100, base + timedelta(minutes=m))
+        )
         assert decision["decision"] == "APPROVE"
     return base
 
@@ -216,11 +218,11 @@ def test_senders_counts_different_accounts_inside_the_window():
     window_ms = 30 * 60 * 1000
     t = window_ms * 2
     incoming = _incoming(
-        ("a", t - window_ms),      # exactly 30 min before: out
+        ("a", t - window_ms),  # exactly 30 min before: out
         ("b", t - window_ms + 1),  # just inside
         ("b", t - 1000),
         ("c", t),
-        ("d", t + 1),                   # after the withdrawal: out
+        ("d", t + 1),  # after the withdrawal: out
     )
 
     assert mule.senders(incoming, t, 30) == 2

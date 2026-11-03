@@ -16,15 +16,23 @@ class RuleCreate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    code: str = Field(description="Name in rules_triggered: English snake_case, 3 to 50 characters.")
-    type: RuleType = Field(description="Which implementation runs it. Several rules can share a type with other params.")
+    code: str = Field(
+        description="Name in rules_triggered: English snake_case, 3 to 50 characters."
+    )
+    type: RuleType = Field(
+        description="Which implementation runs it. Several rules can share a type with other params."
+    )
     rn: str | None = Field(None, description="Business rule it implements, e.g. RN-02.")
     description: str = ""
     enabled: bool = True
     action: Action = Field(description="Decision when the rule fires.")
     opens_case: bool = False
-    score: int = Field(0, ge=0, le=100, description="Adds to risk_score when the rule fires.")
-    params: dict = Field(default_factory=dict, description="Thresholds, validated against the rule type.")
+    score: int = Field(
+        0, ge=0, le=100, description="Adds to risk_score when the rule fires."
+    )
+    params: dict = Field(
+        default_factory=dict, description="Thresholds, validated against the rule type."
+    )
 
 
 class RuleUpdate(BaseModel):
@@ -42,14 +50,18 @@ class RuleUpdate(BaseModel):
 
 class RuleChange(BaseModel):
     rule: RuleEntry
-    catalog_version: int = Field(description="Catalog version after the request. The same as before when nothing changed.")
+    catalog_version: int = Field(
+        description="Catalog version after the request. The same as before when nothing changed."
+    )
 
 
 class VersionSummary(BaseModel):
     version: int
     created_at: datetime
     author: str
-    change: dict = Field(description='{"operation", "code", "before", "after"}; before and after are the whole rule.')
+    change: dict = Field(
+        description='{"operation", "code", "before", "after"}; before and after are the whole rule.'
+    )
 
 
 class VersionPage(BaseModel):

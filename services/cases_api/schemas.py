@@ -36,6 +36,7 @@ class Health(BaseModel):
 
 # --- Compliance (HU-34) ------------------------------------------------------
 
+
 class RestrictedListReport(BaseModel):
     """RN-06: one listed document of a transaction (a compliance_reports row)."""
 
@@ -43,18 +44,30 @@ class RestrictedListReport(BaseModel):
 
     id: UUID = Field(description="Report id.")
     case_id: UUID = Field(description="The case the transaction opened.")
-    transaction_id: UUID = Field(description="The transaction where the owner took part.")
-    account_id: UUID = Field(description="The account whose owner is listed (source or destination).")
-    document: str = Field(description="The owner's document, digits only, as the list stores it.")
-    list_type: str = Field(description="The list it is on, as the provider names it (e.g. PEP, sanciones).")
-    matched_at: datetime = Field(description="When the consumer wrote the report, UTC (right after the decision).")
+    transaction_id: UUID = Field(
+        description="The transaction where the owner took part."
+    )
+    account_id: UUID = Field(
+        description="The account whose owner is listed (source or destination)."
+    )
+    document: str = Field(
+        description="The owner's document, digits only, as the list stores it."
+    )
+    list_type: str = Field(
+        description="The list it is on, as the provider names it (e.g. PEP, sanciones)."
+    )
+    matched_at: datetime = Field(
+        description="When the consumer wrote the report, UTC (right after the decision)."
+    )
     notified_at: datetime | None = Field(
         description="When the compliance summary e-mail included it, UTC; null until the next run of the alerts task.",
     )
 
 
 class RestrictedListReportPage(BaseModel):
-    items: list[RestrictedListReport] = Field(description="The reports of the page, newest first.")
+    items: list[RestrictedListReport] = Field(
+        description="The reports of the page, newest first."
+    )
     total: int = Field(description="Reports in the period, all pages.")
     page: int = Field(description="Page number, from 1.")
     size: int = Field(description="Reports per page.")
@@ -62,14 +75,21 @@ class RestrictedListReportPage(BaseModel):
 
 # --- Reports (HU-35) --------------------------------------------------------
 
+
 class SuspiciousCase(CurrencyDecimals):
     """One compliance case of the period (RN-03, RN-05, RN-06)."""
 
     case_id: UUID = Field(description="The case.")
     transaction_id: UUID = Field(description="The transaction that opened it.")
-    account_id: UUID = Field(description="The main account: the source; in a top-up, the destination.")
-    pattern: str = Field(description='The rules that fired, joined by "+" (e.g. mule, splitting+velocity).')
-    amount: Decimal = Field(description="Amount in the original currency, as a decimal string with its decimals (JPY: none).")
+    account_id: UUID = Field(
+        description="The main account: the source; in a top-up, the destination."
+    )
+    pattern: str = Field(
+        description='The rules that fired, joined by "+" (e.g. mule, splitting+velocity).'
+    )
+    amount: Decimal = Field(
+        description="Amount in the original currency, as a decimal string with its decimals (JPY: none)."
+    )
     currency: str = Field(description="The original currency (COP, USD, EUR, JPY).")
     amount_usd: Decimal | None = Field(
         default=None,
@@ -78,14 +98,20 @@ class SuspiciousCase(CurrencyDecimals):
     usd_rate: Decimal | None = Field(default=None, description=USD_RATE)
     rate_date: date | None = Field(default=None, description=RATE_DATE)
     status: str = Field(description="OPEN, ESCALATED or RESOLVED.")
-    outcome: str | None = Field(default=None, description="FRAUD or LEGITIMATE once resolved; null before.")
+    outcome: str | None = Field(
+        default=None, description="FRAUD or LEGITIMATE once resolved; null before."
+    )
     created_at: datetime = Field(description="When the case was opened, UTC.")
 
 
 class SuspiciousReport(BaseModel):
-    from_: date = Field(alias="from", description="First day of the period (inclusive), UTC.")
+    from_: date = Field(
+        alias="from", description="First day of the period (inclusive), UTC."
+    )
     to: date = Field(description="Last day of the period (inclusive), UTC.")
-    items: list[SuspiciousCase] = Field(description="The cases opened in the period, oldest first.")
+    items: list[SuspiciousCase] = Field(
+        description="The cases opened in the period, oldest first."
+    )
     total: int = Field(description="Cases in the period.")
     message: str | None = Field(
         default=None,
@@ -97,6 +123,7 @@ class SuspiciousReport(BaseModel):
 
 # --- Accounts (HU-28) --------------------------------------------------------
 
+
 class AccountTransactionItem(CurrencyDecimals):
     """One transaction of the account (an account_transactions row).
 
@@ -106,15 +133,21 @@ class AccountTransactionItem(CurrencyDecimals):
     model_config = ConfigDict(from_attributes=True)
 
     transaction_id: UUID = Field(description="The transaction.")
-    direction: str = Field(description="OUT: the account sent it (source). IN: the account received it (destination).")
+    direction: str = Field(
+        description="OUT: the account sent it (source). IN: the account received it (destination)."
+    )
     counterparty_account_id: UUID | None = Field(
         default=None,
         description="The other account of the transaction; null in a QR payment, a withdrawal or a top-up.",
     )
     type: str = Field(description="P2P, QR, RECARGA or RETIRO.")
     channel: str = Field(description="Where the transaction was made (APP, WEB, ...).")
-    merchant_id: UUID | None = Field(default=None, description="The merchant of a QR payment; null otherwise.")
-    amount: Decimal = Field(description="Amount in the account's currency, as a decimal string with its decimals (JPY: none).")
+    merchant_id: UUID | None = Field(
+        default=None, description="The merchant of a QR payment; null otherwise."
+    )
+    amount: Decimal = Field(
+        description="Amount in the account's currency, as a decimal string with its decimals (JPY: none)."
+    )
     currency: str = Field(description="The original currency (COP, USD, EUR, JPY).")
     amount_usd: Decimal | None = Field(
         default=None,
@@ -128,22 +161,29 @@ class AccountTransactionItem(CurrencyDecimals):
     )
     decision: str = Field(description="The engine's decision: APPROVE, HOLD or REJECT.")
     decision_reason: str = Field(description="Why the engine decided it.")
-    rules_triggered: list[str] = Field(description="The rules that fired, as in the transaction.decided event.")
+    rules_triggered: list[str] = Field(
+        description="The rules that fired, as in the transaction.decided event."
+    )
     risk_score: int = Field(description="Sum of the fired rules' scores, 0 to 100.")
-    transaction_date: datetime = Field(description="When the transaction happened, UTC.")
+    transaction_date: datetime = Field(
+        description="When the transaction happened, UTC."
+    )
     processed_at: datetime = Field(description="When the engine decided it, UTC.")
 
 
 class AccountTransactionPage(BaseModel):
     account_id: UUID = Field(description="The account.")
     days: int = Field(description="The window: transactions of the last `days` days.")
-    items: list[AccountTransactionItem] = Field(description="The transactions of the page, newest first.")
+    items: list[AccountTransactionItem] = Field(
+        description="The transactions of the page, newest first."
+    )
     total: int = Field(description="Transactions in the window, all pages.")
     page: int = Field(description="Page number, from 1.")
     size: int = Field(description="Transactions per page.")
 
 
 # --- Accounts (HU-29) --------------------------------------------------------
+
 
 class RelatedAccount(BaseModel):
     """Another account that used one of the account's devices."""
@@ -153,7 +193,9 @@ class RelatedAccount(BaseModel):
     last_seen: datetime = Field(
         description="The related account's last transaction on that device in the window, UTC.",
     )
-    open_cases: int = Field(description="Cases of the related account that are OPEN or ESCALATED.")
+    open_cases: int = Field(
+        description="Cases of the related account that are OPEN or ESCALATED."
+    )
 
 
 class RelatedAccountList(BaseModel):
@@ -167,17 +209,28 @@ class RelatedAccountList(BaseModel):
 
 # --- Cases (HU-26) -----------------------------------------------------------
 
+
 class CaseSummary(CurrencyDecimals):
     """One case of the inbox. The nullable fields are always sent."""
 
     id: UUID = Field(description="Case id.")
-    transaction_id: UUID = Field(description="The transaction that opened it (one case per transaction).")
-    account_id: UUID = Field(description="The main account: the source; in a top-up, the destination.")
-    status: str = Field(description="OPEN, ESCALATED (still open after due_at, RN-09) or RESOLVED.")
+    transaction_id: UUID = Field(
+        description="The transaction that opened it (one case per transaction)."
+    )
+    account_id: UUID = Field(
+        description="The main account: the source; in a top-up, the destination."
+    )
+    status: str = Field(
+        description="OPEN, ESCALATED (still open after due_at, RN-09) or RESOLVED."
+    )
     decision: str = Field(description="The engine's decision: APPROVE, HOLD or REJECT.")
-    rules_triggered: list[str] = Field(description="The rules that fired, as in the transaction.decided event.")
+    rules_triggered: list[str] = Field(
+        description="The rules that fired, as in the transaction.decided event."
+    )
     risk_score: int = Field(description="Sum of the fired rules' scores, 0 to 100.")
-    amount: Decimal = Field(description="Amount in the original currency, as a decimal string with its decimals (JPY: none).")
+    amount: Decimal = Field(
+        description="Amount in the original currency, as a decimal string with its decimals (JPY: none)."
+    )
     currency: str = Field(description="The original currency (COP, USD, EUR, JPY).")
     amount_usd: Decimal | None = Field(
         default=None,
@@ -185,9 +238,13 @@ class CaseSummary(CurrencyDecimals):
     )
     usd_rate: Decimal | None = Field(default=None, description=USD_RATE)
     rate_date: date | None = Field(default=None, description=RATE_DATE)
-    assignee: str | None = Field(default=None, description="The analyst who owns it; null until assigned.")
+    assignee: str | None = Field(
+        default=None, description="The analyst who owns it; null until assigned."
+    )
     created_at: datetime = Field(description="When the case was opened, UTC.")
-    due_at: datetime = Field(description="The 4-hour limit (RN-09): created_at + CASE_DUE_MINUTES, UTC.")
+    due_at: datetime = Field(
+        description="The 4-hour limit (RN-09): created_at + CASE_DUE_MINUTES, UTC."
+    )
     minutes_left: int | None = Field(
         default=None,
         description="Whole minutes until due_at, rounded down: negative once it is overdue. Null when RESOLVED.",
@@ -209,7 +266,9 @@ class CaseEventItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int = Field(description="Event id; increases with every event.")
-    type: str = Field(description="CREATED, ASSIGNED, ESCALATED, RESOLVED or EVIDENCE_ARCHIVED.")
+    type: str = Field(
+        description="CREATED, ASSIGNED, ESCALATED, RESOLVED or EVIDENCE_ARCHIVED."
+    )
     actor: str = Field(description="The X-User who did it, or `system`.")
     at: datetime = Field(description="When it happened, UTC.")
     data: dict = Field(
@@ -225,37 +284,61 @@ class CaseDetail(CaseSummary):
     """A case with everything it stores and its events."""
 
     decision_reason: str = Field(description="Why the engine decided it.")
-    rules_version: str = Field(description="The rule catalog version that decided (RN-08).")
-    rule_versions: dict[str, int] = Field(description="rule_version of each fired rule, by code (RN-08).")
-    transaction_date: datetime = Field(description="When the transaction happened, UTC.")
-    transaction: dict = Field(description="The transaction as it came in the event (evidence).")
-    escalated_at: datetime | None = Field(default=None, description="When the alerts task escalated it, UTC.")
-    resolved_at: datetime | None = Field(default=None, description="When it was resolved, UTC.")
-    resolved_by: str | None = Field(default=None, description="The X-User who resolved it.")
-    outcome: str | None = Field(default=None, description="FRAUD or LEGITIMATE, once resolved.")
+    rules_version: str = Field(
+        description="The rule catalog version that decided (RN-08)."
+    )
+    rule_versions: dict[str, int] = Field(
+        description="rule_version of each fired rule, by code (RN-08)."
+    )
+    transaction_date: datetime = Field(
+        description="When the transaction happened, UTC."
+    )
+    transaction: dict = Field(
+        description="The transaction as it came in the event (evidence)."
+    )
+    escalated_at: datetime | None = Field(
+        default=None, description="When the alerts task escalated it, UTC."
+    )
+    resolved_at: datetime | None = Field(
+        default=None, description="When it was resolved, UTC."
+    )
+    resolved_by: str | None = Field(
+        default=None, description="The X-User who resolved it."
+    )
+    outcome: str | None = Field(
+        default=None, description="FRAUD or LEGITIMATE, once resolved."
+    )
     final_decision: str | None = Field(
         default=None,
         description="REJECT (FRAUD) or APPROVE (LEGITIMATE), set on resolution; what the core applies.",
     )
-    resolution_note: str | None = Field(default=None, description="The analyst's note on resolution.")
+    resolution_note: str | None = Field(
+        default=None, description="The analyst's note on resolution."
+    )
     evidence_key: str | None = Field(
         default=None,
         description="S3 key of the archived evidence (RN-12); null until archived.",
     )
-    events: list[CaseEventItem] = Field(description="What happened to the case, oldest first.")
+    events: list[CaseEventItem] = Field(
+        description="What happened to the case, oldest first."
+    )
 
 
 # --- Cases (HU-27) -----------------------------------------------------------
+
 
 class AssigneeChange(BaseModel):
     """Who owns the case from now on."""
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    assignee: str = Field(min_length=1, max_length=100, description="The analyst, 1 to 100 characters.")
+    assignee: str = Field(
+        min_length=1, max_length=100, description="The analyst, 1 to 100 characters."
+    )
 
 
 # --- Cases (HU-30) -----------------------------------------------------------
+
 
 class Resolution(BaseModel):
     """How the analyst closes the case."""
@@ -265,10 +348,13 @@ class Resolution(BaseModel):
     outcome: CaseOutcome = Field(
         description="FRAUD (final_decision REJECT) or LEGITIMATE (final_decision APPROVE).",
     )
-    note: str = Field(min_length=1, max_length=2000, description="Why, 1 to 2000 characters.")
+    note: str = Field(
+        min_length=1, max_length=2000, description="Why, 1 to 2000 characters."
+    )
 
 
 # --- Reconciliation differences (HU-38 to HU-41) ---------------------------
+
 
 class ReconciliationDifferenceItem(BaseModel):
     """What treasury has to look at: one reconciliation_differences row.
@@ -280,7 +366,9 @@ class ReconciliationDifferenceItem(BaseModel):
 
     id: UUID = Field(description="Difference id.")
     run_day: date = Field(description="The partners' day reconciled (YYYY-MM-DD).")
-    partner: str = Field(description="banco_andino, red_corresponsales, cajeros_express or qr_pagos.")
+    partner: str = Field(
+        description="banco_andino, red_corresponsales, cajeros_express or qr_pagos."
+    )
     type: str = Field(
         description=(
             "MISSING_IN_PARTNER (approved by PagoSeguro, not in the partner's file), "
@@ -288,8 +376,12 @@ class ReconciliationDifferenceItem(BaseModel):
             "AMOUNT_MISMATCH (same reference, more than 0.01 apart; RN-10)."
         ),
     )
-    reference: str = Field(description="PagoSeguro's transaction id (as the partner wrote it, if only theirs).")
-    partner_reference: str | None = Field(default=None, description="The partner's own reference; null when only ours.")
+    reference: str = Field(
+        description="PagoSeguro's transaction id (as the partner wrote it, if only theirs)."
+    )
+    partner_reference: str | None = Field(
+        default=None, description="The partner's own reference; null when only ours."
+    )
     currency: str = Field(description="The original currency (COP, USD, EUR, JPY).")
     pagoseguro_amount: Decimal | None = Field(
         default=None,
@@ -303,17 +395,29 @@ class ReconciliationDifferenceItem(BaseModel):
         default=None,
         description="partner_amount - pagoseguro_amount, only in AMOUNT_MISMATCH.",
     )
-    pagoseguro_at: datetime | None = Field(default=None, description="When PagoSeguro approved it, UTC.")
-    partner_at: datetime | None = Field(default=None, description="When the partner dated it, UTC.")
+    pagoseguro_at: datetime | None = Field(
+        default=None, description="When PagoSeguro approved it, UTC."
+    )
+    partner_at: datetime | None = Field(
+        default=None, description="When the partner dated it, UTC."
+    )
     status: str = Field(description="PENDING or RESOLVED (final).")
     age_days: int | None = Field(
         default=None,
         description="Whole days from run_day to today (UTC) while PENDING (HU-41); null once RESOLVED.",
     )
-    detected_at: datetime = Field(description="When the reconciliation first found it, UTC.")
-    resolved_at: datetime | None = Field(default=None, description="When treasury resolved it, UTC.")
-    resolved_by: str | None = Field(default=None, description="The X-User who resolved it.")
-    resolution_note: str | None = Field(default=None, description="Treasury's note on resolution.")
+    detected_at: datetime = Field(
+        description="When the reconciliation first found it, UTC."
+    )
+    resolved_at: datetime | None = Field(
+        default=None, description="When treasury resolved it, UTC."
+    )
+    resolved_by: str | None = Field(
+        default=None, description="The X-User who resolved it."
+    )
+    resolution_note: str | None = Field(
+        default=None, description="Treasury's note on resolution."
+    )
 
     @model_validator(mode="after")
     def _currency_decimals_and_utc(self):
@@ -349,7 +453,9 @@ class AgeRange(BaseModel):
 
 class DifferenceAging(BaseModel):
     total: int = Field(description="Pending differences.")
-    ranges: list[AgeRange] = Field(description="Always the three ranges, in order, even when empty.")
+    ranges: list[AgeRange] = Field(
+        description="Always the three ranges, in order, even when empty."
+    )
 
 
 class DifferenceResolution(BaseModel):
@@ -357,10 +463,15 @@ class DifferenceResolution(BaseModel):
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    note: str = Field(min_length=1, max_length=2000, description="What was found or done, 1 to 2000 characters.")
+    note: str = Field(
+        min_length=1,
+        max_length=2000,
+        description="What was found or done, 1 to 2000 characters.",
+    )
 
 
 # --- Reconciliation runs (HU-37) --------------------------------------------
+
 
 class ReconciliationRunItem(BaseModel):
     """One day reconciled (a reconciliation_runs row)."""
@@ -369,16 +480,25 @@ class ReconciliationRunItem(BaseModel):
 
     run_day: date = Field(description="The partners' day reconciled (YYYY-MM-DD).")
     status: str = Field(description="RUNNING, DONE or FAILED.")
-    started_at: datetime = Field(description="When the last run of the day started, UTC.")
-    finished_at: datetime | None = Field(default=None, description="When it finished, UTC; null while RUNNING.")
+    started_at: datetime = Field(
+        description="When the last run of the day started, UTC."
+    )
+    finished_at: datetime | None = Field(
+        default=None, description="When it finished, UTC; null while RUNNING."
+    )
     files_read: int = Field(description="Partner files read.")
     records_read: int = Field(description="Detail lines read from them.")
     rows_rejected: int = Field(description="Lines or files that could not be read.")
     matched: int = Field(description="References that matched (RN-10).")
     differences: int = Field(description="Differences the run found.")
-    error: str | None = Field(default=None, description="Why it FAILED: the step and its error; null otherwise.")
+    error: str | None = Field(
+        default=None,
+        description="Why it FAILED: the step and its error; null otherwise.",
+    )
 
 
 class ReconciliationRunList(BaseModel):
-    items: list[ReconciliationRunItem] = Field(description="The runs of the period, oldest day first.")
+    items: list[ReconciliationRunItem] = Field(
+        description="The runs of the period, oldest day first."
+    )
     total: int = Field(description="Runs in the period.")

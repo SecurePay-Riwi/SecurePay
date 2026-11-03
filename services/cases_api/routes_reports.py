@@ -25,11 +25,20 @@ router = APIRouter(tags=["Reports"])
 MAX_DAYS = 31
 EMPTY = "No compliance cases in the period."
 CSV_COLUMNS = [
-    "case_id", "transaction_id", "account_id", "pattern", "amount",
-    "currency", "amount_usd", "status", "outcome", "created_at",
+    "case_id",
+    "transaction_id",
+    "account_id",
+    "pattern",
+    "amount",
+    "currency",
+    "amount_usd",
+    "status",
+    "outcome",
+    "created_at",
     # HU-43: the rate behind amount_usd, at the end so the columns of
     # HU-35 keep their place.
-    "usd_rate", "rate_date",
+    "usd_rate",
+    "rate_date",
 ]
 
 
@@ -43,9 +52,13 @@ def period(start: date, end: date) -> tuple[datetime, datetime]:
     if start > end:
         raise HTTPException(status_code=400, detail="`from` must not be after `to`.")
     if (end - start).days + 1 > MAX_DAYS:
-        raise HTTPException(status_code=400, detail=f"The period can have at most {MAX_DAYS} days.")
-    return (datetime.combine(start, time.min, UTC),
-            datetime.combine(end + timedelta(days=1), time.min, UTC))
+        raise HTTPException(
+            status_code=400, detail=f"The period can have at most {MAX_DAYS} days."
+        )
+    return (
+        datetime.combine(start, time.min, UTC),
+        datetime.combine(end + timedelta(days=1), time.min, UTC),
+    )
 
 
 def row(case: Case) -> SuspiciousCase:
@@ -73,20 +86,29 @@ def to_csv(items: list[SuspiciousCase]) -> str:
     writer.writerow(CSV_COLUMNS)
     for item in items:
         values = item.model_dump()
-        writer.writerow([
-            "" if values[c] is None
-            else format(values[c], "f") if c in ("amount", "amount_usd", "usd_rate")
-            else values[c].astimezone(UTC).isoformat() if c == "created_at"
-            else str(values[c])
-            for c in CSV_COLUMNS
-        ])
+        writer.writerow(
+            [
+                ""
+                if values[c] is None
+                else format(values[c], "f")
+                if c in ("amount", "amount_usd", "usd_rate")
+                else values[c].astimezone(UTC).isoformat()
+                if c == "created_at"
+                else str(values[c])
+                for c in CSV_COLUMNS
+            ]
+        )
     return out.getvalue()
 
 
-@router.get("/reports/suspicious", response_model=SuspiciousReport, **docs.SUSPICIOUS_REPORT)
+@router.get(
+    "/reports/suspicious", response_model=SuspiciousReport, **docs.SUSPICIOUS_REPORT
+)
 def suspicious_report(
     session: Annotated[Session, Depends(deps.get_session)],
-    from_: Annotated[date, Query(alias="from", description="First day (inclusive), YYYY-MM-DD, UTC.")],
+    from_: Annotated[
+        date, Query(alias="from", description="First day (inclusive), YYYY-MM-DD, UTC.")
+    ],
     to: Annotated[date, Query(description="Last day (inclusive), YYYY-MM-DD, UTC.")],
     report_format: Annotated[
         ReportFormat,

@@ -44,7 +44,9 @@ def test_every_status_code_is_documented():
 
 
 def _example(method, path, status):
-    return _paths()[path][method]["responses"][status]["content"]["application/json"]["example"]
+    return _paths()[path][method]["responses"][status]["content"]["application/json"][
+        "example"
+    ]
 
 
 def test_examples_are_valid():

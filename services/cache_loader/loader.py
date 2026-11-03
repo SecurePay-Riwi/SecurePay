@@ -45,17 +45,22 @@ BATCH = 5000
 def account_entries(session: Session) -> Iterator[tuple[str, dict]]:
     """acct:<id> and its hash, for every account."""
     query = (
-        select(Cuenta.id, Cuenta.moneda, Cuenta.user_id, Usuario.documento, Cuenta.estado)
+        select(
+            Cuenta.id, Cuenta.moneda, Cuenta.user_id, Usuario.documento, Cuenta.estado
+        )
         .join(Usuario, Usuario.id == Cuenta.user_id)
         .execution_options(yield_per=BATCH)
     )
     for account_id, currency, user_id, document, status in session.execute(query):
-        yield account_key(account_id), {
-            "currency": currency,
-            "user_id": str(user_id),
-            "document": digits(document),
-            "status": status,
-        }
+        yield (
+            account_key(account_id),
+            {
+                "currency": currency,
+                "user_id": str(user_id),
+                "document": digits(document),
+                "status": status,
+            },
+        )
 
 
 def merchant_entries(session: Session) -> Iterator[tuple[str, dict]]:

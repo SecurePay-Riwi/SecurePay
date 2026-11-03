@@ -165,13 +165,18 @@ class Publicador:
                 respuesta = self._cliente.publish_batch(
                     TopicArn=self.topic_arn,
                     PublishBatchRequestEntries=[
-                        {"Id": str(i), "Message": json.dumps(evento, ensure_ascii=False)}
+                        {
+                            "Id": str(i),
+                            "Message": json.dumps(evento, ensure_ascii=False),
+                        }
                         for i, evento in pendientes.items()
                     ],
                 )
                 fallidos = {int(f["Id"]) for f in respuesta.get("Failed", [])}
                 if fallidos:
-                    motivo = respuesta["Failed"][0].get("Message", "SNS rechazó el mensaje")
+                    motivo = respuesta["Failed"][0].get(
+                        "Message", "SNS rechazó el mensaje"
+                    )
             except Exception as exc:  # red caída, SNS caído, credenciales...
                 fallidos = set(pendientes)
                 motivo = f"{type(exc).__name__}: {exc}"

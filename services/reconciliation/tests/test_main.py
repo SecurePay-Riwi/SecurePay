@@ -26,8 +26,12 @@ def _run(session) -> ReconciliationRun:
 def test_runs_the_three_steps(session, tmp_path):
     result = orchestration.run_day(session, DAY, STATEMENTS, DECISIONS, str(tmp_path))
     assert result["day"] == "2026-10-05"
-    assert (tmp_path / "curated" / "extractos" / "fecha=2026-10-05" / "records.jsonl").exists()
-    assert list((tmp_path / "curated" / "conciliacion" / "fecha=2026-10-05").glob("part-*.json"))
+    assert (
+        tmp_path / "curated" / "extractos" / "fecha=2026-10-05" / "records.jsonl"
+    ).exists()
+    assert list(
+        (tmp_path / "curated" / "conciliacion" / "fecha=2026-10-05").glob("part-*.json")
+    )
     assert _run(session).error is None
 
 
@@ -46,7 +50,13 @@ def test_a_failed_step_marks_the_run_failed(session, tmp_path, monkeypatch):
 
 def test_running_a_day_again_reuses_its_run(session, tmp_path):
     orchestration.start_run(session, DAY, orchestration.datetime.now(orchestration.UTC))
-    orchestration.fail_run(session, DAY, "ingest", ValueError("x"), orchestration.datetime.now(orchestration.UTC))
+    orchestration.fail_run(
+        session,
+        DAY,
+        "ingest",
+        ValueError("x"),
+        orchestration.datetime.now(orchestration.UTC),
+    )
     orchestration.run_day(session, DAY, STATEMENTS, DECISIONS, str(tmp_path))
     assert session.query(ReconciliationRun).count() == 1
     assert _run(session).error is None

@@ -60,7 +60,9 @@ def test_list_not_loaded_holds_even_a_small_payment(full_load):
     get_cache().delete(RESTRICTED_DOCS)
     get_cache().delete(RESTRICTED_LOADED_AT)
 
-    response = client.post("/transactions", json=_payload_qr(_cuenta_del_seed(en_lista=False)))
+    response = client.post(
+        "/transactions", json=_payload_qr(_cuenta_del_seed(en_lista=False))
+    )
 
     assert response.status_code == 200, response.text
     assert response.json()["decision"] == "HOLD"

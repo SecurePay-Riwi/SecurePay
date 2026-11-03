@@ -82,7 +82,9 @@ RECORD = StatementRecord(
     currency="EUR",
     amount=Decimal("88.91"),
     # Bogota time, as a reader may build it: written back in UTC.
-    transaction_at=datetime(2026, 10, 5, 2, 45, 29, tzinfo=timezone(timedelta(hours=-5))),
+    transaction_at=datetime(
+        2026, 10, 5, 2, 45, 29, tzinfo=timezone(timedelta(hours=-5))
+    ),
 )
 
 
@@ -113,7 +115,13 @@ def test_match_row_json_round_trip_with_nulls():
 
 
 def test_rejected_row_to_json():
-    row = RejectedRow("cajeros_express", "cajeros_express_20261005_v1.csv", 4, "a;b", "amount is not a number")
+    row = RejectedRow(
+        "cajeros_express",
+        "cajeros_express_20261005_v1.csv",
+        4,
+        "a;b",
+        "amount is not a number",
+    )
     assert to_json(row)["reason"] == "amount is not a number"
 
 
@@ -126,16 +134,40 @@ def test_from_json_refuses_missing_keys_and_naive_times():
 
 
 def test_match_row_from_json_refuses_an_unknown_status():
-    data = to_json(MatchRow(date(2026, 10, 5), "qr_pagos", "MATCHED", "r", None, "USD",
-                            None, None, None, None))
+    data = to_json(
+        MatchRow(
+            date(2026, 10, 5),
+            "qr_pagos",
+            "MATCHED",
+            "r",
+            None,
+            "USD",
+            None,
+            None,
+            None,
+            None,
+        )
+    )
     with pytest.raises(ValueError):
         match_row_from_json({**data, "status": "MAYBE"})
 
 
 def test_times_without_zone_are_refused_on_write():
     with pytest.raises(ValueError):
-        to_json(MatchRow(date(2026, 10, 5), "qr_pagos", "MATCHED", "r", None, "USD",
-                         None, None, datetime(2026, 10, 5), None))
+        to_json(
+            MatchRow(
+                date(2026, 10, 5),
+                "qr_pagos",
+                "MATCHED",
+                "r",
+                None,
+                "USD",
+                None,
+                None,
+                datetime(2026, 10, 5),
+                None,
+            )
+        )
 
 
 # --- Tables ----------------------------------------------------------------
@@ -157,9 +189,16 @@ def _run(session) -> ReconciliationRun:
 
 
 def _difference(run, **kw) -> ReconciliationDifference:
-    values = dict(run_id=run.id, run_day=run.run_day, partner="qr_pagos",
-                  type="MISSING_IN_PAGOSEGURO", reference="ref-1", currency="USD",
-                  partner_amount=Decimal("5.25"), detected_at=datetime.now(UTC))
+    values = dict(
+        run_id=run.id,
+        run_day=run.run_day,
+        partner="qr_pagos",
+        type="MISSING_IN_PAGOSEGURO",
+        reference="ref-1",
+        currency="USD",
+        partner_amount=Decimal("5.25"),
+        detected_at=datetime.now(UTC),
+    )
     return ReconciliationDifference(**{**values, **kw})
 
 
@@ -177,7 +216,13 @@ def test_defaults(Session):
         session.commit()
         difference = session.query(ReconciliationDifference).one()
         assert run.status == RunStatus.RUNNING.value
-        assert (run.files_read, run.records_read, run.rows_rejected, run.matched, run.differences) == (0,) * 5
+        assert (
+            run.files_read,
+            run.records_read,
+            run.rows_rejected,
+            run.matched,
+            run.differences,
+        ) == (0,) * 5
         assert difference.status == DifferenceStatus.PENDING.value
 
 

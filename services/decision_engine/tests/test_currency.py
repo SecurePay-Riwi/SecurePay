@@ -22,7 +22,9 @@ def item(day: str, **rates) -> dict:
     return {
         "base": {"S": "USD"},
         "rate_date": {"S": day},
-        "rates": {"M": {code: {"N": str(v)} for code, v in {"USD": 1, **rates}.items()}},
+        "rates": {
+            "M": {code: {"N": str(v)} for code, v in {"USD": 1, **rates}.items()}
+        },
         "source": {"S": "https://api.frankfurter.dev/v2/rates"},
         "expires_at": {"N": "1790000000"},
     }
@@ -48,7 +50,7 @@ class FakeDynamo:
         if self.error:
             raise self.error
         start = kwargs.get("ExclusiveStartKey", {}).get("i", 0)
-        page = {"Items": self.items[start:start + self.page]}
+        page = {"Items": self.items[start : start + self.page]}
         if start + self.page < len(self.items):
             page["LastEvaluatedKey"] = {"i": start + self.page}
         return page
@@ -126,11 +128,17 @@ def test_day_after_the_last_one_uses_the_last_one(dynamo):
 
 
 def test_currency_missing_on_a_day_uses_an_earlier_day(dynamo):
-    dynamo([item("2026-10-01", COP="3317.65", EUR="0.88", JPY="157"),
-            item("2026-10-02", EUR="0.9", JPY="150")])
+    dynamo(
+        [
+            item("2026-10-01", COP="3317.65", EUR="0.88", JPY="157"),
+            item("2026-10-02", EUR="0.9", JPY="150"),
+        ]
+    )
     currency.refresh()
 
-    assert currency.rate_for("COP", OCT_2) == currency.Rate(Decimal("3317.65"), OCT_1, True)
+    assert currency.rate_for("COP", OCT_2) == currency.Rate(
+        Decimal("3317.65"), OCT_1, True
+    )
     assert currency.rate_for("EUR", OCT_2).fallback is False
 
 

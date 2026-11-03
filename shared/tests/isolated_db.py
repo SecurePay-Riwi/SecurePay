@@ -23,7 +23,9 @@ def isolated_sessions(schema: str) -> Iterator[sessionmaker]:
     with dev_engine.begin() as conn:
         conn.execute(text(f"DROP SCHEMA IF EXISTS {schema} CASCADE"))
         conn.execute(text(f"CREATE SCHEMA {schema}"))
-    engine = create_engine(dev_engine.url, connect_args={"options": f"-csearch_path={schema}"})
+    engine = create_engine(
+        dev_engine.url, connect_args={"options": f"-csearch_path={schema}"}
+    )
     try:
         yield sessionmaker(bind=engine)
     finally:
@@ -37,5 +39,8 @@ def down_sessions() -> sessionmaker:
     matters: on Linux port 1 refuses at once, but on Windows the connection
     waits forever without it."""
     return sessionmaker(
-        bind=create_engine("postgresql+psycopg://x:x@127.0.0.1:1/x", connect_args={"connect_timeout": 1})
+        bind=create_engine(
+            "postgresql+psycopg://x:x@127.0.0.1:1/x",
+            connect_args={"connect_timeout": 1},
+        )
     )

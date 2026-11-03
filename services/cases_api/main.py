@@ -80,7 +80,9 @@ async def validation_exception_handler(request, exc: RequestValidationError):
 @app.exception_handler(OperationalError)
 async def database_down_handler(request, exc: OperationalError):
     logger.warning("Cases API could not reach PostgreSQL: %s", exc)
-    return JSONResponse(status_code=503, content={"detail": "The cases database is not available."})
+    return JSONResponse(
+        status_code=503, content={"detail": "The cases database is not available."}
+    )
 
 
 @app.exception_handler(HTTPException)

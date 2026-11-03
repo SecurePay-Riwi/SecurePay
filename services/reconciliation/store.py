@@ -61,7 +61,10 @@ def _difference(row: MatchRow, kind: DifferenceType) -> dict:
     MISSING_IN_PARTNER keeps only PagoSeguro's side; MISSING_IN_PAGOSEGURO
     only the partner's; AMOUNT_MISMATCH both and partner - pagoseguro."""
     ours = kind in (DifferenceType.MISSING_IN_PARTNER, DifferenceType.AMOUNT_MISMATCH)
-    theirs = kind in (DifferenceType.MISSING_IN_PAGOSEGURO, DifferenceType.AMOUNT_MISMATCH)
+    theirs = kind in (
+        DifferenceType.MISSING_IN_PAGOSEGURO,
+        DifferenceType.AMOUNT_MISMATCH,
+    )
     return {
         "run_day": row.run_day,
         "partner": row.partner,
@@ -71,8 +74,11 @@ def _difference(row: MatchRow, kind: DifferenceType) -> dict:
         "currency": row.currency,
         "pagoseguro_amount": row.pagoseguro_amount if ours else None,
         "partner_amount": row.partner_amount if theirs else None,
-        "amount_difference": (row.partner_amount - row.pagoseguro_amount
-                              if kind is DifferenceType.AMOUNT_MISMATCH else None),
+        "amount_difference": (
+            row.partner_amount - row.pagoseguro_amount
+            if kind is DifferenceType.AMOUNT_MISMATCH
+            else None
+        ),
         "pagoseguro_at": row.pagoseguro_at if ours else None,
         "partner_at": row.partner_at if theirs else None,
     }
@@ -84,8 +90,10 @@ _TYPES = {
     MatchStatus.ONLY_PAGOSEGURO.value: (DifferenceType.MISSING_IN_PARTNER,),
     MatchStatus.ONLY_PARTNER.value: (DifferenceType.MISSING_IN_PAGOSEGURO,),
     MatchStatus.AMOUNT_OFF.value: (DifferenceType.AMOUNT_MISMATCH,),
-    MatchStatus.DATE_OFF.value: (DifferenceType.MISSING_IN_PARTNER,
-                                 DifferenceType.MISSING_IN_PAGOSEGURO),
+    MatchStatus.DATE_OFF.value: (
+        DifferenceType.MISSING_IN_PARTNER,
+        DifferenceType.MISSING_IN_PAGOSEGURO,
+    ),
 }
 
 
@@ -131,11 +139,15 @@ def save(session, day: date, rows: list[MatchRow], counts: dict, now: datetime) 
     for start in range(0, len(values), INSERT_BATCH):
         session.execute(
             insert(ReconciliationDifference)
-            .values(values[start:start + INSERT_BATCH])
-            .on_conflict_do_nothing(index_elements=["run_day", "partner", "type", "reference"])
+            .values(values[start : start + INSERT_BATCH])
+            .on_conflict_do_nothing(
+                index_elements=["run_day", "partner", "type", "reference"]
+            )
         )
     session.commit()
-    log.info("Reconciliation %s: %d matched, %d differences", day, matched, len(differences))
+    log.info(
+        "Reconciliation %s: %d matched, %d differences", day, matched, len(differences)
+    )
     return {"day": day.isoformat(), "matched": matched, "differences": len(differences)}
 
 
@@ -146,8 +158,11 @@ def handler(event, context=None) -> dict:  # Step Functions step 3
     output does not reach Step Functions) -> load_rows + save."""
     global _schema_ready
     event = event or {}
-    day = (date.fromisoformat(event["day"]) if event.get("day")
-           else datetime.now(BOGOTA).date() - timedelta(days=1))
+    day = (
+        date.fromisoformat(event["day"])
+        if event.get("day")
+        else datetime.now(BOGOTA).date() - timedelta(days=1)
+    )
     rows = load_rows(match_dir(RECON_DATA_DIR, day))
     counts = {k: event[k] for k in ("files_read", "records", "rejected") if k in event}
     with SessionLocal() as session:

@@ -1,4 +1,3 @@
-
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -158,9 +157,9 @@ def test_simultaneous_requests_decide_only_once():
         futures = [executor.submit(send_request) for _ in range(peticiones)]
         responses = [future.result(timeout=20) for future in futures]
 
-    assert all(
-        response.status_code == 200 for response in responses
-    ), [response.status_code for response in responses]
+    assert all(response.status_code == 200 for response in responses), [
+        response.status_code for response in responses
+    ]
 
     bodies = [response.json() for response in responses]
 
@@ -245,9 +244,7 @@ def test_transaction_response_time():
     first_ms = (perf_counter() - start) * 1000
 
     assert first.status_code == 200, first.text
-    assert first_ms < 200, (
-        f"La primera solicitud tardó {first_ms:.2f} ms"
-    )
+    assert first_ms < 200, f"La primera solicitud tardó {first_ms:.2f} ms"
 
     # Medir la solicitud repetida.
     start = perf_counter()
@@ -256,9 +253,7 @@ def test_transaction_response_time():
 
     assert second.status_code == 200, second.text
     assert second.json()["idempotent_replay"] is True
-    assert replay_ms < 200, (
-        f"La solicitud repetida tardó {replay_ms:.2f} ms"
-    )
+    assert replay_ms < 200, f"La solicitud repetida tardó {replay_ms:.2f} ms"
 
     print(f"\nPrimera solicitud: {first_ms:.2f} ms")
     print(f"Solicitud repetida: {replay_ms:.2f} ms")
@@ -323,22 +318,24 @@ def _payloads_p2p(fechas: list[datetime], en_lista: bool = False) -> list[dict]:
         payloads = []
 
         for i, fecha in enumerate(fechas):
-            payloads.append({
-                "id": str(uuid4()),
-                "type": "P2P",
-                "channel": "APP",
-                "source_account_id": str(origen.id),
-                "destination_account_id": str(destino.id),
-                "merchant_id": None,
-                "amount": amount,
-                "currency": origen.moneda,
-                "source_balance_before": str(origen.saldo - i),
-                "source_balance_after": str(origen.saldo - i - 1),
-                "destination_balance_before": str(destino.saldo + i),
-                "destination_balance_after": str(destino.saldo + i + 1),
-                "device_id": str(dispositivo.dispositivo_id),
-                "transaction_date": fecha.isoformat(),
-            })
+            payloads.append(
+                {
+                    "id": str(uuid4()),
+                    "type": "P2P",
+                    "channel": "APP",
+                    "source_account_id": str(origen.id),
+                    "destination_account_id": str(destino.id),
+                    "merchant_id": None,
+                    "amount": amount,
+                    "currency": origen.moneda,
+                    "source_balance_before": str(origen.saldo - i),
+                    "source_balance_after": str(origen.saldo - i - 1),
+                    "destination_balance_before": str(destino.saldo + i),
+                    "destination_balance_after": str(destino.saldo + i + 1),
+                    "device_id": str(dispositivo.dispositivo_id),
+                    "transaction_date": fecha.isoformat(),
+                }
+            )
 
         return payloads
     finally:
@@ -415,7 +412,16 @@ def test_decision_carries_the_rate_of_its_day(eventos_publicados):
     day = currency.utc_day(datetime.fromisoformat(payload["transaction_date"]))
     # Every currency is 2 units per USD on the transaction's day, so the
     # amount in USD is half of it (USD stays at 1).
-    currency.load({day: {"USD": Decimal(1), "COP": Decimal(2), "EUR": Decimal(2), "JPY": Decimal(2)}})
+    currency.load(
+        {
+            day: {
+                "USD": Decimal(1),
+                "COP": Decimal(2),
+                "EUR": Decimal(2),
+                "JPY": Decimal(2),
+            }
+        }
+    )
 
     response = client.post("/transactions", json=payload)
 
@@ -427,7 +433,10 @@ def test_decision_carries_the_rate_of_its_day(eventos_publicados):
         assert (body["amount_usd"], body["usd_rate"]) == ("50.00", "2")
     assert body["rate_date"] == day.isoformat()
     decision = eventos_publicados[0]["decision"]
-    assert (decision["usd_rate"], decision["rate_date"]) == (body["usd_rate"], body["rate_date"])
+    assert (decision["usd_rate"], decision["rate_date"]) == (
+        body["usd_rate"],
+        body["rate_date"],
+    )
 
 
 def test_engine_answers_when_sns_is_down(monkeypatch, caplog):
@@ -472,13 +481,9 @@ def test_qr_payments_do_not_count_for_velocity():
 def test_response_carries_rules_version_and_triggered_rules():
     payloads = _payloads_p2p(_minutos(0, 1, 2, 3, 4, 5))
 
-    respuestas = [
-        client.post("/transactions", json=p).json() for p in payloads
-    ]
+    respuestas = [client.post("/transactions", json=p).json() for p in payloads]
 
-    assert [r["rules_triggered"] for r in respuestas] == (
-        [[]] * 5 + [["velocity"]]
-    )
+    assert [r["rules_triggered"] for r in respuestas] == ([[]] * 5 + [["velocity"]])
     assert {r["rules_version"] for r in respuestas} == {str(catalog.current().version)}
     # RN-08: the version of each rule that fired.
     assert [r["rule_versions"] for r in respuestas] == (
@@ -491,9 +496,7 @@ def test_every_triggered_rule_is_kept_and_the_most_severe_wins():
     # se activan las dos reglas y gana el rechazo.
     payloads = _payloads_p2p(_minutos(0, 1, 2, 3, 4, 5), en_lista=True)
 
-    respuestas = [
-        client.post("/transactions", json=p).json() for p in payloads
-    ]
+    respuestas = [client.post("/transactions", json=p).json() for p in payloads]
 
     assert [r["decision"] for r in respuestas] == ["REJECT"] * 6
     assert respuestas[-1]["rules_triggered"] == [
@@ -523,12 +526,16 @@ def test_decision_stored_before_rules_fields_is_still_replayed():
     # rules_version y rules_triggered se sigue repitiendo sin error.
     payload = _payload_normal()
     firma = idem.huella(TransactionRequest(**payload).model_dump(mode="json"))
-    idem.guardar(payload["id"], firma, {
-        "transaction_id": payload["id"],
-        "decision": "APPROVE",
-        "decision_reason": "Decisión vieja.",
-        "processed_at": datetime.now(UTC).isoformat(),
-    })
+    idem.guardar(
+        payload["id"],
+        firma,
+        {
+            "transaction_id": payload["id"],
+            "decision": "APPROVE",
+            "decision_reason": "Decisión vieja.",
+            "processed_at": datetime.now(UTC).isoformat(),
+        },
+    )
 
     response = client.post("/transactions", json=payload)
 
@@ -646,8 +653,11 @@ def test_restricted_list_precheck_covers_all_parties_before_velocity(monkeypatch
     destination_document = "99988777"
     accounts = {
         str(account_id): reference_data.Account(
-            id=str(account_id), currency="COP", user_id=str(uuid4()),
-            document=document, status="activa",
+            id=str(account_id),
+            currency="COP",
+            user_id=str(uuid4()),
+            document=document,
+            status="activa",
         )
         for account_id, document in (
             (source_id, source_document),

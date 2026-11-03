@@ -41,10 +41,16 @@ def _context(*days_ago: float) -> RuleContext:
     """A transaction at BASE on a device that one account per value of
     `days_ago` used that many days before."""
     payload = TransactionRequest(
-        id=uuid4(), type="RETIRO", channel="CAJERO",
-        source_account_id=uuid4(), amount="10.00", currency="USD",
-        source_balance_before="100.00", source_balance_after="90.00",
-        device_id=uuid4(), transaction_date=BASE,
+        id=uuid4(),
+        type="RETIRO",
+        channel="CAJERO",
+        source_account_id=uuid4(),
+        amount="10.00",
+        currency="USD",
+        source_balance_before="100.00",
+        source_balance_after="90.00",
+        device_id=uuid4(),
+        transaction_date=BASE,
     )
     t = to_ms(BASE)
     return RuleContext(
@@ -123,7 +129,9 @@ def test_record_device_keeps_each_account_once_with_its_last_time(device):
 
 def test_record_device_drops_accounts_older_than_the_retention(device):
     record_device(device, "old", BASE)
-    uses = record_device(device, "new", BASE + timedelta(days=history.DEVICE_DAYS, seconds=1))
+    uses = record_device(
+        device, "new", BASE + timedelta(days=history.DEVICE_DAYS, seconds=1)
+    )
 
     assert [u.account for u in uses] == ["new"]
     assert get_cache().ttl(device_key(device)) > 0
@@ -184,7 +192,8 @@ def test_fourth_account_on_a_device_raises_the_risk_score(accounts, device):
     decisions = []
     for i, account in enumerate(accounts):
         response = client.post(
-            "/transactions", json=_withdrawal(account, device, now + timedelta(minutes=i))
+            "/transactions",
+            json=_withdrawal(account, device, now + timedelta(minutes=i)),
         )
         assert response.status_code == 200, response.text
         decisions.append(response.json())
@@ -197,7 +206,8 @@ def test_fourth_account_on_a_device_raises_the_risk_score(accounts, device):
 
     # Any of the four accounts that uses the device again gets it too.
     again = client.post(
-        "/transactions", json=_withdrawal(accounts[0], device, now + timedelta(minutes=5))
+        "/transactions",
+        json=_withdrawal(accounts[0], device, now + timedelta(minutes=5)),
     ).json()
     assert again["rules_triggered"] == ["shared_device"]
     assert again["risk_score"] == 30

@@ -1,6 +1,6 @@
 """Runs the alerts task in local, as EventBridge does every 5 minutes in AWS.
 
-    uv run python -m services.alerts
+uv run python -m services.alerts
 """
 
 import logging

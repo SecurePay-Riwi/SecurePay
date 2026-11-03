@@ -40,7 +40,11 @@ def list_files(folder: str, pattern: str = "*") -> list[str]:
     if is_s3(folder):
         bucket, prefix = _split(folder.rstrip("/") + "/")
         found = []
-        pages = _client().get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefix)
+        pages = (
+            _client()
+            .get_paginator("list_objects_v2")
+            .paginate(Bucket=bucket, Prefix=prefix)
+        )
         for page in pages:
             for item in page.get("Contents", []):
                 if fnmatch.fnmatch(item["Key"].rsplit("/", 1)[-1], pattern):
@@ -55,7 +59,9 @@ def list_files(folder: str, pattern: str = "*") -> list[str]:
 def read_text(path: str) -> str:
     if is_s3(path):
         bucket, key = _split(path)
-        return _client().get_object(Bucket=bucket, Key=key)["Body"].read().decode("utf-8")
+        return (
+            _client().get_object(Bucket=bucket, Key=key)["Body"].read().decode("utf-8")
+        )
     return Path(path).read_text(encoding="utf-8")
 
 
@@ -75,4 +81,6 @@ def read_jsonl(path: str) -> list[dict]:
 
 
 def write_jsonl(path: str, rows: list[dict]) -> None:
-    write_text(path, "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows))
+    write_text(
+        path, "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows)
+    )

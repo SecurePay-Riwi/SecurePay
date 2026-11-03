@@ -75,7 +75,9 @@ class CaseEventType(str, enum.Enum):
     CREATED = "CREATED"  # consumer (HU-25), data {}
     ASSIGNED = "ASSIGNED"  # cases API (HU-27), data {"from": str | None, "to": str}
     ESCALATED = "ESCALATED"  # alerts task (HU-31), data {"due_at": iso}
-    RESOLVED = "RESOLVED"  # cases API (HU-30), data {"outcome", "final_decision", "note"}
+    RESOLVED = (
+        "RESOLVED"  # cases API (HU-30), data {"outcome", "final_decision", "note"}
+    )
     EVIDENCE_ARCHIVED = "EVIDENCE_ARCHIVED"  # evidence.archive (HU-32), data {"bucket", "key", "retain_until"}
 
 
@@ -95,7 +97,9 @@ class Case(Base):
     # ["mule", ...], as in the transaction.decided event.
     rules_triggered = Column(JSONB, nullable=False)
     rules_version = Column(String(20), nullable=False)
-    rule_versions = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+    rule_versions = Column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
     risk_score = Column(Integer, nullable=False, default=0, server_default=text("0"))
     # Original currency; amount_usd is the engine's (null only for events
     # without it).
@@ -109,8 +113,12 @@ class Case(Base):
     transaction_date = Column(DateTime(timezone=True), nullable=False)
     # The event's transaction, as it came (evidence).
     transaction = Column(JSONB, nullable=False)
-    status = Column(String(10), nullable=False, default=CaseStatus.OPEN.value,
-                    server_default=CaseStatus.OPEN.value)
+    status = Column(
+        String(10),
+        nullable=False,
+        default=CaseStatus.OPEN.value,
+        server_default=CaseStatus.OPEN.value,
+    )
     assignee = Column(String(100), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False)
     # created_at + CASE_DUE_MINUTES, with the consumer's clock.
@@ -132,11 +140,15 @@ class CaseEvent(Base):
     __tablename__ = "case_events"
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    case_id = Column(UUID(as_uuid=True), ForeignKey("cases.id"), nullable=False, index=True)
+    case_id = Column(
+        UUID(as_uuid=True), ForeignKey("cases.id"), nullable=False, index=True
+    )
     type = Column(String(20), nullable=False)  # CaseEventType
     actor = Column(String(100), nullable=False)  # X-User, or SYSTEM_ACTOR
     at = Column(DateTime(timezone=True), nullable=False)
-    data = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+    data = Column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
 
 
 class ComplianceReport(Base):
@@ -232,7 +244,9 @@ APPEND_ONLY_EVENTS = [
 def main_account(transaction: dict) -> str:
     """The source account; in RECARGA (no source), the destination. The
     same rule as the engine."""
-    return str(transaction.get("source_account_id") or transaction["destination_account_id"])
+    return str(
+        transaction.get("source_account_id") or transaction["destination_account_id"]
+    )
 
 
 # Columns added after the tables existed: create_all() does not add

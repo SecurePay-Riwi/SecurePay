@@ -6,8 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://pagoseguro:pagoseguro@localhost:5432/pagoseguro"
+    "DATABASE_URL", "postgresql://pagoseguro:pagoseguro@localhost:5432/pagoseguro"
 )
 
 # Fecha fija desde la que se calculan las fechas del seed y del generador.

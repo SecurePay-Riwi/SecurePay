@@ -26,10 +26,15 @@ def purge(session: Session, now: datetime) -> int:
     """Delete account_transactions older than ACCOUNT_HISTORY_DAYS.
     Returns how many rows."""
     deleted = session.execute(
-        delete(AccountTransaction).where(AccountTransaction.transaction_date < cutoff(now))
+        delete(AccountTransaction).where(
+            AccountTransaction.transaction_date < cutoff(now)
+        )
     ).rowcount
     session.commit()
     if deleted:
-        log.info("Alerts: %d account history row(s) older than %d days deleted",
-                 deleted, ACCOUNT_HISTORY_DAYS)
+        log.info(
+            "Alerts: %d account history row(s) older than %d days deleted",
+            deleted,
+            ACCOUNT_HISTORY_DAYS,
+        )
     return deleted

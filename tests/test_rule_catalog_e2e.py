@@ -53,7 +53,9 @@ def rules_api():
     with dev_engine.begin() as conn:
         conn.execute(text(f"DROP SCHEMA IF EXISTS {SCHEMA} CASCADE"))
         conn.execute(text(f"CREATE SCHEMA {SCHEMA}"))
-    db = create_engine(dev_engine.url, connect_args={"options": f"-csearch_path={SCHEMA}"})
+    db = create_engine(
+        dev_engine.url, connect_args={"options": f"-csearch_path={SCHEMA}"}
+    )
     previous = store.SessionLocal
     store.bind(sessionmaker(bind=db))
     get_cache().delete(CATALOG_KEY, VERSION_KEY)
@@ -108,7 +110,9 @@ def test_a_rule_changed_through_the_api_decides_the_next_transaction(rules_api, 
     assert third["rule_versions"] == {"velocity": 2}
 
     # The event the cases and analytics consumers keep says the same.
-    event = next(e for e in events if e["decision"]["transaction_id"] == payloads[2]["id"])
+    event = next(
+        e for e in events if e["decision"]["transaction_id"] == payloads[2]["id"]
+    )
     assert event["decision"]["rules_version"] == "2"
     assert event["decision"]["rule_versions"] == {"velocity": 2}
 
@@ -118,7 +122,10 @@ def test_a_rule_changed_through_the_api_decides_the_next_transaction(rules_api, 
     assert velocity["rule_version"] == third["rule_versions"]["velocity"]
     assert velocity["params"]["limit"] == 2
     before = rules_api.get("/rules/versions/1").json()
-    assert next(r for r in before["rules"] if r["code"] == "velocity")["params"]["limit"] == 5
+    assert (
+        next(r for r in before["rules"] if r["code"] == "velocity")["params"]["limit"]
+        == 5
+    )
 
 
 def test_a_past_decision_keeps_its_version_after_the_catalog_changes(rules_api, events):

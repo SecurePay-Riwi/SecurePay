@@ -37,8 +37,11 @@ def account_transactions(
     session: Annotated[Session, Depends(deps.get_session)],
     days: Annotated[
         int,
-        Query(ge=1, le=ACCOUNT_HISTORY_DAYS,
-              description=f"Transactions of the last `days` days (1 to {ACCOUNT_HISTORY_DAYS})."),
+        Query(
+            ge=1,
+            le=ACCOUNT_HISTORY_DAYS,
+            description=f"Transactions of the last `days` days (1 to {ACCOUNT_HISTORY_DAYS}).",
+        ),
     ] = ACCOUNT_HISTORY_DAYS,
     page: Annotated[int, Query(ge=1, description="Page number, from 1.")] = 1,
     size: Annotated[
@@ -57,8 +60,10 @@ def account_transactions(
     rows = session.scalars(
         select(AccountTransaction)
         .where(*conditions)
-        .order_by(AccountTransaction.transaction_date.desc(),
-                  AccountTransaction.transaction_id)
+        .order_by(
+            AccountTransaction.transaction_date.desc(),
+            AccountTransaction.transaction_id,
+        )
         .offset((page - 1) * size)
         .limit(size)
     ).all()
@@ -82,8 +87,11 @@ def related_accounts(
     session: Annotated[Session, Depends(deps.get_session)],
     days: Annotated[
         int,
-        Query(ge=1, le=ACCOUNT_HISTORY_DAYS,
-              description=f"Devices used in the last `days` days (1 to {ACCOUNT_HISTORY_DAYS})."),
+        Query(
+            ge=1,
+            le=ACCOUNT_HISTORY_DAYS,
+            description=f"Devices used in the last `days` days (1 to {ACCOUNT_HISTORY_DAYS}).",
+        ),
     ] = ACCOUNT_HISTORY_DAYS,
 ):
     since = datetime.now(UTC) - timedelta(days=days)
@@ -93,29 +101,41 @@ def related_accounts(
     # carry device_id), then every other account on them in the window.
     devices = (
         select(history.device_id)
-        .where(history.account_id == account_id,
-               history.device_id.isnot(None),
-               history.transaction_date >= since)
+        .where(
+            history.account_id == account_id,
+            history.device_id.isnot(None),
+            history.transaction_date >= since,
+        )
         .distinct()
     )
     open_cases = (
         select(func.count())
         .select_from(Case)
-        .where(Case.account_id == history.account_id,
-               Case.status.in_([s.value for s in PENDING]))
+        .where(
+            Case.account_id == history.account_id,
+            Case.status.in_([s.value for s in PENDING]),
+        )
         .correlate(history)
         .scalar_subquery()
     )
     last_seen = func.max(history.transaction_date)
     rows = session.execute(
-        select(history.account_id, history.device_id,
-               last_seen.label("last_seen"), open_cases.label("open_cases"))
-        .where(history.device_id.in_(devices),
-               history.account_id != account_id,
-               history.transaction_date >= since)
+        select(
+            history.account_id,
+            history.device_id,
+            last_seen.label("last_seen"),
+            open_cases.label("open_cases"),
+        )
+        .where(
+            history.device_id.in_(devices),
+            history.account_id != account_id,
+            history.transaction_date >= since,
+        )
         .group_by(history.account_id, history.device_id)
         .order_by(last_seen.desc(), history.account_id, history.device_id)
     ).all()
 
     items = [RelatedAccount.model_validate(r, from_attributes=True) for r in rows]
-    return RelatedAccountList(account_id=account_id, days=days, items=items, total=len(items))
+    return RelatedAccountList(
+        account_id=account_id, days=days, items=items, total=len(items)
+    )

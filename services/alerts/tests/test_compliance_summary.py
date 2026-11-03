@@ -51,17 +51,28 @@ def _report(factory, document="1000000070", list_type="PEP", notified_at=None):
     matched_at = NOW - timedelta(minutes=3)
     with factory() as session:
         case = Case(
-            transaction_id=uuid4(), account_id=uuid4(), decision="REJECT",
+            transaction_id=uuid4(),
+            account_id=uuid4(),
+            decision="REJECT",
             decision_reason="Account owner is on a restricted list.",
-            rules_triggered=["restricted_list"], rules_version="3",
-            amount=Decimal("10.00"), currency="USD", transaction_date=matched_at,
-            transaction={}, created_at=matched_at, due_at=matched_at + timedelta(hours=4),
+            rules_triggered=["restricted_list"],
+            rules_version="3",
+            amount=Decimal("10.00"),
+            currency="USD",
+            transaction_date=matched_at,
+            transaction={},
+            created_at=matched_at,
+            due_at=matched_at + timedelta(hours=4),
         )
         session.add(case)
         session.flush()
         report = ComplianceReport(
-            case_id=case.id, transaction_id=case.transaction_id, account_id=case.account_id,
-            document=document, list_type=list_type, matched_at=matched_at,
+            case_id=case.id,
+            transaction_id=case.transaction_id,
+            account_id=case.account_id,
+            document=document,
+            list_type=list_type,
+            matched_at=matched_at,
             notified_at=notified_at,
         )
         session.add(report)
@@ -72,8 +83,7 @@ def _report(factory, document="1000000070", list_type="PEP", notified_at=None):
 def _notified(factory):
     with factory() as session:
         return {
-            r.document: r.notified_at
-            for r in session.scalars(select(ComplianceReport))
+            r.document: r.notified_at for r in session.scalars(select(ComplianceReport))
         }
 
 
@@ -158,13 +168,17 @@ def test_against_localstack_only_compliance_gets_it(sessions, monkeypatch):
     def subscribe(audience):
         name = f"compliance-summary-test-{audience}-{uuid4().hex[:8]}"
         url = sqs.create_queue(QueueName=name)["QueueUrl"]
-        queue_arn = sqs.get_queue_attributes(
-            QueueUrl=url, AttributeNames=["QueueArn"]
-        )["Attributes"]["QueueArn"]
+        queue_arn = sqs.get_queue_attributes(QueueUrl=url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
         subscription = sns.subscribe(
-            TopicArn=arn, Protocol="sqs", Endpoint=queue_arn,
-            Attributes={"FilterPolicy": f'{{"audience": ["{audience}"]}}',
-                        "RawMessageDelivery": "true"},
+            TopicArn=arn,
+            Protocol="sqs",
+            Endpoint=queue_arn,
+            Attributes={
+                "FilterPolicy": f'{{"audience": ["{audience}"]}}',
+                "RawMessageDelivery": "true",
+            },
         )["SubscriptionArn"]
         return url, subscription
 
@@ -177,7 +191,10 @@ def test_against_localstack_only_compliance_gets_it(sessions, monkeypatch):
         received = sqs.receive_message(QueueUrl=compliance[0], WaitTimeSeconds=5)
         [message] = received["Messages"]
         assert "1000000070 (PEP)" in message["Body"]
-        assert sqs.receive_message(QueueUrl=treasury[0], WaitTimeSeconds=1).get("Messages") is None
+        assert (
+            sqs.receive_message(QueueUrl=treasury[0], WaitTimeSeconds=1).get("Messages")
+            is None
+        )
     finally:
         for url, subscription in (compliance, treasury):
             sns.unsubscribe(SubscriptionArn=subscription)

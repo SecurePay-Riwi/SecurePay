@@ -82,19 +82,26 @@ async def validation_exception_handler(request, exc: RequestValidationError):
 @app.exception_handler(OperationalError)
 async def database_down_handler(request, exc: OperationalError):
     logger.warning("Rules API could not reach PostgreSQL: %s", exc)
-    return JSONResponse(status_code=503, content={"detail": "The rule catalog database is not available."})
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "The rule catalog database is not available."},
+    )
 
 
 def _author(value: str) -> str:
     author = value.strip()
     if not 1 <= len(author) <= 100:
-        raise HTTPException(status_code=400, detail="X-User must have 1 to 100 characters.")
+        raise HTTPException(
+            status_code=400, detail="X-User must have 1 to 100 characters."
+        )
     return author
 
 
 def _invalid(exc: ValidationError) -> HTTPException:
     errors = exc.errors(include_url=False, include_context=False)
-    return HTTPException(status_code=400, detail={"detail": INVALID, "errors": jsonable_encoder(errors)})
+    return HTTPException(
+        status_code=400, detail={"detail": INVALID, "errors": jsonable_encoder(errors)}
+    )
 
 
 @app.exception_handler(HTTPException)
@@ -111,7 +118,9 @@ def _get(rules: dict[str, RuleEntry], code: str) -> RuleEntry:
     return rule
 
 
-def _record(operation: str, code: str, before: RuleEntry | None, after: RuleEntry | None) -> dict:
+def _record(
+    operation: str, code: str, before: RuleEntry | None, after: RuleEntry | None
+) -> dict:
     return {
         "operation": operation,
         "code": code,
@@ -153,28 +162,43 @@ def list_versions(
     return VersionPage(
         total=total,
         versions=[
-            VersionSummary(version=r.version, created_at=r.created_at, author=r.author, change=r.change)
+            VersionSummary(
+                version=r.version,
+                created_at=r.created_at,
+                author=r.author,
+                change=r.change,
+            )
             for r in rows
         ],
     )
 
 
-@app.get("/rules/versions/{version}", response_model=CatalogSnapshot, **docs.GET_VERSION)
+@app.get(
+    "/rules/versions/{version}", response_model=CatalogSnapshot, **docs.GET_VERSION
+)
 def get_version(version: int):
     snapshot = store.version(version)
     if snapshot is None:
-        raise HTTPException(status_code=404, detail=f"Catalog version {version} does not exist.")
+        raise HTTPException(
+            status_code=404, detail=f"Catalog version {version} does not exist."
+        )
     return snapshot
 
 
-@app.post("/rules/versions/{version}/activate", response_model=CatalogSnapshot, **docs.ACTIVATE)
+@app.post(
+    "/rules/versions/{version}/activate",
+    response_model=CatalogSnapshot,
+    **docs.ACTIVATE,
+)
 def activate_version(version: int, x_user: str = Header("anonymous")):
     """A new version whose rules are the ones of an old version. History
     is never rewritten. Rules created after that version are disabled."""
     author = _author(x_user)
     old = store.version(version)
     if old is None:
-        raise HTTPException(status_code=404, detail=f"Catalog version {version} does not exist.")
+        raise HTTPException(
+            status_code=404, detail=f"Catalog version {version} does not exist."
+        )
     target = {rule.code: rule for rule in old.rules}
 
     def change(session, rules):
@@ -186,15 +210,22 @@ def activate_version(version: int, x_user: str = Header("anonymous")):
                     wanted = current.model_copy(update={"enabled": False})
                 else:
                     continue
-            if wanted.model_dump(exclude={"rule_version"}) == current.model_dump(exclude={"rule_version"}):
+            if wanted.model_dump(exclude={"rule_version"}) == current.model_dump(
+                exclude={"rule_version"}
+            ):
                 continue
             new = wanted.model_copy(update={"rule_version": current.rule_version + 1})
             store.save(session, new, author)
             changed.append(new)
         if not changed:
             raise store.NoChange(None)
-        return {"operation": "activate", "code": None, "from_version": version,
-                "before": None, "after": None}, changed
+        return {
+            "operation": "activate",
+            "code": None,
+            "from_version": version,
+            "before": None,
+            "after": None,
+        }, changed
 
     try:
         snapshot, _ = store.write(author, change)
@@ -223,9 +254,14 @@ def get_rule(code: str):
 def create_rule(body: RuleCreate, x_user: str = Header("anonymous")):
     author = _author(x_user)
     if body.code in RESERVED_CODES:
-        raise HTTPException(status_code=400, detail=f"'{body.code}' is a reserved path, not a rule code.")
+        raise HTTPException(
+            status_code=400,
+            detail=f"'{body.code}' is a reserved path, not a rule code.",
+        )
     if body.type in ALWAYS_ENABLED:
-        raise HTTPException(status_code=400, detail=f"There is only one '{body.type}' rule.")
+        raise HTTPException(
+            status_code=400, detail=f"There is only one '{body.type}' rule."
+        )
     try:
         rule = RuleEntry(**body.model_dump(), rule_version=1)
     except ValidationError as exc:
@@ -233,7 +269,9 @@ def create_rule(body: RuleCreate, x_user: str = Header("anonymous")):
 
     def change(session, rules):
         if rule.code in rules:
-            raise HTTPException(status_code=409, detail=f"Rule '{rule.code}' already exists.")
+            raise HTTPException(
+                status_code=409, detail=f"Rule '{rule.code}' already exists."
+            )
         store.save(session, rule, author)
         return _record("create", rule.code, None, rule), [rule]
 
@@ -247,11 +285,18 @@ def update_rule(code: str, body: RuleUpdate, x_user: str = Header("anonymous")):
     def change(session, rules):
         before = _get(rules, code)
         try:
-            after = RuleEntry(**{**before.model_dump(), **body.model_dump(),
-                                 "rule_version": before.rule_version + 1})
+            after = RuleEntry(
+                **{
+                    **before.model_dump(),
+                    **body.model_dump(),
+                    "rule_version": before.rule_version + 1,
+                }
+            )
         except ValidationError as exc:
             raise _invalid(exc) from exc
-        if after.model_dump(exclude={"rule_version"}) == before.model_dump(exclude={"rule_version"}):
+        if after.model_dump(exclude={"rule_version"}) == before.model_dump(
+            exclude={"rule_version"}
+        ):
             raise store.NoChange(before)
         store.save(session, after, author)
         return _record("update", code, before, after), [after]
@@ -265,10 +310,14 @@ def _toggle(code: str, enabled: bool, x_user: str) -> RuleChange:
     def change(session, rules):
         before = _get(rules, code)
         if not enabled and before.type in ALWAYS_ENABLED:
-            raise HTTPException(status_code=409, detail=f"Rule '{code}' must stay enabled.")
+            raise HTTPException(
+                status_code=409, detail=f"Rule '{code}' must stay enabled."
+            )
         if before.enabled == enabled:
             raise store.NoChange(before)
-        after = before.model_copy(update={"enabled": enabled, "rule_version": before.rule_version + 1})
+        after = before.model_copy(
+            update={"enabled": enabled, "rule_version": before.rule_version + 1}
+        )
         store.save(session, after, author)
         return _record("enable" if enabled else "disable", code, before, after), [after]
 

@@ -64,14 +64,19 @@ def _refresh() -> None:
             return
         raw = cache.get(CATALOG_KEY)
     except Exception:  # a decision never fails because of the catalog
-        logger.warning("Rule catalog not refreshed: Valkey is not available", exc_info=True)
+        logger.warning(
+            "Rule catalog not refreshed: Valkey is not available", exc_info=True
+        )
         return
 
     try:
         snapshot = CatalogSnapshot.model_validate_json(raw)
     except Exception:
-        logger.exception("Rule catalog version %s is invalid; keeping version %s",
-                         version, _snapshot.version)
+        logger.exception(
+            "Rule catalog version %s is invalid; keeping version %s",
+            version,
+            _snapshot.version,
+        )
         return
 
     _snapshot = snapshot

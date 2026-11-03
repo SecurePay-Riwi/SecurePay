@@ -24,7 +24,9 @@ TYPE = "shared_device"
 # The device history must hold the longest window the catalog accepts
 # (SharedDeviceParams.window_days, le=30).
 if history.DEVICE_DAYS < 30:
-    raise ValueError("HISTORY_DEVICE_DAYS must cover the longest shared device window (30).")
+    raise ValueError(
+        "HISTORY_DEVICE_DAYS must cover the longest shared device window (30)."
+    )
 
 
 def accounts(device_accounts, t: int, window_days: int) -> int:

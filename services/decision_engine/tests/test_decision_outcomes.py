@@ -16,9 +16,12 @@ from services.decision_engine.schemas import Decision
 RESTRICTED = TriggeredRule("restricted_list", Decision.REJECT, "restricted list reason")
 VELOCITY = TriggeredRule("velocity", Decision.HOLD, "velocity reason")
 MULE = TriggeredRule("mule", Decision.HOLD, "mule reason")
-SHARED_DEVICE = TriggeredRule("shared_device", Decision.APPROVE, "shared device reason", score=30)
-SPLITTING = TriggeredRule("splitting", Decision.APPROVE, "splitting reason",
-                          score=40, opens_case=True)
+SHARED_DEVICE = TriggeredRule(
+    "shared_device", Decision.APPROVE, "shared device reason", score=30
+)
+SPLITTING = TriggeredRule(
+    "splitting", Decision.APPROVE, "splitting reason", score=40, opens_case=True
+)
 OTHER_HOLD = TriggeredRule("other", Decision.HOLD, "other reason")
 
 
@@ -76,11 +79,17 @@ def test_account_takeover_and_restricted_list_is_rejected():
 
 
 def test_shared_device_alone_is_approved_with_its_reason():
-    assert choose_decision([SHARED_DEVICE]) == (Decision.APPROVE, "shared device reason")
+    assert choose_decision([SHARED_DEVICE]) == (
+        Decision.APPROVE,
+        "shared device reason",
+    )
 
 
 def test_shared_device_and_velocity_is_held():
-    assert choose_decision([SHARED_DEVICE, VELOCITY]) == (Decision.HOLD, "velocity reason")
+    assert choose_decision([SHARED_DEVICE, VELOCITY]) == (
+        Decision.HOLD,
+        "velocity reason",
+    )
 
 
 def test_splitting_alone_is_approved_with_its_reason():

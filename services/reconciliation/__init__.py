@@ -16,9 +16,13 @@ import os
 # Root of curated/ in local runs (ignored by git); in AWS, s3://<datalake>.
 RECON_DATA_DIR = os.getenv("RECON_DATA_DIR", "generated/reconciliation")
 # Where ingest reads the partners' files.
-STATEMENTS_SOURCE = os.getenv("STATEMENTS_SOURCE", "../securepay-csv/generated/extractos")
+STATEMENTS_SOURCE = os.getenv(
+    "STATEMENTS_SOURCE", "../securepay-csv/generated/extractos"
+)
 # What the analytics consumer writes: one folder fecha=YYYY-MM-DD per day.
-DECISIONS_SOURCE = os.getenv("DECISIONS_SOURCE", "s3://pagoseguro-datalake/raw/decisiones")
+DECISIONS_SOURCE = os.getenv(
+    "DECISIONS_SOURCE", "s3://pagoseguro-datalake/raw/decisiones"
+)
 
 
 def records_dir(target: str, day) -> str:

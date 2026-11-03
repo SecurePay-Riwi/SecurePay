@@ -27,10 +27,11 @@ def _with(version: int, **velocity) -> CatalogSnapshot:
     """The defaults at another version, with velocity changed."""
     base = default_catalog()
     rules = [
-        r.model_copy(update=velocity) if r.code == "velocity" else r
-        for r in base.rules
+        r.model_copy(update=velocity) if r.code == "velocity" else r for r in base.rules
     ]
-    return base.model_copy(update={"version": version, "author": "test", "rules": rules})
+    return base.model_copy(
+        update={"version": version, "author": "test", "rules": rules}
+    )
 
 
 class FakeCache:
@@ -43,7 +44,10 @@ class FakeCache:
             self.values = {VERSION_KEY: "9", CATALOG_KEY: raw}
 
     def publish(self, snapshot):
-        self.values = {VERSION_KEY: str(snapshot.version), CATALOG_KEY: snapshot.model_dump_json()}
+        self.values = {
+            VERSION_KEY: str(snapshot.version),
+            CATALOG_KEY: snapshot.model_dump_json(),
+        }
 
     def get(self, key):
         self.reads += 1

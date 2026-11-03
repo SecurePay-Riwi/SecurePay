@@ -47,7 +47,9 @@ def create_schema() -> None:
                 session.add(_to_row(rule, "code", now))
             session.flush()
             _insert_version(
-                session, "code", now,
+                session,
+                "code",
+                now,
                 {"operation": "seed", "code": None, "before": None, "after": None},
             )
 
@@ -118,16 +120,22 @@ def _lock(session: Session) -> None:
     session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": CATALOG_LOCK})
 
 
-def _insert_version(session: Session, author: str, now: datetime, record: dict) -> CatalogSnapshot:
+def _insert_version(
+    session: Session, author: str, now: datetime, record: dict
+) -> CatalogSnapshot:
     number = (session.scalar(select(func.max(CatalogVersion.version))) or 0) + 1
-    snapshot = CatalogSnapshot(version=number, created_at=now, author=author, rules=_ordered(session))
-    session.add(CatalogVersion(
-        version=number,
-        created_at=now,
-        author=author,
-        change=record,
-        snapshot=snapshot.model_dump(mode="json"),
-    ))
+    snapshot = CatalogSnapshot(
+        version=number, created_at=now, author=author, rules=_ordered(session)
+    )
+    session.add(
+        CatalogVersion(
+            version=number,
+            created_at=now,
+            author=author,
+            change=record,
+            snapshot=snapshot.model_dump(mode="json"),
+        )
+    )
     return snapshot
 
 
@@ -135,21 +143,37 @@ def _ordered(session: Session) -> list[RuleEntry]:
     """The default rules in their code order, then the created ones by
     creation date. The catalog order is the evaluation order."""
     rows = session.scalars(select(Rule)).all()
-    rows.sort(key=lambda r: (
-        _DEFAULT_ORDER.get(r.code, len(_DEFAULT_ORDER)), r.created_at, r.code,
-    ))
+    rows.sort(
+        key=lambda r: (
+            _DEFAULT_ORDER.get(r.code, len(_DEFAULT_ORDER)),
+            r.created_at,
+            r.code,
+        )
+    )
     return [_to_entry(row) for row in rows]
 
 
 def _to_row(rule: RuleEntry, author: str, now: datetime) -> Rule:
-    return Rule(**rule.model_dump(mode="json"), created_at=now, updated_at=now, updated_by=author)
+    return Rule(
+        **rule.model_dump(mode="json"),
+        created_at=now,
+        updated_at=now,
+        updated_by=author,
+    )
 
 
 def _to_entry(row: Rule) -> RuleEntry:
     return RuleEntry(
-        code=row.code, type=row.type, rn=row.rn, description=row.description,
-        enabled=row.enabled, action=row.action, opens_case=row.opens_case,
-        score=row.score, params=row.params, rule_version=row.rule_version,
+        code=row.code,
+        type=row.type,
+        rn=row.rn,
+        description=row.description,
+        enabled=row.enabled,
+        action=row.action,
+        opens_case=row.opens_case,
+        score=row.score,
+        params=row.params,
+        rule_version=row.rule_version,
     )
 
 

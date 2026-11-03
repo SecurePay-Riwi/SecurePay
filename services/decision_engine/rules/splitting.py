@@ -33,11 +33,14 @@ TYPE = "splitting"
 # The outgoing history must hold the longest window the catalog accepts
 # (SplittingParams.window_hours, le=24).
 if history.OUT_HOURS < 24:
-    raise ValueError("HISTORY_OUT_HOURS must cover the longest splitting window (24 h).")
+    raise ValueError(
+        "HISTORY_OUT_HOURS must cover the longest splitting window (24 h)."
+    )
 
 
-def below_limit(outgoing, rate: currency.Rate, t: int, window_hours: int,
-                limit_usd: Decimal) -> dict[str, Decimal]:
+def below_limit(
+    outgoing, rate: currency.Rate, t: int, window_hours: int, limit_usd: Decimal
+) -> dict[str, Decimal]:
     """Amount in USD of each outgoing transaction below the limit in the
     `window_hours` hours up to t, by id. Those recorded with a later
     time do not count."""
@@ -53,8 +56,9 @@ def below_limit(outgoing, rate: currency.Rate, t: int, window_hours: int,
 
 def evaluate(ctx: RuleContext, rule: RuleEntry) -> TriggeredRule | None:
     p: SplittingParams = rule.typed_params()
-    amounts = below_limit(ctx.outgoing, ctx.rate, ctx.t_ms,
-                          p.window_hours, p.daily_limit_usd)
+    amounts = below_limit(
+        ctx.outgoing, ctx.rate, ctx.t_ms, p.window_hours, p.daily_limit_usd
+    )
 
     if str(ctx.payload.id) not in amounts:
         return None

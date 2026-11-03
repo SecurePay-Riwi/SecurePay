@@ -14,7 +14,12 @@ def test_health(client):
 def test_startup_creates_the_case_tables(client, sessions):
     with sessions() as session:
         tables = set(inspect(session.connection()).get_table_names())
-    assert {"cases", "case_events", "compliance_reports", "account_transactions"} <= tables
+    assert {
+        "cases",
+        "case_events",
+        "compliance_reports",
+        "account_transactions",
+    } <= tables
 
 
 def test_startup_creates_the_reconciliation_tables(client, sessions):

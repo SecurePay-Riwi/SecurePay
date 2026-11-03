@@ -14,6 +14,7 @@ import shared.config  # noqa: F401 (carga el .env con load_dotenv)
 
 AWS_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-2")
 
+
 # Tiempos cortos y sin reintentos de boto3: quien llama decide cuándo
 # reintentar. Si no, una llamada a un servicio caído puede quedarse
 # colgada varios segundos dentro de boto3.

@@ -65,9 +65,9 @@ for nombre in COLAS:
         QueueName=f"{nombre}-dlq",
         Attributes={"MessageRetentionPeriod": str(RETENCION_DLQ_S)},
     )["QueueUrl"]
-    dlq_arn = sqs.get_queue_attributes(
-        QueueUrl=dlq_url, AttributeNames=["QueueArn"]
-    )["Attributes"]["QueueArn"]
+    dlq_arn = sqs.get_queue_attributes(QueueUrl=dlq_url, AttributeNames=["QueueArn"])[
+        "Attributes"
+    ]["QueueArn"]
 
     cola_url = sqs.create_queue(
         QueueName=nombre,
@@ -81,9 +81,9 @@ for nombre in COLAS:
             ),
         },
     )["QueueUrl"]
-    cola_arn = sqs.get_queue_attributes(
-        QueueUrl=cola_url, AttributeNames=["QueueArn"]
-    )["Attributes"]["QueueArn"]
+    cola_arn = sqs.get_queue_attributes(QueueUrl=cola_url, AttributeNames=["QueueArn"])[
+        "Attributes"
+    ]["QueueArn"]
 
     # En AWS, Terraform además agrega a cada cola una política que deja a
     # este tema escribir en ella. LocalStack no revisa permisos.

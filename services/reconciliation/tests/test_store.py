@@ -32,9 +32,18 @@ OURS_AT = datetime(2026, 10, 5, 22, 15, tzinfo=UTC)
 THEIRS_AT = datetime(2026, 10, 5, 22, 20, tzinfo=UTC)
 
 
-def _row(status, *, currency="USD", ours="20.00", theirs="20.00", reference="ref-1",
-         partner="cajeros_express", partner_reference="CX000000009",
-         ours_at=OURS_AT, theirs_at=THEIRS_AT):
+def _row(
+    status,
+    *,
+    currency="USD",
+    ours="20.00",
+    theirs="20.00",
+    reference="ref-1",
+    partner="cajeros_express",
+    partner_reference="CX000000009",
+    ours_at=OURS_AT,
+    theirs_at=THEIRS_AT,
+):
     """A MatchRow as match writes it; the missing side is None."""
     only_ours = status == "ONLY_PAGOSEGURO"
     only_theirs = status == "ONLY_PARTNER"
@@ -62,23 +71,36 @@ def sessions():
 
 def _differences(factory) -> list[ReconciliationDifference]:
     with factory() as s:
-        return s.scalars(select(ReconciliationDifference).order_by(
-            ReconciliationDifference.partner, ReconciliationDifference.reference,
-            ReconciliationDifference.type)).all()
+        return s.scalars(
+            select(ReconciliationDifference).order_by(
+                ReconciliationDifference.partner,
+                ReconciliationDifference.reference,
+                ReconciliationDifference.type,
+            )
+        ).all()
 
 
 def _key(d) -> tuple:
     """A difference as the answer key writes it."""
+
     def text(value):
         return None if value is None else format(Decimal(value), "f")
 
     get = d.get if isinstance(d, dict) else lambda k: getattr(d, k)
     day = get("day") if isinstance(d, dict) else get("run_day").isoformat()
-    return (get("type"), get("partner"), day, get("reference"), get("currency"),
-            text(get("pagoseguro_amount")), text(get("partner_amount")))
+    return (
+        get("type"),
+        get("partner"),
+        day,
+        get("reference"),
+        get("currency"),
+        text(get("pagoseguro_amount")),
+        text(get("partner_amount")),
+    )
 
 
 # --- classify(): one row, no database -----------------------------------------
+
 
 def test_a_matched_row_is_not_a_difference():
     assert store.classify(_row("MATCHED")) == []
@@ -89,15 +111,29 @@ def test_ours_not_in_the_file_is_missing_at_the_partner():  # HU-38
 
     assert d["type"] == "MISSING_IN_PARTNER"
     assert (d["pagoseguro_amount"], d["pagoseguro_at"]) == (Decimal("60.00"), OURS_AT)
-    assert (d["partner_amount"], d["partner_at"], d["partner_reference"]) == (None, None, None)
+    assert (d["partner_amount"], d["partner_at"], d["partner_reference"]) == (
+        None,
+        None,
+        None,
+    )
     assert d["amount_difference"] is None
     assert (d["run_day"], d["partner"], d["reference"], d["currency"]) == (
-        DAY, "cajeros_express", "ref-1", "USD")
+        DAY,
+        "cajeros_express",
+        "ref-1",
+        "USD",
+    )
 
 
 def test_the_partners_not_ours_is_missing_at_pagoseguro():  # HU-39
-    [d] = store.classify(_row("ONLY_PARTNER", theirs="5.25", partner="qr_pagos",
-                              partner_reference="QR000000003"))
+    [d] = store.classify(
+        _row(
+            "ONLY_PARTNER",
+            theirs="5.25",
+            partner="qr_pagos",
+            partner_reference="QR000000003",
+        )
+    )
 
     assert d["type"] == "MISSING_IN_PAGOSEGURO"
     assert (d["partner_amount"], d["partner_at"]) == (Decimal("5.25"), THEIRS_AT)
@@ -106,18 +142,28 @@ def test_the_partners_not_ours_is_missing_at_pagoseguro():  # HU-39
     assert d["amount_difference"] is None
 
 
-@pytest.mark.parametrize(("currency", "ours", "theirs", "difference"), [
-    ("COP", "123456.78", "123457.00", "0.22"),
-    ("USD", "100.00", "99.50", "-0.50"),
-    ("EUR", "88.91", "89.00", "0.09"),
-    ("JPY", "1500", "1502", "2"),
-])
-def test_an_amount_off_keeps_both_amounts_and_the_difference(currency, ours, theirs, difference):  # HU-40
-    [d] = store.classify(_row("AMOUNT_OFF", currency=currency, ours=ours, theirs=theirs))
+@pytest.mark.parametrize(
+    ("currency", "ours", "theirs", "difference"),
+    [
+        ("COP", "123456.78", "123457.00", "0.22"),
+        ("USD", "100.00", "99.50", "-0.50"),
+        ("EUR", "88.91", "89.00", "0.09"),
+        ("JPY", "1500", "1502", "2"),
+    ],
+)
+def test_an_amount_off_keeps_both_amounts_and_the_difference(
+    currency, ours, theirs, difference
+):  # HU-40
+    [d] = store.classify(
+        _row("AMOUNT_OFF", currency=currency, ours=ours, theirs=theirs)
+    )
 
     assert d["type"] == "AMOUNT_MISMATCH"
     assert d["currency"] == currency
-    assert (d["pagoseguro_amount"], d["partner_amount"]) == (Decimal(ours), Decimal(theirs))
+    assert (d["pagoseguro_amount"], d["partner_amount"]) == (
+        Decimal(ours),
+        Decimal(theirs),
+    )
     assert d["amount_difference"] == Decimal(difference)  # partner - pagoseguro
     assert (d["pagoseguro_at"], d["partner_at"]) == (OURS_AT, THEIRS_AT)
 
@@ -131,13 +177,27 @@ def test_a_date_off_is_missing_on_both_sides():  # D4
     ours_at = datetime(2026, 10, 4, 3, 10, tzinfo=UTC)
     theirs_at = datetime(2026, 10, 6, 1, 0, tzinfo=UTC)
 
-    first, second = store.classify(_row("DATE_OFF", currency="EUR", ours="50.00", theirs="50.00",
-                                        ours_at=ours_at, theirs_at=theirs_at))
+    first, second = store.classify(
+        _row(
+            "DATE_OFF",
+            currency="EUR",
+            ours="50.00",
+            theirs="50.00",
+            ours_at=ours_at,
+            theirs_at=theirs_at,
+        )
+    )
 
     assert (first["type"], first["pagoseguro_at"], first["partner_at"]) == (
-        "MISSING_IN_PARTNER", ours_at, None)
+        "MISSING_IN_PARTNER",
+        ours_at,
+        None,
+    )
     assert (second["type"], second["partner_at"], second["pagoseguro_at"]) == (
-        "MISSING_IN_PAGOSEGURO", theirs_at, None)
+        "MISSING_IN_PAGOSEGURO",
+        theirs_at,
+        None,
+    )
     assert first["reference"] == second["reference"]
 
 
@@ -147,6 +207,7 @@ def test_an_unknown_status_is_an_error():
 
 
 # --- load_rows(): the match output ----------------------------------------------
+
 
 def test_load_rows_reads_the_fixture_day():
     rows = store.load_rows(MATCH)
@@ -162,13 +223,18 @@ def test_a_day_without_match_files_is_empty(tmp_path):
 
 # --- save(): the run and its differences ---------------------------------------
 
+
 def test_the_fixture_day_gives_the_expected_differences(sessions, report):
     with sessions() as s:
-        result = store.save(s, DAY, store.load_rows(MATCH), {**COUNTS, "matched": 8}, NOW)
+        result = store.save(
+            s, DAY, store.load_rows(MATCH), {**COUNTS, "matched": 8}, NOW
+        )
 
     assert result == {"day": "2026-10-05", "matched": 8, "differences": 6}
     saved = _differences(sessions)
-    assert sorted(_key(d) for d in saved) == sorted(_key(d) for d in report["expected_differences"])
+    assert sorted(_key(d) for d in saved) == sorted(
+        _key(d) for d in report["expected_differences"]
+    )
     assert {d.status for d in saved} == {DifferenceStatus.PENDING.value}
     assert {d.detected_at for d in saved} == {NOW}
     amount = next(d for d in saved if d.type == "AMOUNT_MISMATCH")
@@ -177,26 +243,46 @@ def test_the_fixture_day_gives_the_expected_differences(sessions, report):
 
 def test_the_run_is_done_with_its_counts(sessions, report):
     with sessions() as s:
-        store.save(s, DAY, store.load_rows(MATCH), COUNTS, NOW)  # matched counted from the rows
+        store.save(
+            s, DAY, store.load_rows(MATCH), COUNTS, NOW
+        )  # matched counted from the rows
         run = s.scalars(select(ReconciliationRun)).one()
 
     expected = report["expected_run"]
     assert run.status == RunStatus.DONE.value
-    assert (run.files_read, run.records_read, run.rows_rejected, run.matched, run.differences) == (
-        expected["files_read"], expected["records"], expected["rejected"],
-        expected["matched"], expected["differences"])
+    assert (
+        run.files_read,
+        run.records_read,
+        run.rows_rejected,
+        run.matched,
+        run.differences,
+    ) == (
+        expected["files_read"],
+        expected["records"],
+        expected["rejected"],
+        expected["matched"],
+        expected["differences"],
+    )
     assert (run.started_at, run.finished_at, run.error) == (NOW, NOW, None)
 
 
 def test_save_closes_a_running_run(sessions):
     started = datetime(2026, 10, 6, 7, 0, tzinfo=UTC)
     with sessions() as s:
-        s.add(ReconciliationRun(run_day=DAY, status=RunStatus.RUNNING.value, started_at=started))
+        s.add(
+            ReconciliationRun(
+                run_day=DAY, status=RunStatus.RUNNING.value, started_at=started
+            )
+        )
         s.commit()
         store.save(s, DAY, [], COUNTS, NOW)
         run = s.scalars(select(ReconciliationRun)).one()
 
-    assert (run.status, run.started_at, run.finished_at) == (RunStatus.DONE.value, started, NOW)
+    assert (run.status, run.started_at, run.finished_at) == (
+        RunStatus.DONE.value,
+        started,
+        NOW,
+    )
 
 
 def test_running_the_day_again_does_not_duplicate(sessions):
@@ -240,6 +326,7 @@ def test_a_resolved_difference_is_not_reopened(sessions):
 
 # --- handler(): Step Functions step 3 -----------------------------------------
 
+
 def test_the_handler_reads_the_match_of_the_day(sessions, tmp_path, monkeypatch):
     target = tmp_path / "curated" / "conciliacion" / "fecha=2026-10-05"
     target.mkdir(parents=True)
@@ -254,7 +341,9 @@ def test_the_handler_reads_the_match_of_the_day(sessions, tmp_path, monkeypatch)
     assert len(_differences(sessions)) == 6
 
 
-def test_the_handler_without_a_day_takes_yesterday_in_bogota(sessions, tmp_path, monkeypatch):
+def test_the_handler_without_a_day_takes_yesterday_in_bogota(
+    sessions, tmp_path, monkeypatch
+):
     monkeypatch.setattr(store, "RECON_DATA_DIR", str(tmp_path))
     monkeypatch.setattr(store, "SessionLocal", sessions)
     yesterday = datetime.now(store.BOGOTA).date().toordinal() - 1

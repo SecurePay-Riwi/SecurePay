@@ -29,7 +29,9 @@ def author(value: str | None) -> str:
     or 400. Optional on reads."""
     name = (value or "").strip()
     if not 1 <= len(name) <= 100:
-        raise HTTPException(status_code=400, detail="X-User must have 1 to 100 characters.")
+        raise HTTPException(
+            status_code=400, detail="X-User must have 1 to 100 characters."
+        )
     return name
 
 

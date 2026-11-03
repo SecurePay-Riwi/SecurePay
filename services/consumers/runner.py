@@ -122,7 +122,9 @@ def main(argv: list[str]) -> None:
     nombres = argv or list(CONSUMIDORES)
     desconocidos = [n for n in nombres if n not in CONSUMIDORES]
     if desconocidos:
-        sys.exit(f"Consumidor desconocido: {desconocidos}. Opciones: {list(CONSUMIDORES)}")
+        sys.exit(
+            f"Consumidor desconocido: {desconocidos}. Opciones: {list(CONSUMIDORES)}"
+        )
 
     prepare_database()
 

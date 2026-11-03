@@ -27,12 +27,18 @@ class Error(BaseModel):
 
 
 def _ok(description: str, example) -> dict:
-    return {"description": description, "content": {"application/json": {"example": example}}}
+    return {
+        "description": description,
+        "content": {"application/json": {"example": example}},
+    }
 
 
 def _error(description: str, detail: str) -> dict:
-    return {"description": description, "model": Error,
-            "content": {"application/json": {"example": {"detail": detail}}}}
+    return {
+        "description": description,
+        "model": Error,
+        "content": {"application/json": {"example": {"detail": detail}}},
+    }
 
 
 DB_DOWN = _error("PostgreSQL is not available.", "The cases database is not available.")
@@ -75,8 +81,10 @@ RESTRICTED_LIST_REPORTS = {
             "The reports of the period, newest first.",
             {"items": [_REPORT], "total": 1, "page": 1, "size": 50},
         ),
-        400: _error("A date is not valid, `from` is after `to`, or the page is out of range.",
-                    "The request contains invalid data."),
+        400: _error(
+            "A date is not valid, `from` is after `to`, or the page is out of range.",
+            "The request contains invalid data.",
+        ),
         503: DB_DOWN,
     },
 }
@@ -128,15 +136,22 @@ SUSPICIOUS_REPORT = {
             "description": "The cases of the period, as JSON or as a CSV file.",
             "content": {
                 "application/json": {
-                    "example": {"from": "2026-10-31", "to": "2026-10-31",
-                                "items": [_SUSPICIOUS_CASE], "total": 1, "message": None},
+                    "example": {
+                        "from": "2026-10-31",
+                        "to": "2026-10-31",
+                        "items": [_SUSPICIOUS_CASE],
+                        "total": 1,
+                        "message": None,
+                    },
                 },
                 "text/csv": {"example": _SUSPICIOUS_CSV},
             },
         },
-        400: _error("A date is missing or not valid, `from` is after `to`, the period has more "
-                    "than 31 days, or `format` is not json or csv.",
-                    "The period can have at most 31 days."),
+        400: _error(
+            "A date is missing or not valid, `from` is after `to`, the period has more "
+            "than 31 days, or `format` is not json or csv.",
+            "The period can have at most 31 days.",
+        ),
         503: DB_DOWN,
     },
 }
@@ -185,11 +200,19 @@ ACCOUNT_TRANSACTIONS = {
     "responses": {
         200: _ok(
             "The account's transactions in the window, newest first.",
-            {"account_id": _ACCOUNT, "days": 30, "items": [_ACCOUNT_TRANSACTION],
-             "total": 1, "page": 1, "size": 50},
+            {
+                "account_id": _ACCOUNT,
+                "days": 30,
+                "items": [_ACCOUNT_TRANSACTION],
+                "total": 1,
+                "page": 1,
+                "size": 50,
+            },
         ),
-        400: _error("The account id is not a UUID, or `days`, `page` or `size` is out of range.",
-                    "The request contains invalid data."),
+        400: _error(
+            "The account id is not a UUID, or `days`, `page` or `size` is out of range.",
+            "The request contains invalid data.",
+        ),
         503: DB_DOWN,
     },
 }
@@ -219,17 +242,21 @@ RELATED_ACCOUNTS = {
             {
                 "account_id": _ACCOUNT,
                 "days": 30,
-                "items": [{
-                    "account_id": "9e1b3d5f-7a9c-4e1b-8d3f-5a7c9e1b3d64",
-                    "device_id": "c7e9a1b3-5d7f-4a9c-9e1b-3d5f7a9c1e86",
-                    "last_seen": "2026-10-31T12:20:05Z",
-                    "open_cases": 1,
-                }],
+                "items": [
+                    {
+                        "account_id": "9e1b3d5f-7a9c-4e1b-8d3f-5a7c9e1b3d64",
+                        "device_id": "c7e9a1b3-5d7f-4a9c-9e1b-3d5f7a9c1e86",
+                        "last_seen": "2026-10-31T12:20:05Z",
+                        "open_cases": 1,
+                    }
+                ],
                 "total": 1,
             },
         ),
-        400: _error("The account id is not a UUID, or `days` is out of range.",
-                    "The request contains invalid data."),
+        400: _error(
+            "The account id is not a UUID, or `days` is out of range.",
+            "The request contains invalid data.",
+        ),
         503: DB_DOWN,
     },
 }
@@ -280,13 +307,15 @@ _CASE_DETAIL = {
     "final_decision": None,
     "resolution_note": None,
     "evidence_key": None,
-    "events": [{
-        "id": 1,
-        "type": "CREATED",
-        "actor": "system",
-        "at": "2026-10-31T14:02:11.418000Z",
-        "data": {},
-    }],
+    "events": [
+        {
+            "id": 1,
+            "type": "CREATED",
+            "actor": "system",
+            "at": "2026-10-31T14:02:11.418000Z",
+            "data": {},
+        }
+    ],
 }
 
 CASE_NOT_FOUND = _error("There is no case with that id.", "Case not found.")
@@ -308,8 +337,10 @@ CASES = {
             "The cases of the page, by risk and then by time left.",
             {"items": [_CASE_SUMMARY], "total": 1, "page": 1, "size": 20},
         ),
-        400: _error("`status` is not a case state, or `assignee`, `page` or `size` is out of range.",
-                    "The request contains invalid data."),
+        400: _error(
+            "`status` is not a case state, or `assignee`, `page` or `size` is out of range.",
+            "The request contains invalid data.",
+        ),
         503: DB_DOWN,
     },
 }
@@ -333,8 +364,10 @@ CASE = {
 
 # --- Cases (HU-27) -----------------------------------------------------------
 
-CASE_RESOLVED = _error("The case is RESOLVED, which is final.",
-                       "The case is resolved; it can no longer change.")
+CASE_RESOLVED = _error(
+    "The case is RESOLVED, which is final.",
+    "The case is resolved; it can no longer change.",
+)
 
 _ASSIGNED_CASE = {
     **_CASE_DETAIL,
@@ -363,8 +396,10 @@ ASSIGN = {
     ),
     "responses": {
         200: _ok("The case with its new owner and events.", _ASSIGNED_CASE),
-        400: _error("`X-User` is missing, the id is not a UUID, or `assignee` is not 1 to 100 characters.",
-                    "X-User must have 1 to 100 characters."),
+        400: _error(
+            "`X-User` is missing, the id is not a UUID, or `assignee` is not 1 to 100 characters.",
+            "X-User must have 1 to 100 characters.",
+        ),
         404: CASE_NOT_FOUND,
         409: CASE_RESOLVED,
         503: DB_DOWN,
@@ -430,9 +465,11 @@ RESOLVE = {
     ),
     "responses": {
         200: _ok("The resolved case with its events.", _RESOLVED_CASE),
-        400: _error("`X-User` is missing, the id is not a UUID, `outcome` is not FRAUD or "
-                    "LEGITIMATE, or `note` is not 1 to 2000 characters.",
-                    "X-User must have 1 to 100 characters."),
+        400: _error(
+            "`X-User` is missing, the id is not a UUID, `outcome` is not FRAUD or "
+            "LEGITIMATE, or `note` is not 1 to 2000 characters.",
+            "X-User must have 1 to 100 characters.",
+        ),
         404: CASE_NOT_FOUND,
         409: CASE_RESOLVED,
         503: DB_DOWN,
@@ -472,7 +509,9 @@ _RESOLVED_DIFFERENCE = {
     "resolution_note": "The ATM network rounds COP to whole pesos; adjusted in the partner's next settlement.",
 }
 
-DIFFERENCE_NOT_FOUND = _error("There is no difference with that id.", "Difference not found.")
+DIFFERENCE_NOT_FOUND = _error(
+    "There is no difference with that id.", "Difference not found."
+)
 
 RECONCILIATION_DIFFERENCES = {
     "summary": "List the reconciliation differences (RN-10)",
@@ -496,11 +535,15 @@ RECONCILIATION_DIFFERENCES = {
         "`page` and `size` (default 50, at most 200)."
     ),
     "responses": {
-        200: _ok("The differences of the page, oldest day first.",
-                 {"items": [_DIFFERENCE], "total": 1, "page": 1, "size": 50}),
-        400: _error("`type`, `partner` or `status` is not a known value, a day is not valid, "
-                    "`from` is after `to`, or `page` or `size` is out of range.",
-                    "The request contains invalid data."),
+        200: _ok(
+            "The differences of the page, oldest day first.",
+            {"items": [_DIFFERENCE], "total": 1, "page": 1, "size": 50},
+        ),
+        400: _error(
+            "`type`, `partner` or `status` is not a known value, a day is not valid, "
+            "`from` is after `to`, or `page` or `size` is out of range.",
+            "The request contains invalid data.",
+        ),
         503: DB_DOWN,
     },
 }
@@ -514,18 +557,44 @@ RECONCILIATION_AGING = {
         "`partner` narrows it to one partner."
     ),
     "responses": {
-        200: _ok("The pending differences by age range.", {
-            "total": 6,
-            "ranges": [
-                {"range": "0-1", "count": 2,
-                 "by_type": {"MISSING_IN_PARTNER": 1, "MISSING_IN_PAGOSEGURO": 1, "AMOUNT_MISMATCH": 0}},
-                {"range": "2-7", "count": 3,
-                 "by_type": {"MISSING_IN_PARTNER": 2, "MISSING_IN_PAGOSEGURO": 0, "AMOUNT_MISMATCH": 1}},
-                {"range": "8+", "count": 1,
-                 "by_type": {"MISSING_IN_PARTNER": 0, "MISSING_IN_PAGOSEGURO": 1, "AMOUNT_MISMATCH": 0}},
-            ],
-        }),
-        400: _error("`partner` is not a known partner.", "The request contains invalid data."),
+        200: _ok(
+            "The pending differences by age range.",
+            {
+                "total": 6,
+                "ranges": [
+                    {
+                        "range": "0-1",
+                        "count": 2,
+                        "by_type": {
+                            "MISSING_IN_PARTNER": 1,
+                            "MISSING_IN_PAGOSEGURO": 1,
+                            "AMOUNT_MISMATCH": 0,
+                        },
+                    },
+                    {
+                        "range": "2-7",
+                        "count": 3,
+                        "by_type": {
+                            "MISSING_IN_PARTNER": 2,
+                            "MISSING_IN_PAGOSEGURO": 0,
+                            "AMOUNT_MISMATCH": 1,
+                        },
+                    },
+                    {
+                        "range": "8+",
+                        "count": 1,
+                        "by_type": {
+                            "MISSING_IN_PARTNER": 0,
+                            "MISSING_IN_PAGOSEGURO": 1,
+                            "AMOUNT_MISMATCH": 0,
+                        },
+                    },
+                ],
+            },
+        ),
+        400: _error(
+            "`partner` is not a known partner.", "The request contains invalid data."
+        ),
         503: DB_DOWN,
     },
 }
@@ -542,11 +611,15 @@ RECONCILIATION_RESOLVE = {
     ),
     "responses": {
         200: _ok("The resolved difference.", _RESOLVED_DIFFERENCE),
-        400: _error("`X-User` is missing, the id is not a UUID, or `note` is not 1 to 2000 characters.",
-                    "X-User must have 1 to 100 characters."),
+        400: _error(
+            "`X-User` is missing, the id is not a UUID, or `note` is not 1 to 2000 characters.",
+            "X-User must have 1 to 100 characters.",
+        ),
         404: DIFFERENCE_NOT_FOUND,
-        409: _error("The difference is RESOLVED, which is final.",
-                    "The difference is resolved; it can no longer change."),
+        409: _error(
+            "The difference is RESOLVED, which is final.",
+            "The difference is resolved; it can no longer change.",
+        ),
         503: DB_DOWN,
     },
 }
@@ -579,8 +652,13 @@ RECONCILIATION_RUNS = {
         "says the step and its error in `error`."
     ),
     "responses": {
-        200: _ok("The runs of the period, oldest day first.", {"items": [_RUN], "total": 1}),
-        400: _error("A day is not valid, or `from` is after `to`.", "The request contains invalid data."),
+        200: _ok(
+            "The runs of the period, oldest day first.", {"items": [_RUN], "total": 1}
+        ),
+        400: _error(
+            "A day is not valid, or `from` is after `to`.",
+            "The request contains invalid data.",
+        ),
         503: DB_DOWN,
     },
 }

@@ -39,7 +39,9 @@ def check(session, now: datetime) -> bool:
     elif run.status == RunStatus.FAILED.value:
         state = f"it FAILED: {run.error}"
     else:
-        state = f"it is still {run.status} (started {run.started_at:%Y-%m-%d %H:%M} UTC)"
+        state = (
+            f"it is still {run.status} (started {run.started_at:%Y-%m-%d %H:%M} UTC)"
+        )
     body = (
         f"The reconciliation of {day} is not done and the deadline is 07:00 Bogota: {state}.\n"
         "Check the execution in Step Functions (securepay-<env>-reconciliation), fix the cause "

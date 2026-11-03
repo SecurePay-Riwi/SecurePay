@@ -55,7 +55,9 @@ SCHEMA_LOCK = 5237
 
 class Partner(str, enum.Enum):
     BANCO_ANDINO = "banco_andino"  # RECARGA via APP or WEB, UTC
-    RED_CORRESPONSALES = "red_corresponsales"  # RECARGA and RETIRO at CORRESPONSAL, UTC-5
+    RED_CORRESPONSALES = (
+        "red_corresponsales"  # RECARGA and RETIRO at CORRESPONSAL, UTC-5
+    )
     CAJEROS_EXPRESS = "cajeros_express"  # RETIRO at CAJERO, UTC-5
     QR_PAGOS = "qr_pagos"  # QR, UTC
 
@@ -254,8 +256,12 @@ class ReconciliationRun(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     run_day = Column(Date, nullable=False, unique=True)
-    status = Column(String(10), nullable=False, default=RunStatus.RUNNING.value,
-                    server_default=RunStatus.RUNNING.value)  # RunStatus
+    status = Column(
+        String(10),
+        nullable=False,
+        default=RunStatus.RUNNING.value,
+        server_default=RunStatus.RUNNING.value,
+    )  # RunStatus
     started_at = Column(DateTime(timezone=True), nullable=False)
     finished_at = Column(DateTime(timezone=True), nullable=True)
     files_read = Column(Integer, nullable=False, default=0, server_default=text("0"))
@@ -275,7 +281,9 @@ class ReconciliationDifference(Base):
     __table_args__ = (UniqueConstraint("run_day", "partner", "type", "reference"),)
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    run_id = Column(UUID(as_uuid=True), ForeignKey("reconciliation_runs.id"), nullable=False)
+    run_id = Column(
+        UUID(as_uuid=True), ForeignKey("reconciliation_runs.id"), nullable=False
+    )
     run_day = Column(Date, nullable=False)
     partner = Column(String(30), nullable=False)  # Partner
     type = Column(String(30), nullable=False)  # DifferenceType
@@ -288,8 +296,12 @@ class ReconciliationDifference(Base):
     amount_difference = Column(Numeric(18, 2), nullable=True)
     pagoseguro_at = Column(DateTime(timezone=True), nullable=True)
     partner_at = Column(DateTime(timezone=True), nullable=True)
-    status = Column(String(10), nullable=False, default=DifferenceStatus.PENDING.value,
-                    server_default=DifferenceStatus.PENDING.value)  # DifferenceStatus
+    status = Column(
+        String(10),
+        nullable=False,
+        default=DifferenceStatus.PENDING.value,
+        server_default=DifferenceStatus.PENDING.value,
+    )  # DifferenceStatus
     detected_at = Column(DateTime(timezone=True), nullable=False)
     resolved_at = Column(DateTime(timezone=True), nullable=True)
     resolved_by = Column(String(100), nullable=True)

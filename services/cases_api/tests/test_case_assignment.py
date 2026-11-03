@@ -15,7 +15,9 @@ SUPERVISOR = {"X-User": "supervisor.luis"}
 
 
 def _assign(client, case_id, assignee, headers=SUPERVISOR):
-    return client.put(f"/cases/{case_id}/assignee", json={"assignee": assignee}, headers=headers)
+    return client.put(
+        f"/cases/{case_id}/assignee", json={"assignee": assignee}, headers=headers
+    )
 
 
 def _assigned(case: CaseDetail):
@@ -87,10 +89,14 @@ def test_a_resolved_case_is_409_and_does_not_change(client, add_case, sessions):
     response = _assign(client, case_id, "luis")
 
     assert response.status_code == 409
-    assert response.json() == {"detail": "The case is resolved; it can no longer change."}
+    assert response.json() == {
+        "detail": "The case is resolved; it can no longer change."
+    }
     with sessions() as session:
         assert session.get(Case, case_id).assignee == "ana"
-        types = session.scalars(select(CaseEvent.type).where(CaseEvent.case_id == case_id)).all()
+        types = session.scalars(
+            select(CaseEvent.type).where(CaseEvent.case_id == case_id)
+        ).all()
         assert types == ["CREATED"]
 
 
@@ -110,7 +116,9 @@ def test_an_invalid_assignee_is_400(client, add_case):
     case_id = add_case()
 
     for body in ({}, {"assignee": ""}, {"assignee": "   "}, {"assignee": "x" * 101}):
-        response = client.put(f"/cases/{case_id}/assignee", json=body, headers=SUPERVISOR)
+        response = client.put(
+            f"/cases/{case_id}/assignee", json=body, headers=SUPERVISOR
+        )
         assert response.status_code == 400, body
         assert response.json()["detail"] == "The request contains invalid data."
 

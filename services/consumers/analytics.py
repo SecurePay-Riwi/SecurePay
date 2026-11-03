@@ -54,10 +54,7 @@ def handler(event, context=None):
 
 def escribir_en_raw(eventos: list[dict]) -> str:
     ahora = datetime.now(UTC)
-    clave = (
-        f"{PREFIJO}/fecha={ahora:%Y-%m-%d}/"
-        f"{ahora:%H%M%S}-{uuid4().hex}.jsonl"
-    )
+    clave = f"{PREFIJO}/fecha={ahora:%Y-%m-%d}/{ahora:%H%M%S}-{uuid4().hex}.jsonl"
     cuerpo = "".join(json.dumps(e, ensure_ascii=False) + "\n" for e in eventos)
 
     _cliente_s3().put_object(

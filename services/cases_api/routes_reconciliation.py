@@ -69,7 +69,9 @@ def age_range(days: int) -> str:
     raise ValueError(f"no age range for {days} days")
 
 
-def item(difference: ReconciliationDifference, on: date) -> ReconciliationDifferenceItem:
+def item(
+    difference: ReconciliationDifference, on: date
+) -> ReconciliationDifferenceItem:
     answer = ReconciliationDifferenceItem.model_validate(difference)
     answer.age_days = age_days(difference, on)
     return answer
@@ -88,10 +90,15 @@ def list_differences(
     ] = None,
     partner: Annotated[Partner | None, Query(description="Only this partner.")] = None,
     status: Annotated[
-        DifferenceStatus, Query(description="PENDING (default) or RESOLVED."),
+        DifferenceStatus,
+        Query(description="PENDING (default) or RESOLVED."),
     ] = DifferenceStatus.PENDING,
-    from_: Annotated[date | None, Query(alias="from", description="From this run_day (inclusive).")] = None,
-    to: Annotated[date | None, Query(description="Up to this run_day (inclusive).")] = None,
+    from_: Annotated[
+        date | None, Query(alias="from", description="From this run_day (inclusive).")
+    ] = None,
+    to: Annotated[
+        date | None, Query(description="Up to this run_day (inclusive).")
+    ] = None,
     page: Annotated[int, Query(ge=1, description="Page number, from 1.")] = 1,
     size: Annotated[
         int, Query(ge=1, le=MAX_PAGE_SIZE, description="Differences per page.")
@@ -116,14 +123,21 @@ def list_differences(
         select(ReconciliationDifference)
         .where(*conditions)
         # Oldest day first (HU-41), then by partner; the rest keeps pages stable.
-        .order_by(ReconciliationDifference.run_day, ReconciliationDifference.partner,
-                  ReconciliationDifference.type, ReconciliationDifference.reference)
+        .order_by(
+            ReconciliationDifference.run_day,
+            ReconciliationDifference.partner,
+            ReconciliationDifference.type,
+            ReconciliationDifference.reference,
+        )
         .offset((page - 1) * size)
         .limit(size)
     ).all()
     on = today()
     return ReconciliationDifferencePage(
-        items=[item(d, on) for d in differences], total=total, page=page, size=size,
+        items=[item(d, on) for d in differences],
+        total=total,
+        page=page,
+        size=size,
     )
 
 
@@ -140,7 +154,11 @@ def differences_aging(
     if partner is not None:
         conditions.append(ReconciliationDifference.partner == partner.value)
     rows = session.execute(
-        select(ReconciliationDifference.run_day, ReconciliationDifference.type, func.count())
+        select(
+            ReconciliationDifference.run_day,
+            ReconciliationDifference.type,
+            func.count(),
+        )
         .where(*conditions)
         .group_by(ReconciliationDifference.run_day, ReconciliationDifference.type)
     ).all()
@@ -151,8 +169,10 @@ def differences_aging(
         ranges[age_range((on - run_day).days)][kind] += count
     return DifferenceAging(
         total=sum(count for _, _, count in rows),
-        ranges=[AgeRange(range=label, count=sum(by_type.values()), by_type=by_type)
-                for label, by_type in ranges.items()],
+        ranges=[
+            AgeRange(range=label, count=sum(by_type.values()), by_type=by_type)
+            for label, by_type in ranges.items()
+        ],
     )
 
 
@@ -165,7 +185,9 @@ def resolve_difference(
     difference_id: UUID,
     body: DifferenceResolution,
     session: Annotated[Session, Depends(deps.get_session)],
-    x_user: Annotated[str | None, Header(description="Who resolves it (1 to 100 characters).")] = None,
+    x_user: Annotated[
+        str | None, Header(description="Who resolves it (1 to 100 characters).")
+    ] = None,
 ):
     actor = deps.author(x_user)
     # Locked until the commit: two people never resolve the same one.
@@ -190,11 +212,20 @@ def resolve_difference(
 # Habith's: the runs of a period with their counts. Yulianis's routes go above.
 
 
-@router.get("/reconciliation/runs", response_model=ReconciliationRunList, **docs.RECONCILIATION_RUNS)
+@router.get(
+    "/reconciliation/runs",
+    response_model=ReconciliationRunList,
+    **docs.RECONCILIATION_RUNS,
+)
 def reconciliation_runs(
     session: Annotated[Session, Depends(deps.get_session)],
-    from_: Annotated[date | None, Query(alias="from", description="From this day (inclusive), by run_day.")] = None,
-    to: Annotated[date | None, Query(description="Up to this day (inclusive), by run_day.")] = None,
+    from_: Annotated[
+        date | None,
+        Query(alias="from", description="From this day (inclusive), by run_day."),
+    ] = None,
+    to: Annotated[
+        date | None, Query(description="Up to this day (inclusive), by run_day.")
+    ] = None,
 ):
     if from_ is not None and to is not None and from_ > to:
         raise HTTPException(status_code=400, detail="`from` must not be after `to`.")
@@ -206,5 +237,6 @@ def reconciliation_runs(
     runs = session.scalars(
         select(ReconciliationRun).where(*conditions).order_by(ReconciliationRun.run_day)
     ).all()
-    return ReconciliationRunList(items=[ReconciliationRunItem.model_validate(r) for r in runs],
-                                 total=len(runs))
+    return ReconciliationRunList(
+        items=[ReconciliationRunItem.model_validate(r) for r in runs], total=len(runs)
+    )

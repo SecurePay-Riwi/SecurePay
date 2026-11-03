@@ -89,9 +89,7 @@ def parse_items(items: list[dict]) -> dict[date, dict[str, Decimal]]:
             if item.get("base") != BASE:
                 continue
             day = date.fromisoformat(item["rate_date"])
-            rates = {
-                code: Decimal(value) for code, value in item["rates"].items()
-            }
+            rates = {code: Decimal(value) for code, value in item["rates"].items()}
             if any(not rate.is_finite() or rate <= 0 for rate in rates.values()):
                 raise ValueError("rates must be positive numbers")
         except (KeyError, TypeError, ValueError, ArithmeticError) as exc:
@@ -136,18 +134,23 @@ def refresh() -> bool:
     except Exception as exc:
         log.warning(
             "Could not read exchange rates from %s, keeping %d loaded days: %s",
-            RATES_TABLE, len(_table[0]), exc,
+            RATES_TABLE,
+            len(_table[0]),
+            exc,
         )
         return False
     if not table:
         log.warning(
             "Exchange rate table %s is empty, keeping %d loaded days.",
-            RATES_TABLE, len(_table[0]),
+            RATES_TABLE,
+            len(_table[0]),
         )
         return False
     load(table)
     days = _table[0]
-    log.info("Loaded exchange rates of %d days (%s to %s).", len(days), days[0], days[-1])
+    log.info(
+        "Loaded exchange rates of %d days (%s to %s).", len(days), days[0], days[-1]
+    )
     return True
 
 
@@ -207,15 +210,23 @@ def rate_for(currency: str, on: date) -> Rate:
         if rate is not None:
             if day != on:
                 _warn_once(
-                    on, currency,
-                    "No %s rate for %s: using the one of %s.", currency, on, day,
+                    on,
+                    currency,
+                    "No %s rate for %s: using the one of %s.",
+                    currency,
+                    on,
+                    day,
                 )
             return Rate(rate, day, day != on)
 
     _warn_once(
-        on, currency,
+        on,
+        currency,
         "No %s rate for %s or any earlier day in %s: using the fixed %s rate.",
-        currency, on, RATES_TABLE, FIXED_RATE_DATE,
+        currency,
+        on,
+        RATES_TABLE,
+        FIXED_RATE_DATE,
     )
     return Rate(RATES_PER_USD[currency], FIXED_RATE_DATE, FIXED_RATE_DATE != on)
 

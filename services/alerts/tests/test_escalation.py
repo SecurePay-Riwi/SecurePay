@@ -61,11 +61,20 @@ def _case(factory, created_ago, status=CaseStatus.OPEN, assignee=None, rules=("m
     created_at = NOW - created_ago
     with factory() as session:
         case = Case(
-            transaction_id=uuid4(), account_id=uuid4(), decision="HOLD",
-            decision_reason="Mule account pattern.", rules_triggered=list(rules),
-            rules_version="3", amount=Decimal("120.00"), currency="USD",
-            transaction_date=created_at, transaction={}, status=status.value,
-            assignee=assignee, created_at=created_at, due_at=created_at + DUE,
+            transaction_id=uuid4(),
+            account_id=uuid4(),
+            decision="HOLD",
+            decision_reason="Mule account pattern.",
+            rules_triggered=list(rules),
+            rules_version="3",
+            amount=Decimal("120.00"),
+            currency="USD",
+            transaction_date=created_at,
+            transaction={},
+            status=status.value,
+            assignee=assignee,
+            created_at=created_at,
+            due_at=created_at + DUE,
         )
         if status == CaseStatus.RESOLVED:
             case.resolved_at = created_at + timedelta(hours=1)
@@ -82,7 +91,11 @@ def _state(factory, case_id):
         events = session.scalars(
             select(CaseEvent).where(CaseEvent.case_id == case_id).order_by(CaseEvent.id)
         ).all()
-        return case.status, case.escalated_at, [(e.type, e.actor, e.at, e.data) for e in events]
+        return (
+            case.status,
+            case.escalated_at,
+            [(e.type, e.actor, e.at, e.data) for e in events],
+        )
 
 
 def _escalations(factory):
@@ -187,7 +200,9 @@ def test_sns_down_escalates_nothing_until_the_next_run(sessions, monkeypatch):
 
 
 def test_at_most_100_per_run_the_most_overdue_first(sessions, sns):
-    ids = [_case(sessions, DUE + timedelta(minutes=minutes)) for minutes in range(1, 106)]
+    ids = [
+        _case(sessions, DUE + timedelta(minutes=minutes)) for minutes in range(1, 106)
+    ]
     most_overdue = set(ids[5:])  # created 6 to 105 minutes past due
 
     with sessions() as session:
@@ -206,8 +221,12 @@ def test_at_most_100_per_run_the_most_overdue_first(sessions, sns):
 def test_every_pending_rule_escalates_and_the_summary_has_the_totals(sessions, sns):
     """D2: not only HOLD cases. The summary: totals first, then one line
     per case, the most overdue first."""
-    oldest = _case(sessions, DUE + timedelta(hours=3, minutes=10),
-                   rules=("restricted_list",), assignee="ana")
+    oldest = _case(
+        sessions,
+        DUE + timedelta(hours=3, minutes=10),
+        rules=("restricted_list",),
+        assignee="ana",
+    )
     newest = _case(sessions, DUE + timedelta(minutes=2), rules=("mule", "splitting"))
 
     with sessions() as session:
@@ -241,13 +260,17 @@ def test_against_localstack_only_the_supervisor_gets_it(sessions, monkeypatch):
     def subscribe(audience):
         name = f"escalation-test-{audience}-{uuid4().hex[:8]}"
         url = sqs.create_queue(QueueName=name)["QueueUrl"]
-        queue_arn = sqs.get_queue_attributes(
-            QueueUrl=url, AttributeNames=["QueueArn"]
-        )["Attributes"]["QueueArn"]
+        queue_arn = sqs.get_queue_attributes(QueueUrl=url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
         subscription = sns.subscribe(
-            TopicArn=arn, Protocol="sqs", Endpoint=queue_arn,
-            Attributes={"FilterPolicy": f'{{"audience": ["{audience}"]}}',
-                        "RawMessageDelivery": "true"},
+            TopicArn=arn,
+            Protocol="sqs",
+            Endpoint=queue_arn,
+            Attributes={
+                "FilterPolicy": f'{{"audience": ["{audience}"]}}',
+                "RawMessageDelivery": "true",
+            },
         )["SubscriptionArn"]
         return url, subscription
 
@@ -260,7 +283,12 @@ def test_against_localstack_only_the_supervisor_gets_it(sessions, monkeypatch):
         received = sqs.receive_message(QueueUrl=supervisor[0], WaitTimeSeconds=5)
         [message] = received["Messages"]
         assert str(case_id) in message["Body"]
-        assert sqs.receive_message(QueueUrl=compliance[0], WaitTimeSeconds=1).get("Messages") is None
+        assert (
+            sqs.receive_message(QueueUrl=compliance[0], WaitTimeSeconds=1).get(
+                "Messages"
+            )
+            is None
+        )
     finally:
         for url, subscription in (supervisor, compliance):
             sns.unsubscribe(SubscriptionArn=subscription)
@@ -269,7 +297,13 @@ def test_against_localstack_only_the_supervisor_gets_it(sessions, monkeypatch):
 
 @pytest.mark.parametrize(
     ("minutes", "text"),
-    [(240, "4 hours"), (60, "1 hour"), (2, "2 minutes"), (1, "1 minute"), (90, "90 minutes")],
+    [
+        (240, "4 hours"),
+        (60, "1 hour"),
+        (2, "2 minutes"),
+        (1, "1 minute"),
+        (90, "90 minutes"),
+    ],
 )
 def test_the_e_mail_says_the_configured_limit(minutes, text):
     """CASE_DUE_MINUTES=2 in a demo says "2 minutes", not "4 hours"."""

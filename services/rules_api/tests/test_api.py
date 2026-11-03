@@ -11,7 +11,10 @@ from shared.cache import get_cache
 from shared.rule_catalog import CATALOG_KEY, DEFAULT_RULES, VERSION_KEY, CatalogSnapshot
 
 VELOCITY_1H = {
-    "code": "velocity_1h", "type": "velocity", "rn": "RN-02", "action": "HOLD",
+    "code": "velocity_1h",
+    "type": "velocity",
+    "rn": "RN-02",
+    "action": "HOLD",
     "params": {"window_minutes": 60, "limit": 20},
 }
 
@@ -36,7 +39,10 @@ def test_startup_publishes_again_after_valkey_lost_the_catalog(isolated):
     from services.rules_api.main import app
 
     with TestClient(app) as c:
-        c.put("/rules/velocity", json={"action": "HOLD", "params": {"window_minutes": 10, "limit": 4}})
+        c.put(
+            "/rules/velocity",
+            json={"action": "HOLD", "params": {"window_minutes": 10, "limit": 4}},
+        )
     get_cache().delete(CATALOG_KEY, VERSION_KEY)
 
     with TestClient(app):
@@ -66,19 +72,28 @@ def test_create_rule_with_an_existing_type(client):
 
 
 def test_existing_code_is_409(client):
-    assert client.post("/rules", json={**VELOCITY_1H, "code": "velocity"}).status_code == 409
+    assert (
+        client.post("/rules", json={**VELOCITY_1H, "code": "velocity"}).status_code
+        == 409
+    )
     assert client.get("/rules").json()["version"] == 1
 
 
-@pytest.mark.parametrize("body", [
-    {**VELOCITY_1H, "params": {"window_minutes": 0, "limit": 5}},     # params out of range
-    {**VELOCITY_1H, "params": {"window": 10, "limit": 5}},            # unknown param
-    {**VELOCITY_1H, "type": "teleport"},                              # unknown type
-    {**VELOCITY_1H, "code": "Velocity 1h"},                           # bad code
-    {**VELOCITY_1H, "code": "versions"},                              # reserved path
-    {**VELOCITY_1H, "type": "default_timeout", "params": {}},         # only one default
-    {**VELOCITY_1H, "rule_version": 7},                               # always starts at 1
-])
+@pytest.mark.parametrize(
+    "body",
+    [
+        {
+            **VELOCITY_1H,
+            "params": {"window_minutes": 0, "limit": 5},
+        },  # params out of range
+        {**VELOCITY_1H, "params": {"window": 10, "limit": 5}},  # unknown param
+        {**VELOCITY_1H, "type": "teleport"},  # unknown type
+        {**VELOCITY_1H, "code": "Velocity 1h"},  # bad code
+        {**VELOCITY_1H, "code": "versions"},  # reserved path
+        {**VELOCITY_1H, "type": "default_timeout", "params": {}},  # only one default
+        {**VELOCITY_1H, "rule_version": 7},  # always starts at 1
+    ],
+)
 def test_invalid_rule_is_400(client, body):
     response = client.post("/rules", json=body)
 
@@ -101,7 +116,10 @@ def test_update_changes_params_and_raises_both_versions(client):
 
 
 def test_invalid_update_keeps_the_rule(client):
-    response = client.put("/rules/velocity", json={"action": "HOLD", "params": {"window_minutes": 0, "limit": 2}})
+    response = client.put(
+        "/rules/velocity",
+        json={"action": "HOLD", "params": {"window_minutes": 0, "limit": 2}},
+    )
 
     assert response.status_code == 400
     assert response.json()["detail"] == "The request contains invalid rule data."
@@ -111,7 +129,9 @@ def test_invalid_update_keeps_the_rule(client):
 
 
 def test_update_cannot_change_code_or_type(client):
-    response = client.put("/rules/velocity", json={"action": "HOLD", "type": "mule", "params": {}})
+    response = client.put(
+        "/rules/velocity", json={"action": "HOLD", "type": "mule", "params": {}}
+    )
 
     assert response.status_code == 400
 
@@ -153,7 +173,10 @@ def test_default_decision_cannot_be_disabled(client):
 
 
 def test_author_header_must_not_be_empty(client):
-    assert client.post("/rules/velocity/disable", headers={"X-User": "  "}).status_code == 400
+    assert (
+        client.post("/rules/velocity/disable", headers={"X-User": "  "}).status_code
+        == 400
+    )
 
 
 def test_concurrent_writes_get_distinct_versions(client):
@@ -174,7 +197,10 @@ def test_concurrent_writes_get_distinct_versions(client):
 
 
 def test_an_older_version_never_replaces_a_newer_one_in_valkey(client):
-    newer = client.put("/rules/velocity", json={"action": "HOLD", "params": {"window_minutes": 10, "limit": 3}})
+    newer = client.put(
+        "/rules/velocity",
+        json={"action": "HOLD", "params": {"window_minutes": 10, "limit": 3}},
+    )
     assert newer.json()["catalog_version"] == 2
 
     old = CatalogSnapshot.model_validate(client.get("/rules/versions/1").json())
@@ -208,5 +234,13 @@ def test_database_is_the_truth(client, isolated):
     client.post("/rules", json=VELOCITY_1H)
 
     with isolated.connect() as conn:
-        assert conn.execute(text("SELECT count(*) FROM rules")).scalar() == len(DEFAULT_RULES) + 1
-        assert conn.execute(text("SELECT max(version) FROM rule_catalog_versions")).scalar() == 2
+        assert (
+            conn.execute(text("SELECT count(*) FROM rules")).scalar()
+            == len(DEFAULT_RULES) + 1
+        )
+        assert (
+            conn.execute(
+                text("SELECT max(version) FROM rule_catalog_versions")
+            ).scalar()
+            == 2
+        )

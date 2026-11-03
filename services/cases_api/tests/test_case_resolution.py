@@ -34,8 +34,11 @@ def archived(monkeypatch, sessions):
 
 
 def _resolve(client, case_id, outcome="LEGITIMATE", note=NOTE, headers=ANA):
-    return client.post(f"/cases/{case_id}/resolution",
-                       json={"outcome": outcome, "note": note}, headers=headers)
+    return client.post(
+        f"/cases/{case_id}/resolution",
+        json={"outcome": outcome, "note": note},
+        headers=headers,
+    )
 
 
 def test_fraud_rejects_the_held_transaction(client, add_case, archived):
@@ -45,7 +48,11 @@ def test_fraud_rejects_the_held_transaction(client, add_case, archived):
 
     assert response.status_code == 200
     case = CaseDetail.model_validate(response.json())
-    assert (case.status, case.outcome, case.final_decision) == ("RESOLVED", "FRAUD", "REJECT")
+    assert (case.status, case.outcome, case.final_decision) == (
+        "RESOLVED",
+        "FRAUD",
+        "REJECT",
+    )
     assert case.resolution_note == "Linked senders."
     assert case.resolved_by == "ana"
     assert case.resolved_at is not None
@@ -58,7 +65,11 @@ def test_legitimate_releases_the_held_transaction(client, add_case, archived):
     response = _resolve(client, case_id, outcome="LEGITIMATE")
 
     case = CaseDetail.model_validate(response.json())
-    assert (case.status, case.outcome, case.final_decision) == ("RESOLVED", "LEGITIMATE", "APPROVE")
+    assert (case.status, case.outcome, case.final_decision) == (
+        "RESOLVED",
+        "LEGITIMATE",
+        "APPROVE",
+    )
 
 
 def test_the_resolution_is_stored_with_its_event(client, add_case, archived, sessions):
@@ -68,15 +79,25 @@ def test_the_resolution_is_stored_with_its_event(client, add_case, archived, ses
 
     with sessions() as session:
         case = session.get(Case, case_id)
-        assert (case.status, case.outcome, case.final_decision) == ("RESOLVED", "FRAUD", "REJECT")
+        assert (case.status, case.outcome, case.final_decision) == (
+            "RESOLVED",
+            "FRAUD",
+            "REJECT",
+        )
         assert case.resolution_note == "Linked senders."
         assert case.assignee == "luis"
         events = session.scalars(
             select(CaseEvent).where(CaseEvent.case_id == case_id).order_by(CaseEvent.id)
         ).all()
-    assert [(e.type, e.actor) for e in events] == [("CREATED", "system"), ("RESOLVED", "ana")]
-    assert events[-1].data == {"outcome": "FRAUD", "final_decision": "REJECT",
-                               "note": "Linked senders."}
+    assert [(e.type, e.actor) for e in events] == [
+        ("CREATED", "system"),
+        ("RESOLVED", "ana"),
+    ]
+    assert events[-1].data == {
+        "outcome": "FRAUD",
+        "final_decision": "REJECT",
+        "note": "Linked senders.",
+    }
 
 
 def test_a_resolved_case_leaves_the_inbox(client, add_case, archived):
@@ -141,7 +162,9 @@ def test_resolving_twice_is_409(client, add_case, archived, sessions):
     response = _resolve(client, case_id, outcome="LEGITIMATE")
 
     assert response.status_code == 409
-    assert response.json() == {"detail": "The case is resolved; it can no longer change."}
+    assert response.json() == {
+        "detail": "The case is resolved; it can no longer change."
+    }
     with sessions() as session:
         assert session.get(Case, case_id).final_decision == "REJECT"
     assert len(archived) == 1
@@ -163,9 +186,14 @@ def test_without_x_user_is_400(client, add_case, archived, sessions):
 def test_an_invalid_body_is_400(client, add_case, archived):
     case_id = add_case()
 
-    for body in ({"note": NOTE}, {"outcome": "MAYBE", "note": NOTE}, {"outcome": "FRAUD"},
-                 {"outcome": "FRAUD", "note": ""}, {"outcome": "FRAUD", "note": "   "},
-                 {"outcome": "FRAUD", "note": "x" * 2001}):
+    for body in (
+        {"note": NOTE},
+        {"outcome": "MAYBE", "note": NOTE},
+        {"outcome": "FRAUD"},
+        {"outcome": "FRAUD", "note": ""},
+        {"outcome": "FRAUD", "note": "   "},
+        {"outcome": "FRAUD", "note": "x" * 2001},
+    ):
         response = client.post(f"/cases/{case_id}/resolution", json=body, headers=ANA)
         assert response.status_code == 400, body
         assert response.json()["detail"] == "The request contains invalid data."

@@ -54,5 +54,9 @@ def publish_ops(subject: str, body: str) -> None:
     """Publish one message to OPS_ALARMS_TOPIC (a name or an ARN), no
     audience: everyone subscribed there is the technical team."""
     sns = _client()
-    arn = OPS_TOPIC if OPS_TOPIC.startswith("arn:") else sns.create_topic(Name=OPS_TOPIC)["TopicArn"]
+    arn = (
+        OPS_TOPIC
+        if OPS_TOPIC.startswith("arn:")
+        else sns.create_topic(Name=OPS_TOPIC)["TopicArn"]
+    )
     sns.publish(TopicArn=arn, Subject=subject, Message=body)

@@ -32,12 +32,17 @@ log = logging.getLogger("services.reconciliation")
 
 def start_run(session, day: date, now: datetime) -> None:
     """The run of `day` is RUNNING again (a repeated day reuses its row)."""
-    values = {"run_day": day, "status": RunStatus.RUNNING.value, "started_at": now,
-              "finished_at": None, "error": None}
+    values = {
+        "run_day": day,
+        "status": RunStatus.RUNNING.value,
+        "started_at": now,
+        "finished_at": None,
+        "error": None,
+    }
     session.execute(
-        insert(ReconciliationRun).values(**values).on_conflict_do_update(
-            index_elements=[ReconciliationRun.run_day], set_=values
-        )
+        insert(ReconciliationRun)
+        .values(**values)
+        .on_conflict_do_update(index_elements=[ReconciliationRun.run_day], set_=values)
     )
     session.commit()
 
@@ -45,13 +50,18 @@ def start_run(session, day: date, now: datetime) -> None:
 def fail_run(session, day: date, step: str, error: Exception, now: datetime) -> None:
     session.rollback()
     session.query(ReconciliationRun).filter(ReconciliationRun.run_day == day).update(
-        {"status": RunStatus.FAILED.value, "finished_at": now,
-         "error": f"{step}: {type(error).__name__}: {error}"}
+        {
+            "status": RunStatus.FAILED.value,
+            "finished_at": now,
+            "error": f"{step}: {type(error).__name__}: {error}",
+        }
     )
     session.commit()
 
 
-def run_day(session, day: date, source: str, decisions: str, target: str, spark=None) -> dict:
+def run_day(
+    session, day: date, source: str, decisions: str, target: str, spark=None
+) -> dict:
     """The three steps for one day. Raises the step's error after marking
     the run FAILED. `spark` None: match starts a local session."""
     start_run(session, day, datetime.now(UTC))
@@ -59,7 +69,9 @@ def run_day(session, day: date, source: str, decisions: str, target: str, spark=
     try:
         read = ingest.run(day, source, target)
         step = "match"
-        matched = match.reconcile(spark, day, read["records_path"], decisions, match_dir(target, day))
+        matched = match.reconcile(
+            spark, day, read["records_path"], decisions, match_dir(target, day)
+        )
         step = "store"
         rows = store.load_rows(matched["match_path"])
         return store.save(session, day, rows, {**read, **matched}, datetime.now(UTC))
@@ -73,11 +85,15 @@ def days(args) -> list[date]:
         return [args.day]
     if not (args.from_ and args.to):
         raise SystemExit("Give --day, or --from and --to.")
-    return [args.from_ + timedelta(days=i) for i in range((args.to - args.from_).days + 1)]
+    return [
+        args.from_ + timedelta(days=i) for i in range((args.to - args.from_).days + 1)
+    ]
 
 
 def main(argv=None) -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
     parser = argparse.ArgumentParser(prog="python -m services.reconciliation")
     parser.add_argument("--day", type=date.fromisoformat)
     parser.add_argument("--from", dest="from_", type=date.fromisoformat)
@@ -91,7 +107,9 @@ def main(argv=None) -> None:
     with SessionLocal() as session:
         create_schema(session)
         for day in days(args):
-            result = run_day(session, day, args.source, args.decisions, args.target, spark)
+            result = run_day(
+                session, day, args.source, args.decisions, args.target, spark
+            )
             log.info("Reconciled %s: %s", day, json.dumps(result))
 
 

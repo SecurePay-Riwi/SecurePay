@@ -13,18 +13,18 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Valkey keys. Same hash tag so both live in one slot and can be written
 # in one MULTI (ElastiCache Serverless spreads keys across nodes).
-CATALOG_KEY = "{rules}:catalog"   # JSON of CatalogSnapshot
-VERSION_KEY = "{rules}:version"   # CatalogSnapshot.version as a string
+CATALOG_KEY = "{rules}:catalog"  # JSON of CatalogSnapshot
+VERSION_KEY = "{rules}:version"  # CatalogSnapshot.version as a string
 
 Action = Literal["APPROVE", "HOLD", "REJECT"]
 RuleType = Literal[
-    "restricted_list",   # RN-06
-    "velocity",          # RN-02
-    "mule",              # RN-03
-    "shared_device",     # RN-04
-    "splitting",         # RN-05
+    "restricted_list",  # RN-06
+    "velocity",  # RN-02
+    "mule",  # RN-03
+    "shared_device",  # RN-04
+    "splitting",  # RN-05
     "account_takeover",  # RN-07
-    "default_timeout",   # RN-01 (used by the default decision, never by _decide)
+    "default_timeout",  # RN-01 (used by the default decision, never by _decide)
 ]
 
 
@@ -37,29 +37,29 @@ class RestrictedListParams(_Params):
 
 
 class VelocityParams(_Params):
-    window_minutes: int = Field(10, gt=0, le=1440)   # out:{account} keeps 24 h
-    limit: int = Field(5, gt=0)                      # fires when count > limit
+    window_minutes: int = Field(10, gt=0, le=1440)  # out:{account} keeps 24 h
+    limit: int = Field(5, gt=0)  # fires when count > limit
 
 
 class MuleParams(_Params):
-    window_minutes: int = Field(30, gt=0, le=60)     # in:{account} keeps 60 min
-    min_senders: int = Field(3, gt=0)                # fires when senders >= this
+    window_minutes: int = Field(30, gt=0, le=60)  # in:{account} keeps 60 min
+    min_senders: int = Field(3, gt=0)  # fires when senders >= this
     withdrawn_pct: Decimal = Field(Decimal("80"), gt=0, le=100)
 
 
 class SharedDeviceParams(_Params):
-    window_days: int = Field(30, gt=0, le=30)        # dev:{device} keeps 30 days
-    max_accounts: int = Field(3, gt=0)               # fires when accounts > this
+    window_days: int = Field(30, gt=0, le=30)  # dev:{device} keeps 30 days
+    max_accounts: int = Field(3, gt=0)  # fires when accounts > this
 
 
 class SplittingParams(_Params):
-    window_hours: int = Field(24, gt=0, le=24)       # out:{account} keeps 24 h
+    window_hours: int = Field(24, gt=0, le=24)  # out:{account} keeps 24 h
     min_transactions: int = Field(3, gt=1)
     daily_limit_usd: Decimal = Field(Decimal("10000"), gt=0)
 
 
 class AccountTakeoverParams(_Params):
-    window_minutes: int = Field(60, gt=0, le=60)     # sec:{account} keeps 60 min
+    window_minutes: int = Field(60, gt=0, le=60)  # sec:{account} keeps 60 min
     # Fires when the amount in USD is above this.
     min_amount_usd: Decimal = Field(Decimal("200"), gt=0)
 
@@ -91,14 +91,14 @@ class RuleEntry(BaseModel):
     # Goes to rules_triggered: stable, English snake_case.
     code: str = Field(pattern=r"^[a-z][a-z0-9_]{2,49}$")
     type: RuleType
-    rn: str | None = None                                # e.g. "RN-02"
+    rn: str | None = None  # e.g. "RN-02"
     description: str = ""
     enabled: bool = True
     action: Action
     opens_case: bool = False
-    score: int = Field(0, ge=0, le=100)                  # adds to risk_score
+    score: int = Field(0, ge=0, le=100)  # adds to risk_score
     params: dict = Field(default_factory=dict)
-    rule_version: int = Field(1, ge=1)                   # +1 on every change
+    rule_version: int = Field(1, ge=1)  # +1 on every change
 
     @model_validator(mode="after")
     def _check_params(self):
@@ -114,7 +114,7 @@ class CatalogSnapshot(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    version: int = Field(ge=0)                           # 0 = code defaults, no API yet
+    version: int = Field(ge=0)  # 0 = code defaults, no API yet
     created_at: datetime
     author: str
     rules: list[RuleEntry]
@@ -131,25 +131,60 @@ class CatalogSnapshot(BaseModel):
 
 
 DEFAULT_RULES = [
-    RuleEntry(code="restricted_list", type="restricted_list", rn="RN-06",
-              action="REJECT", opens_case=True,
-              description="Account owner is on a restricted list."),
-    RuleEntry(code="velocity", type="velocity", rn="RN-02", action="HOLD",
-              params={"window_minutes": 10, "limit": 5}),
-    RuleEntry(code="mule", type="mule", rn="RN-03", action="HOLD",
-              opens_case=True,
-              params={"window_minutes": 30, "min_senders": 3, "withdrawn_pct": "80"}),
-    RuleEntry(code="shared_device", type="shared_device", rn="RN-04",
-              action="APPROVE", score=30,
-              params={"window_days": 30, "max_accounts": 3}),
-    RuleEntry(code="splitting", type="splitting", rn="RN-05", action="APPROVE",
-              opens_case=True, score=40,
-              params={"window_hours": 24, "min_transactions": 3,
-                      "daily_limit_usd": "10000"}),
-    RuleEntry(code="account_takeover", type="account_takeover", rn="RN-07",
-              action="HOLD", params={"window_minutes": 60, "min_amount_usd": "200"}),
-    RuleEntry(code="default_timeout", type="default_timeout", rn="RN-01",
-              action="HOLD", params={"limit_usd": "50"}),
+    RuleEntry(
+        code="restricted_list",
+        type="restricted_list",
+        rn="RN-06",
+        action="REJECT",
+        opens_case=True,
+        description="Account owner is on a restricted list.",
+    ),
+    RuleEntry(
+        code="velocity",
+        type="velocity",
+        rn="RN-02",
+        action="HOLD",
+        params={"window_minutes": 10, "limit": 5},
+    ),
+    RuleEntry(
+        code="mule",
+        type="mule",
+        rn="RN-03",
+        action="HOLD",
+        opens_case=True,
+        params={"window_minutes": 30, "min_senders": 3, "withdrawn_pct": "80"},
+    ),
+    RuleEntry(
+        code="shared_device",
+        type="shared_device",
+        rn="RN-04",
+        action="APPROVE",
+        score=30,
+        params={"window_days": 30, "max_accounts": 3},
+    ),
+    RuleEntry(
+        code="splitting",
+        type="splitting",
+        rn="RN-05",
+        action="APPROVE",
+        opens_case=True,
+        score=40,
+        params={"window_hours": 24, "min_transactions": 3, "daily_limit_usd": "10000"},
+    ),
+    RuleEntry(
+        code="account_takeover",
+        type="account_takeover",
+        rn="RN-07",
+        action="HOLD",
+        params={"window_minutes": 60, "min_amount_usd": "200"},
+    ),
+    RuleEntry(
+        code="default_timeout",
+        type="default_timeout",
+        rn="RN-01",
+        action="HOLD",
+        params={"limit_usd": "50"},
+    ),
 ]
 
 
