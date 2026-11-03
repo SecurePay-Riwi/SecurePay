@@ -12,7 +12,9 @@ URL = "/compliance/restricted-list-reports"
 T0 = datetime(2026, 10, 31, 14, 0, tzinfo=UTC)
 
 
-def _report(factory, matched_at, document="1000000070", list_type="PEP", notified_at=None):
+def _report(
+    factory, matched_at, document="1000000070", list_type="PEP", notified_at=None
+):
     with factory() as session:
         case = Case(
             transaction_id=uuid4(),
@@ -46,8 +48,12 @@ def _report(factory, matched_at, document="1000000070", list_type="PEP", notifie
 
 def test_newest_first_with_every_field(client, sessions):
     older = _report(sessions, T0, notified_at=T0 + timedelta(minutes=5))
-    newer = _report(sessions, T0 + timedelta(minutes=1), document="1000000016",
-                    list_type="sanciones")
+    newer = _report(
+        sessions,
+        T0 + timedelta(minutes=1),
+        document="1000000016",
+        list_type="sanciones",
+    )
 
     response = client.get(URL)
 
@@ -59,8 +65,16 @@ def test_newest_first_with_every_field(client, sessions):
     assert first["document"] == "1000000016"
     assert first["list_type"] == "sanciones"
     assert first["notified_at"] is None
-    assert set(first) == {"id", "case_id", "transaction_id", "account_id", "document",
-                          "list_type", "matched_at", "notified_at"}
+    assert set(first) == {
+        "id",
+        "case_id",
+        "transaction_id",
+        "account_id",
+        "document",
+        "list_type",
+        "matched_at",
+        "notified_at",
+    }
     assert body["items"][1]["notified_at"] is not None
 
 
@@ -69,8 +83,10 @@ def test_from_is_inclusive_and_to_exclusive(client, sessions):
     inside = _report(sessions, T0)
     _report(sessions, T0 + timedelta(hours=1))
 
-    response = client.get(URL, params={"from": T0.isoformat(),
-                                       "to": (T0 + timedelta(hours=1)).isoformat()})
+    response = client.get(
+        URL,
+        params={"from": T0.isoformat(), "to": (T0 + timedelta(hours=1)).isoformat()},
+    )
 
     assert [r["id"] for r in response.json()["items"]] == [inside]
 
@@ -95,8 +111,10 @@ def test_a_period_without_reports_is_an_empty_list(client, sessions):
 
 
 def test_pages(client, sessions):
-    ids = [_report(sessions, T0 + timedelta(minutes=i), document=f"10000000{i:02d}")
-           for i in range(3)]
+    ids = [
+        _report(sessions, T0 + timedelta(minutes=i), document=f"10000000{i:02d}")
+        for i in range(3)
+    ]
 
     response = client.get(URL, params={"page": 2, "size": 2})
 

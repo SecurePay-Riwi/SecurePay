@@ -39,8 +39,12 @@ class Rule(Base):
     params = Column(JSONB, nullable=False, default=dict)
     rule_version = Column(Integer, nullable=False, default=1)
     # Order of the rules created through the API (after the defaults).
-    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
     updated_by = Column(String(100), nullable=False)
 
 
@@ -65,13 +69,17 @@ IMMUTABLE_HISTORY = [
         END
         $$ LANGUAGE plpgsql
     """),
-    text("DROP TRIGGER IF EXISTS rule_catalog_versions_no_change ON rule_catalog_versions"),
+    text(
+        "DROP TRIGGER IF EXISTS rule_catalog_versions_no_change ON rule_catalog_versions"
+    ),
     text("""
         CREATE TRIGGER rule_catalog_versions_no_change
         BEFORE UPDATE OR DELETE ON rule_catalog_versions
         FOR EACH ROW EXECUTE FUNCTION rule_catalog_versions_append_only()
     """),
-    text("DROP TRIGGER IF EXISTS rule_catalog_versions_no_truncate ON rule_catalog_versions"),
+    text(
+        "DROP TRIGGER IF EXISTS rule_catalog_versions_no_truncate ON rule_catalog_versions"
+    ),
     text("""
         CREATE TRIGGER rule_catalog_versions_no_truncate
         BEFORE TRUNCATE ON rule_catalog_versions

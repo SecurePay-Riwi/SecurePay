@@ -15,10 +15,10 @@ import threading
 
 from sqlalchemy.exc import OperationalError
 
+from services.consumers import analytics, cases, history
 from shared import db
 from shared.aws import cliente
 from shared.cases import create_schema
-from services.consumers import analytics, cases, history
 
 log = logging.getLogger("services.consumers")
 
@@ -122,7 +122,9 @@ def main(argv: list[str]) -> None:
     nombres = argv or list(CONSUMIDORES)
     desconocidos = [n for n in nombres if n not in CONSUMIDORES]
     if desconocidos:
-        sys.exit(f"Consumidor desconocido: {desconocidos}. Opciones: {list(CONSUMIDORES)}")
+        sys.exit(
+            f"Consumidor desconocido: {desconocidos}. Opciones: {list(CONSUMIDORES)}"
+        )
 
     prepare_database()
 

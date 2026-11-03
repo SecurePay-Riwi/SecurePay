@@ -55,8 +55,12 @@ PENDING_BATCH = 50
 
 # The case columns that go to the decision block instead of the case block.
 DECISION_FIELDS = (
-    "decision", "decision_reason", "rules_triggered", "rules_version",
-    "rule_versions", "risk_score",
+    "decision",
+    "decision_reason",
+    "rules_triggered",
+    "rules_version",
+    "rule_versions",
+    "risk_score",
 )
 
 
@@ -96,14 +100,19 @@ def build_document(case: Case, events: list[CaseEvent], archived_at: datetime) -
         "transaction": transaction,
         "decision": decision,
         "events": [
-            {"type": e.type, "actor": e.actor, "at": e.at, "data": e.data} for e in events
+            {"type": e.type, "actor": e.actor, "at": e.at, "data": e.data}
+            for e in events
         ],
     }
 
 
 def encode(document: dict) -> bytes:
     return json.dumps(
-        document, default=_json_value, ensure_ascii=False, indent=2, sort_keys=True,
+        document,
+        default=_json_value,
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=True,
     ).encode("utf-8")
 
 
@@ -167,19 +176,32 @@ def archive(session: Session, case: Case) -> str | None:
         retain_until = _upload(_client(), key, body, now + RETENTION)
 
         case.evidence_key = key
-        session.add(CaseEvent(
-            case_id=case.id,
-            type=CaseEventType.EVIDENCE_ARCHIVED.value,
-            actor=SYSTEM_ACTOR,
-            at=now,
-            data={"bucket": BUCKET, "key": key, "retain_until": retain_until.isoformat()},
-        ))
+        session.add(
+            CaseEvent(
+                case_id=case.id,
+                type=CaseEventType.EVIDENCE_ARCHIVED.value,
+                actor=SYSTEM_ACTOR,
+                at=now,
+                data={
+                    "bucket": BUCKET,
+                    "key": key,
+                    "retain_until": retain_until.isoformat(),
+                },
+            )
+        )
         session.commit()
-        log.info("Case %s: evidence archived in %s/%s until %s", case.id, BUCKET, key,
-                 retain_until.isoformat())
+        log.info(
+            "Case %s: evidence archived in %s/%s until %s",
+            case.id,
+            BUCKET,
+            key,
+            retain_until.isoformat(),
+        )
         return key
     except Exception:
-        log.exception("Case %s: evidence not archived; the alerts task retries", case.id)
+        log.exception(
+            "Case %s: evidence not archived; the alerts task retries", case.id
+        )
         session.rollback()
         return None
 
@@ -201,5 +223,7 @@ def read(key: str, version_id: str | None = None) -> dict:
     """The archived evidence, for an audit (criterion 3). boto3 checks the
     SHA-256 S3 stored with the object and fails if the bytes differ."""
     extra = {"VersionId": version_id} if version_id else {}
-    response = _client().get_object(Bucket=BUCKET, Key=key, ChecksumMode="ENABLED", **extra)
+    response = _client().get_object(
+        Bucket=BUCKET, Key=key, ChecksumMode="ENABLED", **extra
+    )
     return json.loads(response["Body"].read())

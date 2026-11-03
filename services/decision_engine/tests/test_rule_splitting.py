@@ -6,7 +6,7 @@ The unit tests build RuleContext and RuleEntry by hand. The last one
 needs the seed in PostgreSQL and Valkey (the API).
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -26,7 +26,7 @@ from shared.db import get_session
 from shared.models import Cuenta, ListaRestrictiva, Usuario
 from shared.rule_catalog import default_catalog
 
-BASE = datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc)
+BASE = datetime(2026, 10, 13, 12, 0, tzinfo=UTC)
 
 client = TestClient(app)
 
@@ -45,19 +45,29 @@ def _context(*movements, currency="USD") -> RuleContext:
     """The last of `movements` is the transaction being decided. Each one
     is (amount in USD, hours before it)."""
     payload = TransactionRequest(
-        id=uuid4(), type="RETIRO", channel="CAJERO",
+        id=uuid4(),
+        type="RETIRO",
+        channel="CAJERO",
         source_account_id=uuid4(),
-        amount=_money(movements[-1][0], currency), currency=currency,
+        amount=_money(movements[-1][0], currency),
+        currency=currency,
         source_balance_before=_money(50_000, currency),
         source_balance_after=_money(40_000, currency),
-        device_id=uuid4(), transaction_date=BASE,
+        device_id=uuid4(),
+        transaction_date=BASE,
     )
     outgoing = [
-        Outgoing(str(uuid4()), "RETIRO", _money(usd, currency),
-                 to_ms(BASE - timedelta(hours=h)))
+        Outgoing(
+            str(uuid4()),
+            "RETIRO",
+            _money(usd, currency),
+            to_ms(BASE - timedelta(hours=h)),
+        )
         for usd, h in movements[:-1]
     ]
-    outgoing.append(Outgoing(str(payload.id), "RETIRO", str(payload.amount), to_ms(BASE)))
+    outgoing.append(
+        Outgoing(str(payload.id), "RETIRO", str(payload.amount), to_ms(BASE))
+    )
     outgoing.sort(key=lambda o: o.t)
     return RuleContext(
         payload=payload,
@@ -122,9 +132,16 @@ def test_thresholds_come_from_the_catalog():
     ctx = _context((3000, 5), (3000, 0))
 
     assert splitting.evaluate(ctx, _rule()) is None
-    assert splitting.evaluate(ctx, _rule(min_transactions=2, daily_limit_usd="5000")) is not None
-    assert splitting.evaluate(ctx, _rule(min_transactions=2, daily_limit_usd="5000",
-                                         window_hours=4)) is None
+    assert (
+        splitting.evaluate(ctx, _rule(min_transactions=2, daily_limit_usd="5000"))
+        is not None
+    )
+    assert (
+        splitting.evaluate(
+            ctx, _rule(min_transactions=2, daily_limit_usd="5000", window_hours=4)
+        )
+        is None
+    )
 
 
 # Through the API: the generator's pattern.
@@ -171,13 +188,16 @@ def _withdrawal(account, amount_usd, date) -> dict:
     }
 
 
-def test_three_withdrawals_over_the_limit_are_approved_with_a_case(account, eventos_publicados):
+def test_three_withdrawals_over_the_limit_are_approved_with_a_case(
+    account, eventos_publicados
+):
     # The generator's pattern: USD 3400 to 3900 at hours 0, 3 and 7.
-    base = datetime.now(timezone.utc)
+    base = datetime.now(UTC)
     decisions = []
     for amount, hours in ((3500, 0), (3600, 3), (3700, 7)):
         response = client.post(
-            "/transactions", json=_withdrawal(account, amount, base + timedelta(hours=hours))
+            "/transactions",
+            json=_withdrawal(account, amount, base + timedelta(hours=hours)),
         )
         assert response.status_code == 200, response.text
         decisions.append(response.json())

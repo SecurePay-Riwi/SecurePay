@@ -246,7 +246,7 @@ def handler(event, context=None):
         )
         return respuesta(failed + [message_id for message_id, _, _ in cases])
 
-    for (_, values, _), case_id, reports in zip(cases, opened, reported):
+    for (_, values, _), case_id, reports in zip(cases, opened, reported, strict=True):
         if reports:
             log.info(
                 "Cases: %d restricted list report(s) for transaction %s",

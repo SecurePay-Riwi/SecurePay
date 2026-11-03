@@ -71,9 +71,13 @@ def add_case(sessions, client):
             currency=currency,
             amount_usd=None if amount_usd is None else Decimal(amount_usd),
             transaction_date=now,
-            transaction={"id": str(tx_id), "type": "RETIRO",
-                         "source_account_id": str(account), "amount": amount,
-                         "currency": currency},
+            transaction={
+                "id": str(tx_id),
+                "type": "RETIRO",
+                "source_account_id": str(account),
+                "amount": amount,
+                "currency": currency,
+            },
             status=status.value,
             assignee=assignee,
             created_at=now,
@@ -90,8 +94,15 @@ def add_case(sessions, client):
         with sessions() as session:
             session.add(case)
             session.flush()
-            session.add(CaseEvent(case_id=case.id, type=CaseEventType.CREATED.value,
-                                  actor=SYSTEM_ACTOR, at=now, data={}))
+            session.add(
+                CaseEvent(
+                    case_id=case.id,
+                    type=CaseEventType.CREATED.value,
+                    actor=SYSTEM_ACTOR,
+                    at=now,
+                    data={},
+                )
+            )
             session.commit()
             return case.id
 

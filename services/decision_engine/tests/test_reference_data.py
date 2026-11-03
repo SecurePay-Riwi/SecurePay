@@ -40,10 +40,15 @@ def cache(monkeypatch):
 
 def test_an_account_comes_back_with_its_owner_document(cache):
     account_id, user_id = uuid4(), uuid4()
-    cache.hset(reference_data.account_key(account_id), mapping={
-        "currency": "COP", "user_id": str(user_id),
-        "document": "1000000027", "status": "activa",
-    })
+    cache.hset(
+        reference_data.account_key(account_id),
+        mapping={
+            "currency": "COP",
+            "user_id": str(user_id),
+            "document": "1000000027",
+            "status": "activa",
+        },
+    )
 
     assert reference_data.get_account(account_id) == Account(
         str(account_id), "COP", str(user_id), "1000000027", "activa"
@@ -114,7 +119,8 @@ def known_account(monkeypatch):
     """Every account exists in USD, every merchant exists, and the
     history is not written."""
     monkeypatch.setattr(
-        reference_data, "get_account",
+        reference_data,
+        "get_account",
         lambda account_id: Account(str(account_id), "USD", "u", "123", "activa"),
     )
     monkeypatch.setattr(reference_data, "merchant_exists", lambda _id: True)
@@ -133,20 +139,30 @@ def test_list_not_loaded_holds_whatever_the_amount(known_account, monkeypatch, a
     assert "restricted list is not loaded" in result["decision_reason"]
 
 
-def test_list_not_loaded_does_not_matter_if_the_rule_is_disabled(known_account, monkeypatch):
+def test_list_not_loaded_does_not_matter_if_the_rule_is_disabled(
+    known_account, monkeypatch
+):
     monkeypatch.setattr(reference_data, "on_restricted_list", lambda _docs: None)
     base = catalog.current()
-    snapshot = base.model_copy(update={"rules": [
-        r.model_copy(update={"enabled": False}) if r.code == ds.RESTRICTED_RULE else r
-        for r in base.rules
-    ]})
+    snapshot = base.model_copy(
+        update={
+            "rules": [
+                r.model_copy(update={"enabled": False})
+                if r.code == ds.RESTRICTED_RULE
+                else r
+                for r in base.rules
+            ]
+        }
+    )
 
     result = ds._decide(_payload("10.00"), snapshot)
 
     assert result["by_default"] is False
 
 
-@pytest.mark.parametrize(("amount", "expected"), [("10.00", "APPROVE"), ("80.00", "HOLD")])
+@pytest.mark.parametrize(
+    ("amount", "expected"), [("10.00", "APPROVE"), ("80.00", "HOLD")]
+)
 def test_account_missing_in_the_cache_is_decided_by_rn01(monkeypatch, amount, expected):
     monkeypatch.setattr(reference_data, "get_account", lambda _id: None)
 

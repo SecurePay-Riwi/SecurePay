@@ -115,8 +115,12 @@ def test_a_transfer_writes_out_for_the_source_and_in_for_the_destination(session
         assert row.decision == "HOLD"
         assert row.rules_triggered == ["velocity"]
         assert row.risk_score == 40
-        assert row.transaction_date == datetime.fromisoformat("2026-10-13T20:00:00+00:00")
-        assert row.processed_at == datetime.fromisoformat("2026-10-13T20:00:00.010000+00:00")
+        assert row.transaction_date == datetime.fromisoformat(
+            "2026-10-13T20:00:00+00:00"
+        )
+        assert row.processed_at == datetime.fromisoformat(
+            "2026-10-13T20:00:00.010000+00:00"
+        )
 
 
 def test_the_same_event_twice_writes_nothing_twice(sessions):
@@ -186,7 +190,9 @@ def test_a_broken_event_fails_alone(sessions):
     naive_date = _event()
     naive_date["transaction"]["transaction_date"] = "2026-10-13T20:00:00"
 
-    result = history.handler(_batch(good, no_amount, bad_account, naive_date, "not json"))
+    result = history.handler(
+        _batch(good, no_amount, bad_account, naive_date, "not json")
+    )
 
     assert result == {
         "batchItemFailures": [
@@ -228,10 +234,15 @@ def test_the_first_write_creates_the_case_tables(monkeypatch):
 
 # --- HU-43: original amount, USD and the rate used ---------------------------
 
+
 @pytest.mark.parametrize(
     ("amount", "currency_code", "usd_rate"),
-    [("950000.00", "COP", "4129.53"), ("230.05", "USD", "1"),
-     ("200.00", "EUR", "0.86937"), ("34500", "JPY", "149.968")],
+    [
+        ("950000.00", "COP", "4129.53"),
+        ("230.05", "USD", "1"),
+        ("200.00", "EUR", "0.86937"),
+        ("34500", "JPY", "149.968"),
+    ],
 )
 def test_both_rows_keep_the_original_amount_usd_and_the_rate(
     sessions, amount, currency_code, usd_rate
@@ -262,5 +273,7 @@ def test_a_malformed_rate_fails_alone(sessions):
     good = _event(usd_rate="4129.53", rate_date="2026-10-13")
     bad = _event(usd_rate="-1")
 
-    assert history.handler(_batch(good, bad)) == {"batchItemFailures": [{"itemIdentifier": "m1"}]}
+    assert history.handler(_batch(good, bad)) == {
+        "batchItemFailures": [{"itemIdentifier": "m1"}]
+    }
     assert _count(sessions) == 2

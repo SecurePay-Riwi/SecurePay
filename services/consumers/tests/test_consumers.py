@@ -46,16 +46,17 @@ def test_analytics_writes_the_batch_as_json_lines(monkeypatch):
     s3 = S3Falso()
     monkeypatch.setattr(analytics, "_s3", s3)
 
-    resultado = analytics.handler(
-        _lote(json.dumps(_evento(1)), json.dumps(_evento(2)))
-    )
+    resultado = analytics.handler(_lote(json.dumps(_evento(1)), json.dumps(_evento(2))))
 
     assert resultado == {"batchItemFailures": []}
     [(bucket, clave)] = s3.objetos
     assert bucket == analytics.BUCKET
     assert clave.startswith("raw/decisiones/fecha=")
     lineas = s3.objetos[(bucket, clave)].splitlines()
-    assert [json.loads(l)["transaction"]["id"] for l in lineas] == ["tx-1", "tx-2"]
+    assert [json.loads(linea)["transaction"]["id"] for linea in lineas] == [
+        "tx-1",
+        "tx-2",
+    ]
 
 
 def test_a_broken_message_fails_alone(monkeypatch):
@@ -81,9 +82,7 @@ def test_unknown_event_version_is_rejected():
 def test_analytics_retries_the_whole_batch_when_s3_fails(monkeypatch):
     monkeypatch.setattr(analytics, "_s3", S3Falso(falla=True))
 
-    resultado = analytics.handler(
-        _lote(json.dumps(_evento(1)), json.dumps(_evento(2)))
-    )
+    resultado = analytics.handler(_lote(json.dumps(_evento(1)), json.dumps(_evento(2))))
 
     assert resultado == {
         "batchItemFailures": [{"itemIdentifier": "m0"}, {"itemIdentifier": "m1"}]

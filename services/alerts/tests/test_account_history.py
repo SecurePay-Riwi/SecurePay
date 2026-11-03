@@ -28,10 +28,18 @@ def sessions():
 def _row(factory, transaction_date):
     with factory() as session:
         row = AccountTransaction(
-            transaction_id=uuid4(), account_id=uuid4(), direction="OUT", type="P2P",
-            channel="APP", amount=Decimal("10.00"), currency="USD", decision="APPROVE",
-            decision_reason="Below USD 50.", rules_triggered=[],
-            transaction_date=transaction_date, processed_at=transaction_date,
+            transaction_id=uuid4(),
+            account_id=uuid4(),
+            direction="OUT",
+            type="P2P",
+            channel="APP",
+            amount=Decimal("10.00"),
+            currency="USD",
+            decision="APPROVE",
+            decision_reason="Below USD 50.",
+            rules_triggered=[],
+            transaction_date=transaction_date,
+            processed_at=transaction_date,
         )
         session.add(row)
         session.commit()

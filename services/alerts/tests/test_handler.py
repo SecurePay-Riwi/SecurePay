@@ -6,7 +6,6 @@ No database needed: the jobs and the session are replaced.
 from datetime import datetime
 
 import pytest
-
 from sqlalchemy.exc import OperationalError
 
 from services.alerts import account_history, compliance_summary, escalation, handler
@@ -47,15 +46,21 @@ def calls(monkeypatch):
             if isinstance(result, Exception):
                 raise result
             return result
+
         return run
 
     def install(escalated=0, notified=0, purged=0, archived=0):
         monkeypatch.setattr(escalation, "escalate_overdue", job("escalate", escalated))
-        monkeypatch.setattr(compliance_summary, "send_summary", job("summary", notified))
+        monkeypatch.setattr(
+            compliance_summary, "send_summary", job("summary", notified)
+        )
         monkeypatch.setattr(account_history, "purge", job("purge", purged))
         archive = job("archive", archived)
-        monkeypatch.setattr(evidence, "archive_pending",
-                            lambda session: archive(session, datetime.now().astimezone()))
+        monkeypatch.setattr(
+            evidence,
+            "archive_pending",
+            lambda session: archive(session, datetime.now().astimezone()),
+        )
         return calls
 
     return install
@@ -90,7 +95,12 @@ def test_no_work_gives_zero_counts(session, monkeypatch):
     monkeypatch.setattr(compliance_summary, "send_summary", lambda session, now: 0)
     monkeypatch.setattr(account_history, "purge", lambda session, now: 0)
     monkeypatch.setattr(evidence, "archive_pending", lambda session: 0)
-    assert handler.handler() == {"escalated": 0, "notified": 0, "purged": 0, "archived": 0}
+    assert handler.handler() == {
+        "escalated": 0,
+        "notified": 0,
+        "purged": 0,
+        "archived": 0,
+    }
 
 
 def test_the_first_run_creates_the_case_tables_once(session, calls, monkeypatch):
@@ -107,7 +117,9 @@ def test_the_first_run_creates_the_case_tables_once(session, calls, monkeypatch)
     assert created == [session]
 
 
-def test_tables_not_created_are_retried_and_the_jobs_still_run(session, calls, monkeypatch):
+def test_tables_not_created_are_retried_and_the_jobs_still_run(
+    session, calls, monkeypatch
+):
     def down(s):
         raise OperationalError("SELECT 1", {}, Exception("connection refused"))
 
@@ -126,8 +138,9 @@ def test_the_reconciliation_check_event_runs_only_that(session, calls, monkeypat
 
     made = calls()
     checked = []
-    monkeypatch.setattr(reconciliation_check, "check",
-                        lambda s, now: checked.append(now) or True)
+    monkeypatch.setattr(
+        reconciliation_check, "check", lambda s, now: checked.append(now) or True
+    )
 
     result = handler.handler({"job": "reconciliation_check"}, None)
 
@@ -143,5 +156,7 @@ def test_a_failing_reconciliation_check_is_logged_not_raised(session, monkeypatc
         raise RuntimeError("SNS down")
 
     monkeypatch.setattr(reconciliation_check, "check", down)
-    assert handler.handler({"job": "reconciliation_check"}) == {"reconciliation_done": None}
+    assert handler.handler({"job": "reconciliation_check"}) == {
+        "reconciliation_done": None
+    }
     assert session.rollbacks == 1

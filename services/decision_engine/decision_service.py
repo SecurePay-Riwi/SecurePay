@@ -1,13 +1,18 @@
-
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as DecisionTimeout
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from services.decision_engine import catalog, currency, history, publisher, rules
+from services.decision_engine import (
+    catalog,
+    currency,
+    history,
+    publisher,
+    reference_data,
+    rules,
+)
 from services.decision_engine import idempotency as idem
-from services.decision_engine import reference_data
 from services.decision_engine.reference_data import CacheUnavailable
 from services.decision_engine.rules.base import RuleContext, TriggeredRule
 from services.decision_engine.schemas import (
@@ -125,21 +130,15 @@ def _decide(payload: TransactionRequest, snapshot: CatalogSnapshot) -> dict:
         )
 
     # The main account is the source; in a top-up, the destination.
-    main_account = accounts[
-        payload.source_account_id or payload.destination_account_id
-    ]
+    main_account = accounts[payload.source_account_id or payload.destination_account_id]
 
     if main_account.currency != payload.currency:
-        raise InvalidReference(
-            "The transaction currency is not the account currency."
-        )
+        raise InvalidReference("The transaction currency is not the account currency.")
 
     # Documents of every account owner involved, for the restricted list
     # rule (first in the catalog, so it is checked before the others).
     # The loader already keeps only the digits.
-    documents = {
-        normalize_document(account.document) for account in accounts.values()
-    }
+    documents = {normalize_document(account.document) for account in accounts.values()}
 
     # Account history: written before deciding, whatever the decision
     # and whichever rules are enabled, because the attempt counts too
@@ -167,7 +166,9 @@ def _decide(payload: TransactionRequest, snapshot: CatalogSnapshot) -> dict:
         payload.transaction_date,
     )
 
-    rate = currency.rate_for(payload.currency, currency.utc_day(payload.transaction_date))
+    rate = currency.rate_for(
+        payload.currency, currency.utc_day(payload.transaction_date)
+    )
     amount_usd = currency.convert(payload.amount, rate)
     ctx = RuleContext(
         payload=payload,
@@ -203,7 +204,7 @@ def _decide(payload: TransactionRequest, snapshot: CatalogSnapshot) -> dict:
         **_rate_fields(rate),
         "risk_score": min(MAX_RISK_SCORE, sum(r.score for r in triggered)),
         "by_default": False,
-        "processed_at": datetime.now(timezone.utc).isoformat(),
+        "processed_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -225,7 +226,9 @@ def default_decision(
     """
     entry = snapshot.get(DEFAULT_RULE)
     params = entry.typed_params() if entry else DefaultTimeoutParams()
-    rate = currency.rate_for(payload.currency, currency.utc_day(payload.transaction_date))
+    rate = currency.rate_for(
+        payload.currency, currency.utc_day(payload.transaction_date)
+    )
     amount_usd = currency.convert(payload.amount, rate)
     why = why or f"the rules did not answer in {TIMEOUT_MS} ms"
 
@@ -238,8 +241,7 @@ def default_decision(
         "transaction_id": str(payload.id),
         "decision": decision.value,
         "decision_reason": (
-            f"Default decision: {why} "
-            f"(USD {amount_usd}, limit USD {params.limit_usd})."
+            f"Default decision: {why} (USD {amount_usd}, limit USD {params.limit_usd})."
         ),
         "rules_version": str(snapshot.version),
         "rules_triggered": [DEFAULT_RULE],
@@ -249,7 +251,7 @@ def default_decision(
         **_rate_fields(rate),
         "risk_score": 0,
         "by_default": True,
-        "processed_at": datetime.now(timezone.utc).isoformat(),
+        "processed_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -287,8 +289,9 @@ def _decide_in_time(payload: TransactionRequest) -> dict:
         log.warning("Transaction %s: rules timed out, default decision", payload.id)
         return default_decision(payload, snapshot)
     except CacheUnavailable as exc:
-        log.warning("Transaction %s: cache unavailable (%s), default decision",
-                    payload.id, exc)
+        log.warning(
+            "Transaction %s: cache unavailable (%s), default decision", payload.id, exc
+        )
         return default_decision(payload, snapshot, "the cache did not answer")
 
 

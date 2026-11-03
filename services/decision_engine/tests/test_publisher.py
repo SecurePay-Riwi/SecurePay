@@ -26,7 +26,12 @@ class SnsFalso:
         return {
             "Successful": [{"Id": i} for i in ids if i not in rechazados],
             "Failed": [
-                {"Id": i, "Code": "InternalError", "Message": "falla", "SenderFault": False}
+                {
+                    "Id": i,
+                    "Code": "InternalError",
+                    "Message": "falla",
+                    "SenderFault": False,
+                }
                 for i in rechazados
             ],
         }

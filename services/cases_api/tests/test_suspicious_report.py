@@ -15,9 +15,19 @@ from services.cases_api.schemas import SuspiciousReport
 from shared.cases import Case, CaseStatus
 
 
-def _case(sessions, created_at, *, rules=("mule",), amount="100.00", currency="USD",
-          amount_usd="100.00", status=CaseStatus.OPEN, outcome=None,
-          usd_rate=None, rate_date=None):
+def _case(
+    sessions,
+    created_at,
+    *,
+    rules=("mule",),
+    amount="100.00",
+    currency="USD",
+    amount_usd="100.00",
+    status=CaseStatus.OPEN,
+    outcome=None,
+    usd_rate=None,
+    rate_date=None,
+):
     """Insert a case opened at created_at; returns its id."""
     tx_id = uuid4()
     case = Case(
@@ -50,14 +60,31 @@ def _at(day, hour=12):
 
 
 def _report(client, start="2026-10-10", end="2026-10-20", **params):
-    return client.get("/reports/suspicious", params={"from": start, "to": end, **params})
+    return client.get(
+        "/reports/suspicious", params={"from": start, "to": end, **params}
+    )
 
 
 def test_the_cases_of_the_period_with_account_pattern_and_usd(client, sessions):
-    mule = _case(sessions, _at(12), rules=("mule",), amount="950000.00", currency="COP",
-                 amount_usd="230.05", status=CaseStatus.RESOLVED, outcome="FRAUD")
-    split = _case(sessions, _at(11), rules=("splitting", "velocity"), amount="4000.00",
-                  currency="EUR", amount_usd="4320.00", status=CaseStatus.ESCALATED)
+    mule = _case(
+        sessions,
+        _at(12),
+        rules=("mule",),
+        amount="950000.00",
+        currency="COP",
+        amount_usd="230.05",
+        status=CaseStatus.RESOLVED,
+        outcome="FRAUD",
+    )
+    split = _case(
+        sessions,
+        _at(11),
+        rules=("splitting", "velocity"),
+        amount="4000.00",
+        currency="EUR",
+        amount_usd="4320.00",
+        status=CaseStatus.ESCALATED,
+    )
     listed = _case(sessions, _at(15), rules=("restricted_list",))
 
     response = _report(client)
@@ -67,9 +94,17 @@ def test_the_cases_of_the_period_with_account_pattern_and_usd(client, sessions):
     assert [i.case_id for i in report.items] == [split, mule, listed]  # oldest first
     assert report.total == 3
     assert report.message is None
-    assert [i.pattern for i in report.items] == ["splitting+velocity", "mule", "restricted_list"]
+    assert [i.pattern for i in report.items] == [
+        "splitting+velocity",
+        "mule",
+        "restricted_list",
+    ]
     cop = response.json()["items"][1]
-    assert (cop["amount"], cop["currency"], cop["amount_usd"]) == ("950000.00", "COP", "230.05")
+    assert (cop["amount"], cop["currency"], cop["amount_usd"]) == (
+        "950000.00",
+        "COP",
+        "230.05",
+    )
     assert (cop["status"], cop["outcome"]) == ("RESOLVED", "FRAUD")
     assert response.json()["from"] == "2026-10-10"
     assert response.json()["to"] == "2026-10-20"
@@ -106,26 +141,72 @@ def test_one_day_period(client, sessions):
 
 
 def test_the_csv_export(client, sessions):
-    _case(sessions, _at(12), rules=("mule",), amount="950000.00", currency="COP",
-          amount_usd="230.05", status=CaseStatus.RESOLVED, outcome="FRAUD",
-          usd_rate="4129.53", rate_date=date(2026, 10, 12))
-    _case(sessions, _at(13), rules=("splitting",), amount="12345678", currency="JPY",
-          amount_usd=None)
+    _case(
+        sessions,
+        _at(12),
+        rules=("mule",),
+        amount="950000.00",
+        currency="COP",
+        amount_usd="230.05",
+        status=CaseStatus.RESOLVED,
+        outcome="FRAUD",
+        usd_rate="4129.53",
+        rate_date=date(2026, 10, 12),
+    )
+    _case(
+        sessions,
+        _at(13),
+        rules=("splitting",),
+        amount="12345678",
+        currency="JPY",
+        amount_usd=None,
+    )
 
     response = _report(client, format="csv")
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/csv")
     assert response.headers["content-disposition"] == (
-        'attachment; filename="suspicious-report-2026-10-10-2026-10-20.csv"')
+        'attachment; filename="suspicious-report-2026-10-10-2026-10-20.csv"'
+    )
     rows = list(csv.DictReader(io.StringIO(response.text)))
-    assert list(rows[0]) == ["case_id", "transaction_id", "account_id", "pattern", "amount",
-                             "currency", "amount_usd", "status", "outcome", "created_at",
-                             "usd_rate", "rate_date"]
-    assert [(r["pattern"], r["amount"], r["currency"], r["amount_usd"], r["status"], r["outcome"],
-             r["usd_rate"], r["rate_date"])
-            for r in rows] == [
-        ("mule", "950000.00", "COP", "230.05", "RESOLVED", "FRAUD", "4129.53", "2026-10-12"),
+    assert list(rows[0]) == [
+        "case_id",
+        "transaction_id",
+        "account_id",
+        "pattern",
+        "amount",
+        "currency",
+        "amount_usd",
+        "status",
+        "outcome",
+        "created_at",
+        "usd_rate",
+        "rate_date",
+    ]
+    assert [
+        (
+            r["pattern"],
+            r["amount"],
+            r["currency"],
+            r["amount_usd"],
+            r["status"],
+            r["outcome"],
+            r["usd_rate"],
+            r["rate_date"],
+        )
+        for r in rows
+    ] == [
+        (
+            "mule",
+            "950000.00",
+            "COP",
+            "230.05",
+            "RESOLVED",
+            "FRAUD",
+            "4129.53",
+            "2026-10-12",
+        ),
         # JPY without decimals (HU-43), no scientific notation, no rate before HU-42.
         ("splitting", "12345678", "JPY", "", "OPEN", "", "", ""),
     ]
@@ -158,10 +239,13 @@ def test_more_than_31_days_is_400(client, sessions):
 
 
 def test_invalid_input_is_400(client, sessions):
-    for params in ({"to": "2026-10-20"}, {"from": "2026-10-10"},
-                   {"from": "2026-13-01", "to": "2026-10-20"},
-                   {"from": "yesterday", "to": "2026-10-20"},
-                   {"from": "2026-10-10", "to": "2026-10-20", "format": "pdf"}):
+    for params in (
+        {"to": "2026-10-20"},
+        {"from": "2026-10-10"},
+        {"from": "2026-13-01", "to": "2026-10-20"},
+        {"from": "yesterday", "to": "2026-10-20"},
+        {"from": "2026-10-10", "to": "2026-10-20", "format": "pdf"},
+    ):
         response = client.get("/reports/suspicious", params=params)
         assert response.status_code == 400, params
         assert response.json()["detail"] == "The request contains invalid data."

@@ -109,13 +109,15 @@ def escalate_overdue(session: Session, now: datetime) -> int:
     for case in cases:
         case.status = CaseStatus.ESCALATED.value
         case.escalated_at = now
-        session.add(CaseEvent(
-            case_id=case.id,
-            type=CaseEventType.ESCALATED.value,
-            actor=SYSTEM_ACTOR,
-            at=now,
-            data={"due_at": _utc(case.due_at).isoformat()},
-        ))
+        session.add(
+            CaseEvent(
+                case_id=case.id,
+                type=CaseEventType.ESCALATED.value,
+                actor=SYSTEM_ACTOR,
+                at=now,
+                data={"due_at": _utc(case.due_at).isoformat()},
+            )
+        )
     session.flush()
 
     notify.publish(subject(len(cases)), body(cases, now), AUDIENCE)

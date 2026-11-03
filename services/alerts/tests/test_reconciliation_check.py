@@ -41,15 +41,23 @@ def sns(monkeypatch):
 
 
 def _run(session, status, error=None):
-    session.add(ReconciliationRun(run_day=DAY, status=status.value, error=error,
-                                  started_at=datetime(2026, 10, 6, 7, 0, tzinfo=UTC)))
+    session.add(
+        ReconciliationRun(
+            run_day=DAY,
+            status=status.value,
+            error=error,
+            started_at=datetime(2026, 10, 6, 7, 0, tzinfo=UTC),
+        )
+    )
     session.commit()
 
 
 def test_the_checked_day_is_yesterday_in_bogota():
     assert reconciliation_check.reconciled_day(NOW) == DAY
     # 03:00 UTC of the 6th is still the 5th in Bogota: yesterday is the 4th.
-    assert reconciliation_check.reconciled_day(datetime(2026, 10, 6, 3, 0, tzinfo=UTC)) == date(2026, 10, 4)
+    assert reconciliation_check.reconciled_day(
+        datetime(2026, 10, 6, 3, 0, tzinfo=UTC)
+    ) == date(2026, 10, 4)
 
 
 def test_a_done_run_sends_nothing(session, sns):

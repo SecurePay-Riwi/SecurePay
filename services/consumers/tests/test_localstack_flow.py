@@ -32,13 +32,17 @@ def aws():
     urls, subscriptions = {}, []
     for cola in COLAS:
         url = sqs.create_queue(QueueName=f"{cola}-test-{suffix}")["QueueUrl"]
-        queue_arn = sqs.get_queue_attributes(
-            QueueUrl=url, AttributeNames=["QueueArn"]
-        )["Attributes"]["QueueArn"]
-        subscriptions.append(sns.subscribe(
-            TopicArn=TOPIC_ARN, Protocol="sqs", Endpoint=queue_arn,
-            Attributes={"RawMessageDelivery": "true"},
-        )["SubscriptionArn"])
+        queue_arn = sqs.get_queue_attributes(QueueUrl=url, AttributeNames=["QueueArn"])[
+            "Attributes"
+        ]["QueueArn"]
+        subscriptions.append(
+            sns.subscribe(
+                TopicArn=TOPIC_ARN,
+                Protocol="sqs",
+                Endpoint=queue_arn,
+                Attributes={"RawMessageDelivery": "true"},
+            )["SubscriptionArn"]
+        )
         urls[cola] = url
     try:
         yield sns, sqs, s3, urls
@@ -118,13 +122,17 @@ def test_analytics_consumer_writes_to_the_raw_layer(aws):
     pub.publicar(_evento(tx_id, "HOLD"))
     pub.detener()
 
-    leidos = atender_lote(sqs, urls["analitica"], "analitica", analytics.handler, espera_s=2)
+    leidos = atender_lote(
+        sqs, urls["analitica"], "analitica", analytics.handler, espera_s=2
+    )
     assert leidos == 1
 
     # La cola quedó vacía: el mensaje se borró tras guardarse.
     assert _leer_todo(sqs, urls["analitica"]) == []
 
-    objetos = s3.list_objects_v2(Bucket=analytics.BUCKET, Prefix="raw/decisiones/")["Contents"]
+    objetos = s3.list_objects_v2(Bucket=analytics.BUCKET, Prefix="raw/decisiones/")[
+        "Contents"
+    ]
     contenidos = [
         s3.get_object(Bucket=analytics.BUCKET, Key=o["Key"])["Body"].read().decode()
         for o in objetos

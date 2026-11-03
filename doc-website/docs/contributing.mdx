@@ -76,7 +76,7 @@ Branches that already exist keep their names. There is no `develop` branch: bran
 ## Pull requests
 
 1. Branch from an up-to-date `main`.
-2. Run `uv run pytest` with PostgreSQL (seeded), Valkey and LocalStack up.
+2. Run `uv run ruff format .`, `uv run ruff check .` and `uv run pytest` with PostgreSQL (seeded), Valkey and LocalStack up. The CI runs both on the PR anyway (see below).
 3. Update the repository `README.md`, these docs and `AGENTS.md` when you add setup steps, environment variables or ways to run something.
 4. Keep it small: ideally under 10 files and a few hundred lines. Open it as **Draft** while it is in progress, with a title in the commit format.
 5. The description follows the organization template ([`pull_request_template.md`](https://github.com/SecurePay-Riwi/.github/blob/main/pull_request_template.md)): Context (with the Jira key), Type of change, Before / After, How and why, Missing, How to test (exact commands, where they run and the expected result) and Checklist.
@@ -84,7 +84,18 @@ Branches that already exist keep their names. There is no `develop` branch: bran
 
 ## Continuous integration
 
-`.github/workflows/docker-validation.yml` runs on every pull request to `main` that touches the `Dockerfile`, `docker-compose.yml`, `.dockerignore`, a `pyproject.toml` or `uv.lock`, `README.md`, `AGENTS.md` or the local setup page, and on pushes to `main` that touch the Docker files or dependencies. It checks out this repository and the four source repositories side by side, validates the Compose file, builds every image and starts the whole environment, checking the health endpoints. The test suite does not run in CI yet (EP-12).
+`.github/workflows/ci.yml` runs on every pull request to `main`, and `main` only accepts the merge when its four jobs are green:
+
+| Job | What it does | Fails when |
+| --- | --- | --- |
+| `lint` | `uv run ruff check .` and `uv run ruff format --check .` | Ruff finds an error (rules in `[tool.ruff.lint]` of `pyproject.toml`) or a file is not formatted |
+| `secret-scan` | gitleaks over the whole git history | Any commit holds something that looks like a key, token or password |
+| `tests` | `uv run pytest` with PostgreSQL 16 seeded by `securepay-seed`, Valkey and Java 17 for Spark | A test fails (LocalStack tests are skipped) |
+| `image` | `docker build --provenance=false .` | The engine image does not build |
+
+`.github/workflows/deploy.yml` runs on every push to `main` (except docs-only changes) and by hand from **Actions → Deploy → Run workflow**. With GitHub's OIDC token it assumes `securepay-dev-deploy` (no AWS keys in GitHub), pushes the engine image to ECR tagged with the short commit and rolls it out to the ECS service `engine` and to the six Lambdas that use the same image. When dev is destroyed it ends green with a notice. Details: [Deploy to AWS with Terraform](./getting-started/deploy-aws-terraform.mdx#automatic-deploys-from-github-actions).
+
+`.github/workflows/docker-validation.yml` runs on every pull request to `main` that touches the `Dockerfile`, `docker-compose.yml`, `.dockerignore`, a `pyproject.toml` or `uv.lock`, `README.md`, `AGENTS.md` or the local setup page, and on pushes to `main` that touch the Docker files or dependencies. It checks out this repository and the four source repositories side by side, validates the Compose file, builds every image and starts the whole environment, checking the health endpoints.
 
 ## Documentation site
 

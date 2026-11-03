@@ -41,7 +41,9 @@ class FakeS3:
         return {"VersionId": "v1"}
 
     def head_object(self, Bucket, Key):
-        return {"ObjectLockRetainUntilDate": self.objects[Key]["ObjectLockRetainUntilDate"]}
+        return {
+            "ObjectLockRetainUntilDate": self.objects[Key]["ObjectLockRetainUntilDate"]
+        }
 
     def get_object(self, Bucket, Key, ChecksumMode=None, **kwargs):
         return {"Body": io.BytesIO(self.objects[Key]["Body"])}
@@ -66,13 +68,24 @@ def _resolved_case(factory, status=CaseStatus.RESOLVED, evidence_key=None):
     """A mule case with its CREATED and RESOLVED events."""
     with factory() as session:
         case = Case(
-            transaction_id=uuid4(), account_id=uuid4(), decision="HOLD",
-            decision_reason="Mule account pattern.", rules_triggered=["mule"],
-            rules_version="3", rule_versions={"mule": 2}, risk_score=80,
-            amount=Decimal("1250000.00"), currency="COP", amount_usd=Decimal("312.50"),
-            usd_rate=Decimal("4000"), rate_date=date(2026, 10, 13),
-            transaction_date=CREATED, transaction={"transaction_id": "t-1", "amount": "1250000.00"},
-            status=status.value, created_at=CREATED, due_at=CREATED + timedelta(hours=4),
+            transaction_id=uuid4(),
+            account_id=uuid4(),
+            decision="HOLD",
+            decision_reason="Mule account pattern.",
+            rules_triggered=["mule"],
+            rules_version="3",
+            rule_versions={"mule": 2},
+            risk_score=80,
+            amount=Decimal("1250000.00"),
+            currency="COP",
+            amount_usd=Decimal("312.50"),
+            usd_rate=Decimal("4000"),
+            rate_date=date(2026, 10, 13),
+            transaction_date=CREATED,
+            transaction={"transaction_id": "t-1", "amount": "1250000.00"},
+            status=status.value,
+            created_at=CREATED,
+            due_at=CREATED + timedelta(hours=4),
             evidence_key=evidence_key,
         )
         if status == CaseStatus.RESOLVED:
@@ -81,12 +94,25 @@ def _resolved_case(factory, status=CaseStatus.RESOLVED, evidence_key=None):
             case.resolution_note = "Confirmed with the customer."
         session.add(case)
         session.flush()
-        session.add(CaseEvent(case_id=case.id, type="CREATED", actor="system", at=CREATED, data={}))
+        session.add(
+            CaseEvent(
+                case_id=case.id, type="CREATED", actor="system", at=CREATED, data={}
+            )
+        )
         if status == CaseStatus.RESOLVED:
-            session.add(CaseEvent(
-                case_id=case.id, type="RESOLVED", actor="analyst-1", at=RESOLVED,
-                data={"outcome": "FRAUD", "final_decision": "REJECT", "note": "Confirmed."},
-            ))
+            session.add(
+                CaseEvent(
+                    case_id=case.id,
+                    type="RESOLVED",
+                    actor="analyst-1",
+                    at=RESOLVED,
+                    data={
+                        "outcome": "FRAUD",
+                        "final_decision": "REJECT",
+                        "note": "Confirmed.",
+                    },
+                )
+            )
         session.commit()
         return case.id
 
@@ -133,12 +159,15 @@ def test_archive_sets_the_key_and_writes_the_event(sessions, s3):
     assert event.actor == "system"
     assert event.data["bucket"] == evidence.BUCKET
     assert event.data["key"] == key
-    assert datetime.fromisoformat(event.data["retain_until"]) == (
-        s3.puts[0]["ObjectLockRetainUntilDate"]
+    assert (
+        datetime.fromisoformat(event.data["retain_until"])
+        == (s3.puts[0]["ObjectLockRetainUntilDate"])
     )
 
 
-def test_the_json_has_the_case_its_events_the_transaction_and_the_decision(sessions, s3):
+def test_the_json_has_the_case_its_events_the_transaction_and_the_decision(
+    sessions, s3
+):
     case_id = _resolved_case(sessions)
 
     key = _archive(sessions, case_id)

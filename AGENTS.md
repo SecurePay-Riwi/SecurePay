@@ -594,6 +594,11 @@ every repository in the SecurePay-Riwi organization.
   follow the same sections: Context (with the Jira ticket), Type of change,
   Before / After, How and why, Missing, How to test (the exact commands, the
   folder or service they run in and the expected result) and Checklist.
+- **Before opening a PR:** `uv run ruff format .`, `uv run ruff check .` and
+  `uv run pytest`. The CI
+  (`.github/workflows/ci.yml`: jobs `lint`, `secret-scan`, `tests`, `image`)
+  runs the same on the PR and must be green to merge. Do not add per-file
+  ruff ignores for someone else's code; fix it or ask.
 
 ---
 
@@ -607,6 +612,8 @@ cp .env.example .env   # DATABASE_URL: 5432 installed PostgreSQL (default), 5433
 docker compose up -d
 uv sync
 (cd ../securepay-seed && cp .env.example .env && uv sync && uv run python -m securepay_seed.seed)
+uv run ruff format .
+uv run ruff check .
 uv run pytest
 ```
 

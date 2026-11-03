@@ -25,7 +25,9 @@ def isolated():
         conn.execute(text(f"DROP SCHEMA IF EXISTS {SCHEMA} CASCADE"))
         conn.execute(text(f"CREATE SCHEMA {SCHEMA}"))
     engine = create_engine(
-        dev_engine.url, connect_args={"options": f"-csearch_path={SCHEMA}"}, pool_size=20,
+        dev_engine.url,
+        connect_args={"options": f"-csearch_path={SCHEMA}"},
+        pool_size=20,
     )
     previous = store.SessionLocal
     store.bind(sessionmaker(bind=engine))

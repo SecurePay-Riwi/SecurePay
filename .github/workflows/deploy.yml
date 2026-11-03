@@ -1,0 +1,147 @@
+name: Deploy
+
+# On every merge to main: build the engine image, push it to ECR tagged with
+# the short commit and roll it out to the engine service in ECS and to the
+# Lambdas that run the same image. Credentials come from GitHub's OIDC token
+# (role securepay-dev-deploy, which only trusts the main branch); there are
+# no AWS keys in GitHub.
+#
+# The dev environment is destroyed between work sessions, and the OIDC role
+# goes with it. When the role cannot be assumed, or the service or a Lambda
+# does not exist, the job ends green with a notice instead of failing.
+#
+# It can also be started by hand on main (Actions > Deploy > Run workflow),
+# for example after `terraform apply`, to deploy what is already merged.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "doc-website/**"
+      - "**/*.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+# One deploy at a time; a newer merge waits instead of cancelling a rollout.
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-2
+  NAME_PREFIX: securepay-dev
+  LAMBDAS: cases-consumer history-consumer analytics-consumer alerts statement-reader difference-writer
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # AWS_DEPLOY_ROLE_ARN is a repository variable (not a secret):
+      # arn:aws:iam::<account>:role/securepay-dev-deploy
+      - name: Get AWS credentials
+        id: aws
+        if: vars.AWS_DEPLOY_ROLE_ARN != ''
+        continue-on-error: true
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Dev environment is off
+        if: steps.aws.outcome != 'success'
+        run: |
+          echo "::notice title=Nothing deployed::The deploy role could not be assumed (dev is destroyed or AWS_DEPLOY_ROLE_ARN is not set)."
+
+      - name: Log in to ECR
+        id: ecr
+        if: steps.aws.outcome == 'success'
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set the image name
+        id: image
+        if: steps.aws.outcome == 'success'
+        run: |
+          tag="${GITHUB_SHA::7}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "uri=${{ steps.ecr.outputs.registry }}/${NAME_PREFIX}-engine:${tag}" >> "$GITHUB_OUTPUT"
+
+      # Tags are immutable in ECR: a rerun of the same commit reuses its image.
+      - name: Build and push the engine image
+        if: steps.aws.outcome == 'success'
+        env:
+          TAG: ${{ steps.image.outputs.tag }}
+          IMAGE: ${{ steps.image.outputs.uri }}
+        run: |
+          found=$(aws ecr batch-get-image --repository-name "${NAME_PREFIX}-engine" \
+            --image-ids imageTag="${TAG}" --query 'length(images)' --output text)
+          if [ "${found}" != "0" ]; then
+            echo "Image ${TAG} is already in ECR."
+            exit 0
+          fi
+          # --provenance=false: Lambda rejects image indexes.
+          docker build --provenance=false -t "${IMAGE}" .
+          docker push "${IMAGE}"
+
+      - name: Deploy the engine service
+        if: steps.aws.outcome == 'success'
+        env:
+          IMAGE: ${{ steps.image.outputs.uri }}
+        run: |
+          cluster="${NAME_PREFIX}"
+          status=$(aws ecs describe-services --cluster "${cluster}" --services engine \
+            --query 'services[0].status' --output text 2>/dev/null || echo MISSING)
+          if [ "${status}" != "ACTIVE" ]; then
+            echo "::notice title=Engine not deployed::The ECS service engine does not exist in ${cluster}."
+            exit 0
+          fi
+
+          # New revision of the current task definition with only the image changed.
+          current=$(aws ecs describe-services --cluster "${cluster}" --services engine \
+            --query 'services[0].taskDefinition' --output text)
+          aws ecs describe-task-definition --task-definition "${current}" --query taskDefinition \
+            | jq --arg image "${IMAGE}" '
+                .containerDefinitions |= map(if .name == "engine" then .image = $image else . end)
+                | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                      .compatibilities, .registeredAt, .registeredBy)' > task-definition.json
+          revision=$(aws ecs register-task-definition --cli-input-json file://task-definition.json \
+            --query taskDefinition.taskDefinitionArn --output text)
+
+          aws ecs update-service --cluster "${cluster}" --service engine \
+            --task-definition "${revision}" > /dev/null
+          aws ecs wait services-stable --cluster "${cluster}" --services engine
+
+          # The circuit breaker rolls back a revision whose tasks fail their
+          # health checks; then the service is stable on the old one.
+          running=$(aws ecs describe-services --cluster "${cluster}" --services engine \
+            --query 'services[0].taskDefinition' --output text)
+          if [ "${running}" != "${revision}" ]; then
+            echo "::error title=Rollback::ECS rolled back to ${running}; the new tasks did not become healthy."
+            exit 1
+          fi
+          echo "Engine running ${IMAGE}"
+
+      - name: Deploy the Lambdas
+        if: steps.aws.outcome == 'success'
+        env:
+          IMAGE: ${{ steps.image.outputs.uri }}
+        run: |
+          for name in ${LAMBDAS}; do
+            function="${NAME_PREFIX}-${name}"
+            if ! output=$(aws lambda update-function-code --function-name "${function}" \
+                --image-uri "${IMAGE}" 2>&1 > /dev/null); then
+              if grep -q ResourceNotFoundException <<< "${output}"; then
+                echo "::notice title=Lambda not deployed::${function} does not exist."
+                continue
+              fi
+              echo "${output}"
+              exit 1
+            fi
+            aws lambda wait function-updated --function-name "${function}"
+            echo "${function} running ${IMAGE}"
+          done

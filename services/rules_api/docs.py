@@ -25,41 +25,69 @@ class Error(BaseModel):
 
 class ValidationError(BaseModel):
     detail: str = Field(description="Always the same summary message.")
-    errors: list[dict] = Field(description="One entry per problem, as Pydantic reports it.")
+    errors: list[dict] = Field(
+        description="One entry per problem, as Pydantic reports it."
+    )
 
 
 VELOCITY = DEFAULT_RULES[1].model_dump(mode="json")
-SLOW_VELOCITY = {**VELOCITY, "params": {"window_minutes": 10, "limit": 2}, "rule_version": 2}
+SLOW_VELOCITY = {
+    **VELOCITY,
+    "params": {"window_minutes": 10, "limit": 2},
+    "rule_version": 2,
+}
 VELOCITY_1H = {
-    "code": "velocity_1h", "type": "velocity", "rn": "RN-02",
-    "description": "More than 20 transfers in one hour.", "enabled": True,
-    "action": "HOLD", "opens_case": False, "score": 0,
+    "code": "velocity_1h",
+    "type": "velocity",
+    "rn": "RN-02",
+    "description": "More than 20 transfers in one hour.",
+    "enabled": True,
+    "action": "HOLD",
+    "opens_case": False,
+    "score": 0,
     "params": {"window_minutes": 60, "limit": 20},
 }
 
 INVALID_EXAMPLE = {
     "detail": "The request contains invalid rule data.",
-    "errors": [{
-        "type": "greater_than", "loc": ["window_minutes"],
-        "msg": "Input should be greater than 0", "input": 0,
-    }],
+    "errors": [
+        {
+            "type": "greater_than",
+            "loc": ["window_minutes"],
+            "msg": "Input should be greater than 0",
+            "input": 0,
+        }
+    ],
 }
 
 
 def _ok(description: str, example) -> dict:
-    return {"description": description, "content": {"application/json": {"example": example}}}
+    return {
+        "description": description,
+        "content": {"application/json": {"example": example}},
+    }
 
 
 def _error(description: str, detail: str) -> dict:
-    return {"description": description, "model": Error,
-            "content": {"application/json": {"example": {"detail": detail}}}}
+    return {
+        "description": description,
+        "model": Error,
+        "content": {"application/json": {"example": {"detail": detail}}},
+    }
 
 
-INVALID = {"description": "Invalid body, header or parameters.", "model": ValidationError,
-           "content": {"application/json": {"example": INVALID_EXAMPLE}}}
-DB_DOWN = _error("PostgreSQL is not available.", "The rule catalog database is not available.")
+INVALID = {
+    "description": "Invalid body, header or parameters.",
+    "model": ValidationError,
+    "content": {"application/json": {"example": INVALID_EXAMPLE}},
+}
+DB_DOWN = _error(
+    "PostgreSQL is not available.", "The rule catalog database is not available."
+)
 NO_RULE = _error("No rule with that code.", "Rule 'velocity_2h' does not exist.")
-NO_VERSION = _error("No catalog version with that number.", "Catalog version 999 does not exist.")
+NO_VERSION = _error(
+    "No catalog version with that number.", "Catalog version 999 does not exist."
+)
 
 
 def _change(rule: dict, version: int) -> dict:
@@ -89,7 +117,11 @@ GET_CATALOG = {
 GET_RULE = {
     "summary": "Get one rule",
     "tags": ["Rules"],
-    "responses": {200: _ok("The rule as the latest version has it.", VELOCITY), 404: NO_RULE, 503: DB_DOWN},
+    "responses": {
+        200: _ok("The rule as the latest version has it.", VELOCITY),
+        404: NO_RULE,
+        503: DB_DOWN,
+    },
 }
 
 CREATE = {
@@ -102,7 +134,10 @@ CREATE = {
     ),
     "tags": ["Rules"],
     "responses": {
-        201: _ok("Created. A new catalog version.", _change({**VELOCITY_1H, "rule_version": 1}, 3)),
+        201: _ok(
+            "Created. A new catalog version.",
+            _change({**VELOCITY_1H, "rule_version": 1}, 3),
+        ),
         400: INVALID,
         409: _error("A rule with that code exists.", "Rule 'velocity' already exists."),
         503: DB_DOWN,
@@ -147,10 +182,15 @@ DISABLE = {
     ),
     "tags": ["Rules"],
     "responses": {
-        200: _ok("Disabled.", _change({**VELOCITY, "enabled": False, "rule_version": 2}, 3)),
+        200: _ok(
+            "Disabled.", _change({**VELOCITY, "enabled": False, "rule_version": 2}, 3)
+        ),
         400: INVALID,
         404: NO_RULE,
-        409: _error("The default decision cannot be disabled.", "Rule 'default_timeout' must stay enabled."),
+        409: _error(
+            "The default decision cannot be disabled.",
+            "Rule 'default_timeout' must stay enabled.",
+        ),
         503: DB_DOWN,
     },
 }
@@ -160,16 +200,36 @@ LIST_VERSIONS = {
     "description": "Newest first, with who made each change and the rule before and after.",
     "tags": ["Versions"],
     "responses": {
-        200: _ok("One page of versions.", {
-            "total": 2,
-            "versions": [
-                {"version": 2, "created_at": "2026-10-24T12:00:00Z", "author": "Yulianis",
-                 "change": {"operation": "update", "code": "velocity",
-                            "before": VELOCITY, "after": SLOW_VELOCITY}},
-                {"version": 1, "created_at": "2026-10-24T11:00:00Z", "author": "code",
-                 "change": {"operation": "seed", "code": None, "before": None, "after": None}},
-            ],
-        }),
+        200: _ok(
+            "One page of versions.",
+            {
+                "total": 2,
+                "versions": [
+                    {
+                        "version": 2,
+                        "created_at": "2026-10-24T12:00:00Z",
+                        "author": "Yulianis",
+                        "change": {
+                            "operation": "update",
+                            "code": "velocity",
+                            "before": VELOCITY,
+                            "after": SLOW_VELOCITY,
+                        },
+                    },
+                    {
+                        "version": 1,
+                        "created_at": "2026-10-24T11:00:00Z",
+                        "author": "code",
+                        "change": {
+                            "operation": "seed",
+                            "code": None,
+                            "before": None,
+                            "after": None,
+                        },
+                    },
+                ],
+            },
+        ),
         400: INVALID,
         503: DB_DOWN,
     },
@@ -178,8 +238,12 @@ LIST_VERSIONS = {
 GET_VERSION = {
     "summary": "Get one catalog version",
     "tags": ["Versions"],
-    "responses": {200: _ok("The whole catalog of that version.", SNAPSHOT),
-                  400: INVALID, 404: NO_VERSION, 503: DB_DOWN},
+    "responses": {
+        200: _ok("The whole catalog of that version.", SNAPSHOT),
+        400: INVALID,
+        404: NO_VERSION,
+        503: DB_DOWN,
+    },
 }
 
 ACTIVATE = {
@@ -190,8 +254,12 @@ ACTIVATE = {
         "If the catalog is already like that, no version is created."
     ),
     "tags": ["Versions"],
-    "responses": {200: _ok("The catalog now active.", {**SNAPSHOT, "version": 5}),
-                  400: INVALID, 404: NO_VERSION, 503: DB_DOWN},
+    "responses": {
+        200: _ok("The catalog now active.", {**SNAPSHOT, "version": 5}),
+        400: INVALID,
+        404: NO_VERSION,
+        503: DB_DOWN,
+    },
 }
 
 PUBLISH = {
@@ -200,6 +268,8 @@ PUBLISH = {
     "tags": ["Versions"],
     "responses": {
         200: _ok("Valkey holds the latest version.", {"version": 2, "published": True}),
-        503: _error("Valkey or PostgreSQL is not available.", "Valkey is not available."),
+        503: _error(
+            "Valkey or PostgreSQL is not available.", "Valkey is not available."
+        ),
     },
 }

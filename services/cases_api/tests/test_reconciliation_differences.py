@@ -36,18 +36,31 @@ def fixed_today(monkeypatch):
     monkeypatch.setattr(routes_reconciliation, "today", lambda: TODAY)
 
 
-def _difference(factory, *, days_old=0, partner="cajeros_express", type_="MISSING_IN_PARTNER",
-                currency="USD", ours="20.00", theirs=None, status=DifferenceStatus.PENDING,
-                reference=None):
+def _difference(
+    factory,
+    *,
+    days_old=0,
+    partner="cajeros_express",
+    type_="MISSING_IN_PARTNER",
+    currency="USD",
+    ours="20.00",
+    theirs=None,
+    status=DifferenceStatus.PENDING,
+    reference=None,
+):
     """One difference of the day `days_old` days before TODAY (its run is
     created if missing); returns its id."""
     run_day = TODAY - timedelta(days=days_old)
     ours_amount = None if ours is None else Decimal(ours)
     theirs_amount = None if theirs is None else Decimal(theirs)
     with factory() as session:
-        run = session.scalars(select(ReconciliationRun).where(ReconciliationRun.run_day == run_day)).first()
+        run = session.scalars(
+            select(ReconciliationRun).where(ReconciliationRun.run_day == run_day)
+        ).first()
         if run is None:
-            run = ReconciliationRun(run_day=run_day, status=RunStatus.DONE.value, started_at=DETECTED)
+            run = ReconciliationRun(
+                run_day=run_day, status=RunStatus.DONE.value, started_at=DETECTED
+            )
             session.add(run)
             session.flush()
         difference = ReconciliationDifference(
@@ -60,10 +73,15 @@ def _difference(factory, *, days_old=0, partner="cajeros_express", type_="MISSIN
             currency=currency,
             pagoseguro_amount=ours_amount,
             partner_amount=theirs_amount,
-            amount_difference=(theirs_amount - ours_amount
-                               if type_ == "AMOUNT_MISMATCH" else None),
-            pagoseguro_at=None if ours is None else DETECTED - timedelta(days=days_old, hours=6),
-            partner_at=None if theirs is None else DETECTED - timedelta(days=days_old, hours=6),
+            amount_difference=(
+                theirs_amount - ours_amount if type_ == "AMOUNT_MISMATCH" else None
+            ),
+            pagoseguro_at=None
+            if ours is None
+            else DETECTED - timedelta(days=days_old, hours=6),
+            partner_at=None
+            if theirs is None
+            else DETECTED - timedelta(days=days_old, hours=6),
             status=status.value,
             detected_at=DETECTED,
         )
@@ -82,7 +100,10 @@ def _ids(response):
 
 # --- GET /reconciliation/differences (HU-38, HU-39, HU-40) ----------------------
 
-def test_missing_at_the_partner_listed_by_partner_with_amount_and_date(client, sessions):  # HU-38
+
+def test_missing_at_the_partner_listed_by_partner_with_amount_and_date(
+    client, sessions
+):  # HU-38
     andino = _difference(sessions, partner="banco_andino", ours="27.07")
     cajeros = _difference(sessions, partner="cajeros_express", ours="60.00")
     _difference(sessions, type_="MISSING_IN_PAGOSEGURO", ours=None, theirs="5.25")
@@ -93,38 +114,64 @@ def test_missing_at_the_partner_listed_by_partner_with_amount_and_date(client, s
     assert _ids(response) == [str(andino), str(cajeros)]  # same day: by partner
     first = response.json()["items"][0]
     assert (first["partner"], first["pagoseguro_amount"], first["currency"]) == (
-        "banco_andino", "27.07", "USD")
+        "banco_andino",
+        "27.07",
+        "USD",
+    )
     assert first["pagoseguro_at"].startswith("2026-11-02T01:04:00")
     assert (first["partner_amount"], first["partner_at"]) == (None, None)
     assert response.json()["total"] == 2
 
 
-def test_missing_at_pagoseguro_listed_with_the_partners_amount(client, sessions):  # HU-39
-    theirs = _difference(sessions, partner="qr_pagos", type_="MISSING_IN_PAGOSEGURO",
-                         ours=None, theirs="5.25")
+def test_missing_at_pagoseguro_listed_with_the_partners_amount(
+    client, sessions
+):  # HU-39
+    theirs = _difference(
+        sessions,
+        partner="qr_pagos",
+        type_="MISSING_IN_PAGOSEGURO",
+        ours=None,
+        theirs="5.25",
+    )
     _difference(sessions)
 
-    response = client.get(URL, params={"type": "MISSING_IN_PAGOSEGURO", "partner": "qr_pagos"})
+    response = client.get(
+        URL, params={"type": "MISSING_IN_PAGOSEGURO", "partner": "qr_pagos"}
+    )
 
     [only] = response.json()["items"]
     assert only["id"] == str(theirs)
-    assert (only["partner_amount"], only["partner_reference"], only["pagoseguro_amount"]) == (
-        "5.25", "CX000000099", None)
+    assert (
+        only["partner_amount"],
+        only["partner_reference"],
+        only["pagoseguro_amount"],
+    ) == ("5.25", "CX000000099", None)
     assert only["partner_at"] is not None
 
 
-@pytest.mark.parametrize(("currency", "ours", "theirs", "shown"), [
-    ("COP", "123456.78", "123457.00", ("123456.78", "123457.00", "0.22")),
-    ("USD", "100.00", "99.50", ("100.00", "99.50", "-0.50")),
-    ("EUR", "88.91", "89.00", ("88.91", "89.00", "0.09")),
-    ("JPY", "1500", "1502", ("1500", "1502", "2")),  # JPY without decimals
-])
-def test_an_amount_difference_shows_both_amounts(client, sessions, currency, ours, theirs, shown):  # HU-40
-    _difference(sessions, type_="AMOUNT_MISMATCH", currency=currency, ours=ours, theirs=theirs)
+@pytest.mark.parametrize(
+    ("currency", "ours", "theirs", "shown"),
+    [
+        ("COP", "123456.78", "123457.00", ("123456.78", "123457.00", "0.22")),
+        ("USD", "100.00", "99.50", ("100.00", "99.50", "-0.50")),
+        ("EUR", "88.91", "89.00", ("88.91", "89.00", "0.09")),
+        ("JPY", "1500", "1502", ("1500", "1502", "2")),  # JPY without decimals
+    ],
+)
+def test_an_amount_difference_shows_both_amounts(
+    client, sessions, currency, ours, theirs, shown
+):  # HU-40
+    _difference(
+        sessions, type_="AMOUNT_MISMATCH", currency=currency, ours=ours, theirs=theirs
+    )
 
     [only] = client.get(URL, params={"type": "AMOUNT_MISMATCH"}).json()["items"]
 
-    assert (only["pagoseguro_amount"], only["partner_amount"], only["amount_difference"]) == shown
+    assert (
+        only["pagoseguro_amount"],
+        only["partner_amount"],
+        only["amount_difference"],
+    ) == shown
 
 
 def test_by_default_only_pending_oldest_day_first(client, sessions):
@@ -144,7 +191,11 @@ def test_resolved_ones_on_request_without_age(client, sessions):
     [only] = client.get(URL, params={"status": "RESOLVED"}).json()["items"]
 
     assert only["id"] == str(resolved)
-    assert (only["status"], only["age_days"], only["resolved_by"]) == ("RESOLVED", None, "tesoreria")
+    assert (only["status"], only["age_days"], only["resolved_by"]) == (
+        "RESOLVED",
+        None,
+        "tesoreria",
+    )
 
 
 def test_from_and_to_are_run_days_inclusive(client, sessions):
@@ -175,8 +226,15 @@ def test_an_empty_list(client, sessions):
 
 
 def test_invalid_filters_are_400(client, sessions):
-    for params in ({"type": "LOST"}, {"partner": "banco_falso"}, {"status": "OPEN"},
-                   {"from": "2026-13-01"}, {"size": 201}, {"size": 0}, {"page": 0}):
+    for params in (
+        {"type": "LOST"},
+        {"partner": "banco_falso"},
+        {"status": "OPEN"},
+        {"from": "2026-13-01"},
+        {"size": 201},
+        {"size": 0},
+        {"page": 0},
+    ):
         response = client.get(URL, params=params)
         assert response.status_code == 400, params
         assert response.json()["detail"] == "The request contains invalid data."
@@ -188,9 +246,18 @@ def test_invalid_filters_are_400(client, sessions):
 
 # --- GET /reconciliation/differences/aging (HU-41) ----------------------------
 
-@pytest.mark.parametrize(("days_old", "label"), [
-    (0, "0-1"), (1, "0-1"), (2, "2-7"), (7, "2-7"), (8, "8+"), (30, "8+"),
-])
+
+@pytest.mark.parametrize(
+    ("days_old", "label"),
+    [
+        (0, "0-1"),
+        (1, "0-1"),
+        (2, "2-7"),
+        (7, "2-7"),
+        (8, "8+"),
+        (30, "8+"),
+    ],
+)
 def test_each_age_falls_in_its_range(client, sessions, days_old, label):
     _difference(sessions, days_old=days_old)
 
@@ -203,8 +270,12 @@ def test_each_age_falls_in_its_range(client, sessions, days_old, label):
 
 def test_aging_counts_by_type_and_skips_resolved(client, sessions):
     _difference(sessions, days_old=0)
-    _difference(sessions, days_old=1, type_="MISSING_IN_PAGOSEGURO", ours=None, theirs="5.25")
-    _difference(sessions, days_old=3, type_="AMOUNT_MISMATCH", ours="10.00", theirs="10.50")
+    _difference(
+        sessions, days_old=1, type_="MISSING_IN_PAGOSEGURO", ours=None, theirs="5.25"
+    )
+    _difference(
+        sessions, days_old=3, type_="AMOUNT_MISMATCH", ours="10.00", theirs="10.50"
+    )
     _difference(sessions, days_old=3)
     _difference(sessions, days_old=12, status=DifferenceStatus.RESOLVED)
 
@@ -212,12 +283,33 @@ def test_aging_counts_by_type_and_skips_resolved(client, sessions):
 
     assert body["total"] == 4
     assert body["ranges"] == [
-        {"range": "0-1", "count": 2, "by_type": {
-            "MISSING_IN_PARTNER": 1, "MISSING_IN_PAGOSEGURO": 1, "AMOUNT_MISMATCH": 0}},
-        {"range": "2-7", "count": 2, "by_type": {
-            "MISSING_IN_PARTNER": 1, "MISSING_IN_PAGOSEGURO": 0, "AMOUNT_MISMATCH": 1}},
-        {"range": "8+", "count": 0, "by_type": {
-            "MISSING_IN_PARTNER": 0, "MISSING_IN_PAGOSEGURO": 0, "AMOUNT_MISMATCH": 0}},
+        {
+            "range": "0-1",
+            "count": 2,
+            "by_type": {
+                "MISSING_IN_PARTNER": 1,
+                "MISSING_IN_PAGOSEGURO": 1,
+                "AMOUNT_MISMATCH": 0,
+            },
+        },
+        {
+            "range": "2-7",
+            "count": 2,
+            "by_type": {
+                "MISSING_IN_PARTNER": 1,
+                "MISSING_IN_PAGOSEGURO": 0,
+                "AMOUNT_MISMATCH": 1,
+            },
+        },
+        {
+            "range": "8+",
+            "count": 0,
+            "by_type": {
+                "MISSING_IN_PARTNER": 0,
+                "MISSING_IN_PAGOSEGURO": 0,
+                "AMOUNT_MISMATCH": 0,
+            },
+        },
     ]
 
 
@@ -235,13 +327,20 @@ def test_aging_without_differences_has_the_three_ranges(client, sessions):
     body = client.get(f"{URL}/aging").json()
 
     assert body["total"] == 0
-    assert [(r["range"], r["count"]) for r in body["ranges"]] == [("0-1", 0), ("2-7", 0), ("8+", 0)]
+    assert [(r["range"], r["count"]) for r in body["ranges"]] == [
+        ("0-1", 0),
+        ("2-7", 0),
+        ("8+", 0),
+    ]
 
 
 # --- POST /reconciliation/differences/{id}/resolution (HU-41) -----------------
 
+
 def _resolve(client, difference_id, note="Settled in the next file.", headers=TREASURY):
-    return client.post(f"{URL}/{difference_id}/resolution", json={"note": note}, headers=headers)
+    return client.post(
+        f"{URL}/{difference_id}/resolution", json={"note": note}, headers=headers
+    )
 
 
 def test_a_resolved_difference_is_no_longer_pending(client, sessions):
@@ -252,7 +351,10 @@ def test_a_resolved_difference_is_no_longer_pending(client, sessions):
     assert response.status_code == 200
     body = response.json()
     assert (body["status"], body["age_days"]) == ("RESOLVED", None)
-    assert (body["resolved_by"], body["resolution_note"]) == ("tesoreria.maria", "Settled in the next file.")
+    assert (body["resolved_by"], body["resolution_note"]) == (
+        "tesoreria.maria",
+        "Settled in the next file.",
+    )
     assert body["resolved_at"] is not None
     assert client.get(URL).json()["total"] == 0
     assert client.get(f"{URL}/aging").json()["total"] == 0
@@ -266,9 +368,14 @@ def test_resolving_twice_is_409(client, sessions):
     response = _resolve(client, difference_id, note="Second.")
 
     assert response.status_code == 409
-    assert response.json() == {"detail": "The difference is resolved; it can no longer change."}
+    assert response.json() == {
+        "detail": "The difference is resolved; it can no longer change."
+    }
     with sessions() as session:
-        assert session.get(ReconciliationDifference, difference_id).resolution_note == "First."
+        assert (
+            session.get(ReconciliationDifference, difference_id).resolution_note
+            == "First."
+        )
 
 
 def test_without_x_user_is_400(client, sessions):
@@ -287,7 +394,9 @@ def test_an_invalid_note_is_400(client, sessions):
     difference_id = _difference(sessions)
 
     for body in ({}, {"note": ""}, {"note": "   "}, {"note": "x" * 2001}):
-        response = client.post(f"{URL}/{difference_id}/resolution", json=body, headers=TREASURY)
+        response = client.post(
+            f"{URL}/{difference_id}/resolution", json=body, headers=TREASURY
+        )
         assert response.status_code == 400, body
 
 

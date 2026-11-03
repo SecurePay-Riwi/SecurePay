@@ -131,7 +131,10 @@ def write(session, rows: list[dict]) -> int:
         insert(AccountTransaction)
         .values(rows)
         .on_conflict_do_nothing(
-            index_elements=[AccountTransaction.transaction_id, AccountTransaction.account_id]
+            index_elements=[
+                AccountTransaction.transaction_id,
+                AccountTransaction.account_id,
+            ]
         )
         .returning(AccountTransaction.transaction_id)
     ).all()
@@ -147,7 +150,9 @@ def handler(event, context=None):
             rows += history_rows(decided)
             pending.append(message_id)
         except NotHistory as exc:
-            log.error("Message %s cannot be written to the history: %s", message_id, exc)
+            log.error(
+                "Message %s cannot be written to the history: %s", message_id, exc
+            )
             failed.append(message_id)
 
     if not rows:

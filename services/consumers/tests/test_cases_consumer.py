@@ -379,7 +379,9 @@ def test_a_listed_top_up_destination_gets_a_report(sessions):
 def test_nobody_listed_means_no_report(sessions):
     """The list changed between the decision and the consumer: the case
     opens, without a report."""
-    event = _listed_event(_owner(sessions, "1000000003"), _owner(sessions, "1000000004"))
+    event = _listed_event(
+        _owner(sessions, "1000000003"), _owner(sessions, "1000000004")
+    )
 
     assert cases.handler(_batch(event)) == {"batchItemFailures": []}
 
@@ -417,7 +419,9 @@ def test_a_repeated_event_writes_a_report_the_first_delivery_missed(sessions):
 
     with sessions() as session:
         session.add(
-            ListaRestrictiva(documento="1000000006", tipo="PEP", fecha_inclusion=date(2026, 10, 1))
+            ListaRestrictiva(
+                documento="1000000006", tipo="PEP", fecha_inclusion=date(2026, 10, 1)
+            )
         )
         session.commit()
     cases.handler(_batch(body))
@@ -440,6 +444,7 @@ def test_a_restricted_list_event_with_a_bad_account_fails_alone(sessions):
 
 # --- HU-43: original amount, USD and the rate used ---------------------------
 
+
 def _in(event, amount, currency_code):
     event["transaction"]["amount"] = amount
     event["transaction"]["currency"] = currency_code
@@ -458,8 +463,11 @@ def _in(event, amount, currency_code):
 def test_a_case_keeps_the_original_amount_usd_and_the_rate(
     sessions, amount, currency_code, amount_usd, usd_rate
 ):
-    event = _in(_event(amount_usd=amount_usd, usd_rate=usd_rate, rate_date="2026-10-13"),
-                amount, currency_code)
+    event = _in(
+        _event(amount_usd=amount_usd, usd_rate=usd_rate, rate_date="2026-10-13"),
+        amount,
+        currency_code,
+    )
 
     assert cases.handler(_batch(event)) == {"batchItemFailures": []}
 

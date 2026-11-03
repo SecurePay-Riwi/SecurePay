@@ -420,6 +420,29 @@ In the console, NAT gateways must show "Deleted", **EC2 → Elastic IPs** must b
 
 **Cost.** The bill does not show what is running right now: **Billing → Cost Explorer** shows each day about 24 hours later (group by service, daily). To filter future tests by `project = securepay`, activate the `project` tag once in **Billing → Cost allocation tags**; it counts only from the day it is activated.
 
+## Automatic deploys from GitHub Actions
+
+Steps 6 and 7 build and push the image by hand. Once dev exists, `.github/workflows/deploy.yml` does the same on every merge to `main`: it assumes the role `securepay-dev-deploy` with GitHub's OIDC token (no AWS keys in GitHub; the role only trusts the `main` branch), pushes the engine image to `securepay-dev-engine` tagged with the short commit, registers a new revision of the engine task definition with that image, rolls out the ECS service `engine` and updates the six Lambdas of steps 7 and 8. Terraform still creates and destroys the environment.
+
+**Once:** create the repository variable with the role ARN (anyone with admin access to the repository). Get the ARN:
+
+```powershell
+aws iam get-role --role-name securepay-dev-deploy --query Role.Arn --output text
+```
+
+Then in GitHub: **SecurePay → Settings → Secrets and variables → Actions → Variables → New repository variable**, name `AWS_DEPLOY_ROLE_ARN`, value the ARN. It is a variable, not a secret: it holds no key, only the account number.
+
+**Run it by hand** after an `apply`, to deploy what is already in `main`: **Actions → Deploy → Run workflow** (branch `main`). The job log ends with `Engine running ...` and one `... running ...` line per Lambda.
+
+| Situation | Result |
+| --- | --- |
+| Dev destroyed (the role does not exist) or the variable is not set | Green, with the notice "Nothing deployed" |
+| The image tag is already in ECR (a rerun of the same commit) | The image is reused; tags are immutable |
+| The service or a Lambda does not exist yet (no image tag in `terraform.tfvars`) | Green, with a notice for each one |
+| The new tasks fail their health checks | The ECS circuit breaker rolls back and the job fails with "Rollback" |
+
+A later `terraform apply` puts back the image tag of `terraform.tfvars`; set it to the deployed commit if you apply again. Cost: the deploy itself is free (GitHub Actions); while it rolls out, two engine tasks run side by side for a few minutes.
+
 ## Rules
 
 - **One computer.** The state (`terraform.tfstate`) stays in `envs\dev` on your computer and git ignores it. Always run `apply` and `destroy` from the same computer: another one has no state and does not know what exists.

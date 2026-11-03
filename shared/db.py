@@ -1,5 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
 from shared.config import DATABASE_URL
 
 
@@ -13,12 +14,13 @@ def url_con_psycopg3(url: str) -> str:
     """
     for prefijo in ("postgresql://", "postgres://"):
         if url.startswith(prefijo):
-            return "postgresql+psycopg://" + url[len(prefijo):]
+            return "postgresql+psycopg://" + url[len(prefijo) :]
     return url
 
 
 engine = create_engine(url_con_psycopg3(DATABASE_URL), echo=False)
 SessionLocal = sessionmaker(bind=engine)
+
 
 def get_session():
     return SessionLocal()

@@ -1,5 +1,5 @@
-
 import uuid
+
 from sqlalchemy import (
     Boolean,
     Column,

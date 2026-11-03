@@ -10,7 +10,7 @@ down, restricted list not loaded) are in test_reference_data.py.
 
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
@@ -32,7 +32,7 @@ def _payload(amount: str, currency_code: str = "USD") -> TransactionRequest:
         source_balance_before="1000000",
         source_balance_after=str(Decimal("1000000") - Decimal(amount)),
         device_id=uuid4(),
-        transaction_date=datetime.now(timezone.utc),
+        transaction_date=datetime.now(UTC),
     )
 
 
@@ -46,7 +46,7 @@ def _rules_answer(decision: str, delay_s: float = 0):
             "rules_version": str(snapshot.version),
             "rules_triggered": [],
             "by_default": False,
-            "processed_at": datetime.now(timezone.utc).isoformat(),
+            "processed_at": datetime.now(UTC).isoformat(),
         }
 
     return fake_decide

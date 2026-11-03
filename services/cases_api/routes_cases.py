@@ -117,24 +117,34 @@ def ensure_pending(case: Case) -> None:
         raise HTTPException(status_code=409, detail=RESOLVED)
 
 
-def assign(session: Session, case: Case, assignee: str, actor: str, now: datetime) -> bool:
+def assign(
+    session: Session, case: Case, assignee: str, actor: str, now: datetime
+) -> bool:
     """Set the owner and write ASSIGNED {"from", "to"} in the same
     transaction. The same owner again changes nothing (no event)."""
     if case.assignee == assignee:
         return False
-    session.add(CaseEvent(
-        case_id=case.id,
-        type=CaseEventType.ASSIGNED.value,
-        actor=actor,
-        at=now,
-        data={"from": case.assignee, "to": assignee},
-    ))
+    session.add(
+        CaseEvent(
+            case_id=case.id,
+            type=CaseEventType.ASSIGNED.value,
+            actor=actor,
+            at=now,
+            data={"from": case.assignee, "to": assignee},
+        )
+    )
     case.assignee = assignee
     return True
 
 
-def resolve(session: Session, case: Case, outcome: CaseOutcome, note: str,
-            actor: str, now: datetime) -> None:
+def resolve(
+    session: Session,
+    case: Case,
+    outcome: CaseOutcome,
+    note: str,
+    actor: str,
+    now: datetime,
+) -> None:
     """Close the case with its outcome and write RESOLVED {"outcome",
     "final_decision", "note"} in the same transaction."""
     final_decision = FINAL_DECISION[outcome]
@@ -144,13 +154,19 @@ def resolve(session: Session, case: Case, outcome: CaseOutcome, note: str,
     case.resolution_note = note
     case.resolved_at = now
     case.resolved_by = actor
-    session.add(CaseEvent(
-        case_id=case.id,
-        type=CaseEventType.RESOLVED.value,
-        actor=actor,
-        at=now,
-        data={"outcome": outcome.value, "final_decision": final_decision, "note": note},
-    ))
+    session.add(
+        CaseEvent(
+            case_id=case.id,
+            type=CaseEventType.RESOLVED.value,
+            actor=actor,
+            at=now,
+            data={
+                "outcome": outcome.value,
+                "final_decision": final_decision,
+                "note": note,
+            },
+        )
+    )
 
 
 @router.get("/cases", response_model=CasePage, **docs.CASES)
@@ -158,11 +174,15 @@ def list_cases(
     session: Annotated[Session, Depends(deps.get_session)],
     status: Annotated[
         CaseStatus | None,
-        Query(description="Only this state. Without it: the pending cases (OPEN and ESCALATED)."),
+        Query(
+            description="Only this state. Without it: the pending cases (OPEN and ESCALATED)."
+        ),
     ] = None,
     assignee: Annotated[
         str | None,
-        Query(min_length=1, max_length=100, description="Only the cases of this analyst."),
+        Query(
+            min_length=1, max_length=100, description="Only the cases of this analyst."
+        ),
     ] = None,
     page: Annotated[int, Query(ge=1, description="Page number, from 1.")] = 1,
     size: Annotated[
@@ -209,7 +229,9 @@ def assign_case(
     case_id: UUID,
     body: AssigneeChange,
     session: Annotated[Session, Depends(deps.get_session)],
-    x_user: Annotated[str | None, Header(description="Who makes the change (1 to 100 characters).")] = None,
+    x_user: Annotated[
+        str | None, Header(description="Who makes the change (1 to 100 characters).")
+    ] = None,
 ):
     actor = deps.author(x_user)
     case = get_case(session, case_id, for_update=True)
@@ -227,7 +249,9 @@ def resolve_case(
     case_id: UUID,
     body: Resolution,
     session: Annotated[Session, Depends(deps.get_session)],
-    x_user: Annotated[str | None, Header(description="Who resolves the case (1 to 100 characters).")] = None,
+    x_user: Annotated[
+        str | None, Header(description="Who resolves the case (1 to 100 characters).")
+    ] = None,
 ):
     actor = deps.author(x_user)
     case = get_case(session, case_id, for_update=True)

@@ -13,11 +13,16 @@ securepay-csv, which writes these files (AGENTS.md, rule 4).
 
 import csv
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
 from shared.config import MONEDA_DECIMALES
-from shared.reconciliation import PARTNER_UTC_OFFSET, Partner, RejectedRow, StatementRecord
+from shared.reconciliation import (
+    PARTNER_UTC_OFFSET,
+    Partner,
+    RejectedRow,
+    StatementRecord,
+)
 
 
 class LineError(ValueError):
@@ -90,7 +95,7 @@ def _time(text: str, fmt: str, zone: timezone) -> datetime:
         local = datetime.strptime(text.strip(), fmt)
     except ValueError:
         raise LineError("date is not valid") from None
-    return local.replace(tzinfo=zone).astimezone(timezone.utc)
+    return local.replace(tzinfo=zone).astimezone(UTC)
 
 
 def _required(value: str, name: str) -> str:
@@ -151,14 +156,20 @@ class Reader:
                 continue
             records.append(record)
             readable_total += (
-                record.amount / _step(record.currency) if self.total_in_minor_units else record.amount
+                record.amount / _step(record.currency)
+                if self.total_in_minor_units
+                else record.amount
             )
 
         if not control_unreadable:
-            rejected += self._check_control(control, detail_lines, readable_total, file_name, len(lines))
+            rejected += self._check_control(
+                control, detail_lines, readable_total, file_name, len(lines)
+            )
         return ParsedFile(records, rejected)
 
-    def _check_control(self, control, detail_lines, readable_total, file_name, last_line):
+    def _check_control(
+        self, control, detail_lines, readable_total, file_name, last_line
+    ):
         if control is None:
             return [self._reject(file_name, last_line, "", "control record is missing")]
         if control.count == detail_lines and control.total == readable_total:
@@ -171,11 +182,27 @@ class Reader:
         return [self._reject(file_name, control.line_number, control.raw, reason)]
 
     def _reject(self, file_name, number, raw, reason) -> RejectedRow:
-        return RejectedRow(partner=self.partner.value, file_name=file_name,
-                           line_number=number, raw=raw, reason=reason)
+        return RejectedRow(
+            partner=self.partner.value,
+            file_name=file_name,
+            line_number=number,
+            raw=raw,
+            reason=reason,
+        )
 
-    def _record(self, file_name, number, statement_day, *, reference, partner_reference,
-                tx_type, currency, amount, at) -> StatementRecord:
+    def _record(
+        self,
+        file_name,
+        number,
+        statement_day,
+        *,
+        reference,
+        partner_reference,
+        tx_type,
+        currency,
+        amount,
+        at,
+    ) -> StatementRecord:
         return StatementRecord(
             partner=self.partner.value,
             statement_day=statement_day,
@@ -191,13 +218,15 @@ class Reader:
 
     # What each partner defines.
     def kind(self, raw: str, number: int) -> str:
-        """"detail", "control" or "skip" (a header)."""
+        """ "detail", "control" or "skip" (a header)."""
         raise NotImplementedError
 
     def control(self, raw: str, number: int) -> Control:
         raise NotImplementedError
 
-    def detail(self, raw: str, number: int, file_name: str, statement_day: date) -> StatementRecord:
+    def detail(
+        self, raw: str, number: int, file_name: str, statement_day: date
+    ) -> StatementRecord:
         raise NotImplementedError
 
 
@@ -225,14 +254,22 @@ class BancoAndino(Reader):
         return _control(raw, number, row[1], row[2])
 
     def detail(self, raw, number, file_name, statement_day):
-        at, bank_ref, reference, tx_type, currency, amount = _fields(_csv_row(raw, ","), 6)
+        at, bank_ref, reference, tx_type, currency, amount = _fields(
+            _csv_row(raw, ","), 6
+        )
         if tx_type.strip() != "RECARGA":
             raise LineError(f"unknown transaction type {tx_type.strip()!r}")
         currency = _currency(currency)
         return self._record(
-            file_name, number, statement_day, reference=reference, partner_reference=bank_ref,
-            tx_type="RECARGA", currency=currency, amount=_amount(amount, currency),
-            at=_time(at, "%Y-%m-%dT%H:%M:%SZ", timezone.utc),
+            file_name,
+            number,
+            statement_day,
+            reference=reference,
+            partner_reference=bank_ref,
+            tx_type="RECARGA",
+            currency=currency,
+            amount=_amount(amount, currency),
+            at=_time(at, "%Y-%m-%dT%H:%M:%SZ", UTC),
         )
 
 
@@ -257,14 +294,22 @@ class RedCorresponsales(Reader):
         if not raw.startswith("D"):
             raise LineError(f"unknown record type {raw[:1]!r}")
         if len(raw.rstrip()) != self.DETAIL_LENGTH:
-            raise LineError(f"detail record has {len(raw.rstrip())} characters, expected {self.DETAIL_LENGTH}")
+            raise LineError(
+                f"detail record has {len(raw.rstrip())} characters, expected {self.DETAIL_LENGTH}"
+            )
         tx_type = raw[63:70].strip()
         if tx_type not in ("RECARGA", "RETIRO"):
             raise LineError(f"unknown transaction type {tx_type!r}")
         currency = _currency(raw[70:73])
         return self._record(
-            file_name, number, statement_day, reference=raw[27:63], partner_reference=raw[15:27],
-            tx_type=tx_type, currency=currency, amount=_minor_units(raw[73:88], currency),
+            file_name,
+            number,
+            statement_day,
+            reference=raw[27:63],
+            partner_reference=raw[15:27],
+            tx_type=tx_type,
+            currency=currency,
+            amount=_minor_units(raw[73:88], currency),
             at=_time(raw[1:15], "%Y%m%d%H%M%S", _zone(self.partner)),
         )
 
@@ -289,9 +334,19 @@ class CajerosExpress(Reader):
         day, hour, atm_ref, reference, currency, amount = _fields(_csv_row(raw, ";"), 6)
         currency = _currency(currency)
         return self._record(
-            file_name, number, statement_day, reference=reference, partner_reference=atm_ref,
-            tx_type="RETIRO", currency=currency, amount=_amount(amount.replace(",", "."), currency),
-            at=_time(f"{day.strip()} {hour.strip()}", "%d/%m/%Y %H:%M:%S", _zone(self.partner)),
+            file_name,
+            number,
+            statement_day,
+            reference=reference,
+            partner_reference=atm_ref,
+            tx_type="RETIRO",
+            currency=currency,
+            amount=_amount(amount.replace(",", "."), currency),
+            at=_time(
+                f"{day.strip()} {hour.strip()}",
+                "%d/%m/%Y %H:%M:%S",
+                _zone(self.partner),
+            ),
         )
 
 
@@ -317,9 +372,15 @@ class QrPagos(Reader):
         qr_ref, reference, _merchant, currency, units, at = _fields(raw.split("|"), 6)
         currency = _currency(currency)
         return self._record(
-            file_name, number, statement_day, reference=reference, partner_reference=qr_ref,
-            tx_type="QR", currency=currency, amount=_minor_units(units, currency),
-            at=_time(at, "%Y-%m-%d %H:%M:%S", timezone.utc),
+            file_name,
+            number,
+            statement_day,
+            reference=reference,
+            partner_reference=qr_ref,
+            tx_type="QR",
+            currency=currency,
+            amount=_minor_units(units, currency),
+            at=_time(at, "%Y-%m-%d %H:%M:%S", UTC),
         )
 
 

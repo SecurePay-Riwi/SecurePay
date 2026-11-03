@@ -2,7 +2,7 @@
 it. Unit tests: no PostgreSQL, Valkey or LocalStack.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -22,7 +22,7 @@ from shared.rule_catalog import (
     default_catalog,
 )
 
-BASE = datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc)
+BASE = datetime(2026, 10, 13, 12, 0, tzinfo=UTC)
 
 
 def _snapshot(*entries: RuleEntry, version: int = 7) -> CatalogSnapshot:
@@ -32,15 +32,20 @@ def _snapshot(*entries: RuleEntry, version: int = 7) -> CatalogSnapshot:
 
 
 def _velocity(**changes) -> RuleEntry:
-    fields = dict(code="velocity", type="velocity", action="HOLD",
-                  params={"window_minutes": 10, "limit": 5})
+    fields = dict(
+        code="velocity",
+        type="velocity",
+        action="HOLD",
+        params={"window_minutes": 10, "limit": 5},
+    )
     fields.update(changes)
     return RuleEntry(**fields)
 
 
 def _restricted(**changes) -> RuleEntry:
-    fields = dict(code="restricted_list", type="restricted_list", action="REJECT",
-                  opens_case=True)
+    fields = dict(
+        code="restricted_list", type="restricted_list", action="REJECT", opens_case=True
+    )
     fields.update(changes)
     return RuleEntry(**fields)
 
@@ -49,12 +54,19 @@ def _context(transfers: int, on_list: bool = False) -> RuleContext:
     """A P2P that is the last of `transfers` transfers, one per minute."""
     times = [BASE + timedelta(minutes=m) for m in range(transfers)]
     payload = TransactionRequest(
-        id=uuid4(), type="P2P", channel="APP",
-        source_account_id=uuid4(), destination_account_id=uuid4(),
-        amount="10.00", currency="USD",
-        source_balance_before="100.00", source_balance_after="90.00",
-        destination_balance_before="0.00", destination_balance_after="10.00",
-        device_id=uuid4(), transaction_date=times[-1],
+        id=uuid4(),
+        type="P2P",
+        channel="APP",
+        source_account_id=uuid4(),
+        destination_account_id=uuid4(),
+        amount="10.00",
+        currency="USD",
+        source_balance_before="100.00",
+        source_balance_after="90.00",
+        destination_balance_before="0.00",
+        destination_balance_after="10.00",
+        device_id=uuid4(),
+        transaction_date=times[-1],
     )
     ctx = RuleContext(
         payload=payload,
@@ -101,10 +113,18 @@ def test_snapshot_survives_a_json_round_trip():
 @pytest.mark.parametrize(
     "fields",
     [
-        dict(code="velocity", type="velocity", action="HOLD",
-             params={"window_minutes": 2000, "limit": 5}),  # longer than the history
-        dict(code="velocity", type="velocity", action="HOLD",
-             params={"limit": 5, "minutes": 10}),           # unknown parameter
+        dict(
+            code="velocity",
+            type="velocity",
+            action="HOLD",
+            params={"window_minutes": 2000, "limit": 5},
+        ),  # longer than the history
+        dict(
+            code="velocity",
+            type="velocity",
+            action="HOLD",
+            params={"limit": 5, "minutes": 10},
+        ),  # unknown parameter
         dict(code="velocity", type="velocity", action="WAIT"),
         dict(code="velocity", type="teleport", action="HOLD"),
         dict(code="Velocity!", type="velocity", action="HOLD"),

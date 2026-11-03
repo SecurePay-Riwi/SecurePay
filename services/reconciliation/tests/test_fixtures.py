@@ -18,12 +18,17 @@ EXPECTED_TYPES = {
     MatchStatus.ONLY_PAGOSEGURO: [DifferenceType.MISSING_IN_PARTNER],
     MatchStatus.ONLY_PARTNER: [DifferenceType.MISSING_IN_PAGOSEGURO],
     MatchStatus.AMOUNT_OFF: [DifferenceType.AMOUNT_MISMATCH],
-    MatchStatus.DATE_OFF: [DifferenceType.MISSING_IN_PARTNER, DifferenceType.MISSING_IN_PAGOSEGURO],
+    MatchStatus.DATE_OFF: [
+        DifferenceType.MISSING_IN_PARTNER,
+        DifferenceType.MISSING_IN_PAGOSEGURO,
+    ],
 }
 
 
 def _rows():
-    return [match_row_from_json(d) for d in storage.read_jsonl(f"{MATCH}/part-00000.json")]
+    return [
+        match_row_from_json(d) for d in storage.read_jsonl(f"{MATCH}/part-00000.json")
+    ]
 
 
 def test_every_status_and_type_is_in_the_fixtures():
@@ -47,7 +52,12 @@ def test_answer_key_is_the_match_rows_classified(report):
     for row in _rows():
         for kind in EXPECTED_TYPES[MatchStatus(row.status)]:
             found[(kind.value, row.partner, row.reference)] += 1
-    expected = Counter((d["type"], d["partner"], d["reference"]) for d in report["expected_differences"])
+    expected = Counter(
+        (d["type"], d["partner"], d["reference"])
+        for d in report["expected_differences"]
+    )
     assert found == expected
     assert report["expected_run"]["differences"] == sum(expected.values())
-    assert report["expected_run"]["matched"] == sum(r.status == "MATCHED" for r in _rows())
+    assert report["expected_run"]["matched"] == sum(
+        r.status == "MATCHED" for r in _rows()
+    )

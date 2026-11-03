@@ -15,7 +15,12 @@ from datetime import UTC, datetime
 
 from sqlalchemy.exc import SQLAlchemyError
 
-from services.alerts import account_history, compliance_summary, escalation, reconciliation_check
+from services.alerts import (
+    account_history,
+    compliance_summary,
+    escalation,
+    reconciliation_check,
+)
 from shared import db, evidence
 from shared.cases import create_schema
 

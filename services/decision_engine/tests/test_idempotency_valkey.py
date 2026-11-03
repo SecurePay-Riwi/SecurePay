@@ -1,4 +1,3 @@
-
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 from uuid import uuid4
@@ -16,7 +15,6 @@ from services.decision_engine.idempotency import (
     reservar,
 )
 from shared.cache import get_cache
-
 
 RESULTADO = {"decision": "APPROVE", "decision_reason": "Prueba"}
 

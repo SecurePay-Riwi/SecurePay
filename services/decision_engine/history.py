@@ -114,22 +114,26 @@ def record(key, member, date, retention_ms, return_history):
 
     return _script(
         keys=[key],
-        args=[member, to_ms(date), retention_ms, retention_ms // 1000,
-              1 if return_history else 0],
+        args=[
+            member,
+            to_ms(date),
+            retention_ms,
+            retention_ms // 1000,
+            1 if return_history else 0,
+        ],
     )
 
 
 def _pairs(raw):
     """Valkey's reply alternates member and score."""
-    return zip(raw[0::2], raw[1::2])
+    return zip(raw[0::2], raw[1::2], strict=True)
 
 
 def record_outgoing(account_id, tx_id, tx_type, amount, date) -> list[Outgoing]:
     """Store what leaves the account and return all its retained outgoing
     movements, in real chronological order."""
     member = f"{tx_id}|{tx_type}|{amount}"
-    raw = record(outgoing_key(account_id), member, date, OUT_MS,
-                  return_history=True)
+    raw = record(outgoing_key(account_id), member, date, OUT_MS, return_history=True)
 
     result = []
     for m, t in _pairs(raw):
@@ -167,6 +171,7 @@ def record_device(device_id, account_id, date) -> list[DeviceUse]:
     An event older than the one already stored for that account moves
     its last time back; that only shortens how long it is kept.
     """
-    raw = record(device_key(device_id), str(account_id), date, DEVICE_MS,
-                 return_history=True)
+    raw = record(
+        device_key(device_id), str(account_id), date, DEVICE_MS, return_history=True
+    )
     return [DeviceUse(m, int(float(t))) for m, t in _pairs(raw)]

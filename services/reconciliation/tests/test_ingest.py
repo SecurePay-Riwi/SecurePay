@@ -5,9 +5,9 @@ says; the small files written here cover each format and each bad line.
 """
 
 import io
-from pathlib import Path
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -62,7 +62,10 @@ def test_the_latest_version_wins():
     files = {r.file_name for r in records if r.partner == "banco_andino"}
     assert files == {"banco_andino_20261005_v2.csv"}
     # v1's control does not add up, but v1 is not read at all.
-    assert not any(r.file_name.endswith("_v1.csv") and r.partner == "banco_andino" for r in rejected)
+    assert not any(
+        r.file_name.endswith("_v1.csv") and r.partner == "banco_andino"
+        for r in rejected
+    )
 
 
 def test_run_writes_records_and_rejects(tmp_path, report):
@@ -94,7 +97,11 @@ def test_banco_andino_reads_utc_and_extra_decimals():
     [record] = parsed.records
     assert record.amount == Decimal("88.91") and str(record.amount) == "88.91"
     assert record.transaction_at == datetime(2026, 10, 5, 18, 20, tzinfo=UTC)
-    assert (record.tx_type, record.partner_reference, record.line_number) == ("RECARGA", "BA1", 2)
+    assert (record.tx_type, record.partner_reference, record.line_number) == (
+        "RECARGA",
+        "BA1",
+        2,
+    )
 
 
 def test_red_corresponsales_reads_fixed_width_bogota_time_and_minor_units():
@@ -143,14 +150,26 @@ def test_qr_pagos_reads_control_first_and_jpy_without_decimals():
 
 def test_an_empty_day_file_is_read_and_counts(tmp_path):
     for partner, name, text in [
-        ("banco_andino", "banco_andino_20261005_v1.csv",
-         "fecha_hora_utc,referencia_banco,referencia_pagoseguro,tipo,moneda,monto\nTOTAL,0,0\n"),
-        ("red_corresponsales", "red_corresponsales_20261005_v1.txt",
-         "Hred_corresponsales  2026100501\nT00000000000000000000000000\n"),
-        ("cajeros_express", "cajeros_express_20261005_v1.csv",
-         "Fecha;Hora;Ref Cajero;Ref Billetera;Moneda;Valor\nCONTROL;0;0\n"),
-        ("qr_pagos", "qr_pagos_20261005_v1.txt",
-         "#CTRL|2026-10-05|0|0\nref_qr|ref_pagoseguro|comercio|moneda|monto_minimo|fecha\n"),
+        (
+            "banco_andino",
+            "banco_andino_20261005_v1.csv",
+            "fecha_hora_utc,referencia_banco,referencia_pagoseguro,tipo,moneda,monto\nTOTAL,0,0\n",
+        ),
+        (
+            "red_corresponsales",
+            "red_corresponsales_20261005_v1.txt",
+            "Hred_corresponsales  2026100501\nT00000000000000000000000000\n",
+        ),
+        (
+            "cajeros_express",
+            "cajeros_express_20261005_v1.csv",
+            "Fecha;Hora;Ref Cajero;Ref Billetera;Moneda;Valor\nCONTROL;0;0\n",
+        ),
+        (
+            "qr_pagos",
+            "qr_pagos_20261005_v1.txt",
+            "#CTRL|2026-10-05|0|0\nref_qr|ref_pagoseguro|comercio|moneda|monto_minimo|fecha\n",
+        ),
     ]:
         _write(tmp_path, partner, name, text)
     result = ingest.run(DAY, str(tmp_path), str(tmp_path / "out"))
@@ -160,7 +179,9 @@ def test_an_empty_day_file_is_read_and_counts(tmp_path):
 # --- Bad lines ---------------------------------------------------------------
 
 
-BANCO_HEADER = "fecha_hora_utc,referencia_banco,referencia_pagoseguro,tipo,moneda,monto\n"
+BANCO_HEADER = (
+    "fecha_hora_utc,referencia_banco,referencia_pagoseguro,tipo,moneda,monto\n"
+)
 
 
 @pytest.mark.parametrize(
@@ -169,12 +190,24 @@ BANCO_HEADER = "fecha_hora_utc,referencia_banco,referencia_pagoseguro,tipo,moned
         (f"2026-10-05T07:45:29Z,BA1,{REF},RECARGA,USD", "expected 6 fields, found 5"),
         (f"2026-10-05T07:45:29Z,BA1,{REF},RECARGA,USD,N/A", "amount is not a number"),
         (f"2026-10-05T07:45:29Z,BA1,{REF},RECARGA,USD,-5.00", "amount is not positive"),
-        (f"2026-10-05T07:45:29Z,BA1,{REF},RECARGA,USD,88.913", "amount has more decimals than USD allows"),
-        (f"2026-10-05T07:45:29Z,BA1,{REF},RECARGA,JPY,10.5", "amount has more decimals than JPY allows"),
+        (
+            f"2026-10-05T07:45:29Z,BA1,{REF},RECARGA,USD,88.913",
+            "amount has more decimals than USD allows",
+        ),
+        (
+            f"2026-10-05T07:45:29Z,BA1,{REF},RECARGA,JPY,10.5",
+            "amount has more decimals than JPY allows",
+        ),
         (f"2026-10-32T07:45:29Z,BA1,{REF},RECARGA,USD,27.07", "date is not valid"),
         (f"2026-10-05T07:45:29Z,BA1,{REF},RECARGA,GBP,27.07", "unknown currency 'GBP'"),
-        ("2026-10-05T07:45:29Z,BA1,,RECARGA,USD,27.07", "pagoseguro reference is missing"),
-        (f"2026-10-05T07:45:29Z,BA1,{REF},RETIRO,USD,27.07", "unknown transaction type 'RETIRO'"),
+        (
+            "2026-10-05T07:45:29Z,BA1,,RECARGA,USD,27.07",
+            "pagoseguro reference is missing",
+        ),
+        (
+            f"2026-10-05T07:45:29Z,BA1,{REF},RETIRO,USD,27.07",
+            "unknown transaction type 'RETIRO'",
+        ),
     ],
 )
 def test_a_bad_line_is_rejected_and_the_rest_is_read(line, reason):
@@ -246,19 +279,30 @@ def test_a_missing_control_is_rejected():
 
 
 def test_an_unreadable_control_is_rejected_once():
-    text = BANCO_HEADER + f"2026-10-05T07:45:29Z,BA1,{REF},RECARGA,USD,27.07\nTOTAL,one,27.07\n"
-    assert _reasons(_parse("banco_andino", text)) == [(3, "control record is not readable")]
+    text = (
+        BANCO_HEADER
+        + f"2026-10-05T07:45:29Z,BA1,{REF},RECARGA,USD,27.07\nTOTAL,one,27.07\n"
+    )
+    assert _reasons(_parse("banco_andino", text)) == [
+        (3, "control record is not readable")
+    ]
 
 
 # --- Files ---------------------------------------------------------------------
 
 
 def test_a_missing_file_is_a_rejected_row(tmp_path):
-    _write(tmp_path, "qr_pagos", "qr_pagos_20261005_v1.txt",
-           "#CTRL|2026-10-05|0|0\nref_qr|ref_pagoseguro|comercio|moneda|monto_minimo|fecha\n")
+    _write(
+        tmp_path,
+        "qr_pagos",
+        "qr_pagos_20261005_v1.txt",
+        "#CTRL|2026-10-05|0|0\nref_qr|ref_pagoseguro|comercio|moneda|monto_minimo|fecha\n",
+    )
     records, rejected = ingest.read_day(DAY, str(tmp_path))
     assert records == []
-    assert sorted((r.partner, r.file_name, r.line_number, r.reason) for r in rejected) == [
+    assert sorted(
+        (r.partner, r.file_name, r.line_number, r.reason) for r in rejected
+    ) == [
         ("banco_andino", "banco_andino_20261005_v1.csv", 0, "file missing"),
         ("cajeros_express", "cajeros_express_20261005_v1.csv", 0, "file missing"),
         ("red_corresponsales", "red_corresponsales_20261005_v1.txt", 0, "file missing"),
@@ -267,12 +311,22 @@ def test_a_missing_file_is_a_rejected_row(tmp_path):
 
 def test_version_10_wins_over_version_9(tmp_path):
     for version in (9, 10):
-        _write(tmp_path, "banco_andino", f"banco_andino_20261005_v{version}.csv", BANCO_HEADER + "TOTAL,0,0\n")
+        _write(
+            tmp_path,
+            "banco_andino",
+            f"banco_andino_20261005_v{version}.csv",
+            BANCO_HEADER + "TOTAL,0,0\n",
+        )
     assert ingest.latest_file(str(tmp_path), "banco_andino", DAY).endswith("_v10.csv")
 
 
 def test_another_days_file_in_the_folder_is_ignored(tmp_path):
-    _write(tmp_path, "banco_andino", "banco_andino_20261004_v1.csv", BANCO_HEADER + "TOTAL,0,0\n")
+    _write(
+        tmp_path,
+        "banco_andino",
+        "banco_andino_20261004_v1.csv",
+        BANCO_HEADER + "TOTAL,0,0\n",
+    )
     assert ingest.latest_file(str(tmp_path), "banco_andino", DAY) is None
 
 
@@ -283,13 +337,21 @@ def test_handler_reads_the_day_of_the_event(tmp_path, monkeypatch):
     monkeypatch.setattr(ingest, "STATEMENTS_SOURCE", STATEMENTS)
     monkeypatch.setattr(ingest, "RECON_DATA_DIR", str(tmp_path))
     result = ingest.handler({"day": "2026-10-05"})
-    assert (result["day"], result["records"], result["rejected"]) == ("2026-10-05", 11, 2)
+    assert (result["day"], result["records"], result["rejected"]) == (
+        "2026-10-05",
+        11,
+        2,
+    )
 
 
 def test_without_a_day_it_reads_yesterday_in_bogota():
     # 04:00 UTC of the 6th is still 23:00 of the 5th in Bogota.
-    assert ingest.yesterday_in_bogota(datetime(2026, 10, 6, 4, 0, tzinfo=UTC)) == date(2026, 10, 4)
-    assert ingest.yesterday_in_bogota(datetime(2026, 10, 6, 7, 0, tzinfo=UTC)) == date(2026, 10, 5)
+    assert ingest.yesterday_in_bogota(datetime(2026, 10, 6, 4, 0, tzinfo=UTC)) == date(
+        2026, 10, 4
+    )
+    assert ingest.yesterday_in_bogota(datetime(2026, 10, 6, 7, 0, tzinfo=UTC)) == date(
+        2026, 10, 5
+    )
 
 
 # --- S3 ----------------------------------------------------------------------------
@@ -312,7 +374,9 @@ class FakeS3:
 
         class Paginator:
             def paginate(self, Bucket, Prefix):
-                keys = sorted(k for b, k in fake.objects if b == Bucket and k.startswith(Prefix))
+                keys = sorted(
+                    k for b, k in fake.objects if b == Bucket and k.startswith(Prefix)
+                )
                 yield {"Contents": [{"Key": k} for k in keys]}
 
         return Paginator()
@@ -334,7 +398,10 @@ def test_run_reads_and_writes_s3(monkeypatch):
 
     result = ingest.run(DAY, "s3://lake/raw/extractos", "s3://lake")
 
-    assert result["records_path"] == "s3://lake/curated/extractos/fecha=2026-10-05/records.jsonl"
+    assert (
+        result["records_path"]
+        == "s3://lake/curated/extractos/fecha=2026-10-05/records.jsonl"
+    )
     assert (result["files_read"], result["records"], result["rejected"]) == (4, 11, 2)
     assert ("lake", "curated/extractos/fecha=2026-10-05/rejects.jsonl") in fake.objects
 
@@ -348,14 +415,20 @@ def test_run_against_localstack(monkeypatch):
     bucket = f"ingest-test-{uuid4().hex[:8]}"
     try:
         s3 = cliente("s3", read_timeout=30)
-        s3.create_bucket(Bucket=bucket, CreateBucketConfiguration={"LocationConstraint": "us-east-2"})
+        s3.create_bucket(
+            Bucket=bucket, CreateBucketConfiguration={"LocationConstraint": "us-east-2"}
+        )
     except (BotoCoreError, ClientError):
         pytest.skip("LocalStack is not available (docker compose up -d)")
     monkeypatch.setattr(storage, "_s3", s3)
     try:
         _upload_fixture_day(s3, bucket)
         result = ingest.run(DAY, f"s3://{bucket}/raw/extractos", f"s3://{bucket}")
-        assert (result["files_read"], result["records"], result["rejected"]) == (4, 11, 2)
+        assert (result["files_read"], result["records"], result["rejected"]) == (
+            4,
+            11,
+            2,
+        )
         written = storage.read_jsonl(result["records_path"])
         assert len(written) == 11
     finally:

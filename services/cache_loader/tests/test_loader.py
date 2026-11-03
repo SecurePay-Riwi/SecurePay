@@ -81,7 +81,9 @@ def test_a_leftover_next_key_does_not_leak_into_the_list(cache):
 
 def test_hashes_are_written_in_batches_with_their_ttl(cache, monkeypatch):
     monkeypatch.setattr(loader, "BATCH", 2)
-    entries = [(account_key(i), {"currency": "COP", "status": "activa"}) for i in range(5)]
+    entries = [
+        (account_key(i), {"currency": "COP", "status": "activa"}) for i in range(5)
+    ]
 
     assert loader.write_hashes(cache, entries, ttl_seconds=3600) == 5
 
@@ -109,7 +111,9 @@ def test_load_copies_the_seed_into_the_cache(cache):
                 .limit(1)
             ).one()
             merchant = session.scalars(select(Comercio).limit(1)).one()
-            listed = {digits(d) for d in session.scalars(select(ListaRestrictiva.documento))}
+            listed = {
+                digits(d) for d in session.scalars(select(ListaRestrictiva.documento))
+            }
             totals = (
                 session.query(Cuenta).count(),
                 session.query(Comercio).count(),

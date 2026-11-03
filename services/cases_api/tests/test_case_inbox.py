@@ -39,23 +39,30 @@ def test_highest_risk_first_then_closest_to_the_limit(client, add_case):
     low_soon = add_case(risk_score=20, due_in=timedelta(minutes=10))
     high_late = add_case(risk_score=90, due_in=timedelta(hours=3))
     high_soon = add_case(risk_score=90, due_in=timedelta(minutes=30))
-    mid_overdue = add_case(risk_score=50, due_in=timedelta(minutes=-15),
-                           status=CaseStatus.ESCALATED)
+    mid_overdue = add_case(
+        risk_score=50, due_in=timedelta(minutes=-15), status=CaseStatus.ESCALATED
+    )
     mid_late = add_case(risk_score=50, due_in=timedelta(hours=2))
 
     response = client.get("/cases")
 
-    assert _ids(response) == [str(c) for c in
-                              (high_soon, high_late, mid_overdue, mid_late, low_soon)]
+    assert _ids(response) == [
+        str(c) for c in (high_soon, high_late, mid_overdue, mid_late, low_soon)
+    ]
 
 
 def test_minutes_left_is_negative_when_overdue_and_null_when_resolved(client, add_case):
     # 30 s of margin so the request a moment later rounds to the same minute.
     on_time = add_case(due_in=timedelta(minutes=90, seconds=30))
-    overdue = add_case(due_in=timedelta(minutes=-30, seconds=30), status=CaseStatus.ESCALATED)
+    overdue = add_case(
+        due_in=timedelta(minutes=-30, seconds=30), status=CaseStatus.ESCALATED
+    )
     resolved = add_case(status=CaseStatus.RESOLVED)
 
-    pending = {item["id"]: item["minutes_left"] for item in client.get("/cases").json()["items"]}
+    pending = {
+        item["id"]: item["minutes_left"]
+        for item in client.get("/cases").json()["items"]
+    }
     done = client.get("/cases", params={"status": "RESOLVED"}).json()["items"]
 
     assert pending[str(on_time)] == 90
@@ -68,7 +75,9 @@ def test_filter_by_status(client, add_case):
     escalated = add_case(status=CaseStatus.ESCALATED)
     resolved = add_case(status=CaseStatus.RESOLVED)
 
-    assert _ids(client.get("/cases", params={"status": "ESCALATED"})) == [str(escalated)]
+    assert _ids(client.get("/cases", params={"status": "ESCALATED"})) == [
+        str(escalated)
+    ]
     assert _ids(client.get("/cases", params={"status": "RESOLVED"})) == [str(resolved)]
 
 
@@ -109,8 +118,14 @@ def test_pagination(client, add_case):
 
 
 def test_invalid_filters_are_400(client):
-    for params in ({"status": "CLOSED"}, {"size": 101}, {"size": 0}, {"page": 0},
-                   {"assignee": ""}, {"assignee": "x" * 101}):
+    for params in (
+        {"status": "CLOSED"},
+        {"size": 101},
+        {"size": 0},
+        {"page": 0},
+        {"assignee": ""},
+        {"assignee": "x" * 101},
+    ):
         response = client.get("/cases", params=params)
         assert response.status_code == 400, params
         assert response.json()["detail"] == "The request contains invalid data."
@@ -123,7 +138,10 @@ def test_amounts_are_decimal_strings(client, add_case):
     items = client.get("/cases").json()["items"]
 
     assert (items[0]["amount"], items[0]["currency"], items[0]["amount_usd"]) == (
-        "950000.00", "COP", "230.05")
+        "950000.00",
+        "COP",
+        "230.05",
+    )
     assert items[1]["amount_usd"] is None
 
 

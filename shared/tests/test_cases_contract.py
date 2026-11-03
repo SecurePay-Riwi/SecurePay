@@ -62,8 +62,12 @@ def _case_with_event(Session) -> int:
         case = _case()
         session.add(case)
         session.flush()
-        event = CaseEvent(case_id=case.id, type=CaseEventType.CREATED.value,
-                          actor=SYSTEM_ACTOR, at=datetime.now(UTC))
+        event = CaseEvent(
+            case_id=case.id,
+            type=CaseEventType.CREATED.value,
+            actor=SYSTEM_ACTOR,
+            at=datetime.now(UTC),
+        )
         session.add(event)
         session.commit()
         return event.id
@@ -95,13 +99,17 @@ def test_new_case_defaults(Session):
 def test_case_events_cannot_be_updated(Session):
     event_id = _case_with_event(Session)
     with Session() as session, pytest.raises(DBAPIError, match="append-only"):
-        session.execute(text("UPDATE case_events SET actor = 'x' WHERE id = :id"), {"id": event_id})
+        session.execute(
+            text("UPDATE case_events SET actor = 'x' WHERE id = :id"), {"id": event_id}
+        )
 
 
 def test_case_events_cannot_be_deleted(Session):
     event_id = _case_with_event(Session)
     with Session() as session, pytest.raises(DBAPIError, match="append-only"):
-        session.execute(text("DELETE FROM case_events WHERE id = :id"), {"id": event_id})
+        session.execute(
+            text("DELETE FROM case_events WHERE id = :id"), {"id": event_id}
+        )
 
 
 def test_case_events_cannot_be_truncated(Session):
@@ -125,12 +133,20 @@ def test_pending_states():
 
 
 def test_main_account_is_the_source():
-    transaction = {"type": "P2P", "source_account_id": "a", "destination_account_id": "b"}
+    transaction = {
+        "type": "P2P",
+        "source_account_id": "a",
+        "destination_account_id": "b",
+    }
     assert main_account(transaction) == "a"
 
 
 def test_main_account_of_a_top_up_is_the_destination():
-    transaction = {"type": "RECARGA", "source_account_id": None, "destination_account_id": "b"}
+    transaction = {
+        "type": "RECARGA",
+        "source_account_id": None,
+        "destination_account_id": "b",
+    }
     assert main_account(transaction) == "b"
 
 
@@ -139,18 +155,26 @@ def test_create_schema_adds_the_rate_columns_to_old_tables(Session):
     rate_date (create_all() does not add columns)."""
     with Session() as session:
         for table in ("cases", "account_transactions"):
-            session.execute(text(f"ALTER TABLE {table} DROP COLUMN usd_rate, DROP COLUMN rate_date"))
+            session.execute(
+                text(f"ALTER TABLE {table} DROP COLUMN usd_rate, DROP COLUMN rate_date")
+            )
         session.commit()
         create_schema(session)
         for table in ("cases", "account_transactions"):
-            columns = {c["name"] for c in inspect(session.connection()).get_columns(table)}
+            columns = {
+                c["name"] for c in inspect(session.connection()).get_columns(table)
+            }
             assert {"usd_rate", "rate_date"} <= columns
 
 
 @pytest.mark.parametrize(
     ("amount", "currency", "expected"),
-    [("950000.00", "COP", "950000.00"), ("25.5", "USD", "25.50"),
-     ("25.50", "EUR", "25.50"), ("15000.00", "JPY", "15000")],
+    [
+        ("950000.00", "COP", "950000.00"),
+        ("25.5", "USD", "25.50"),
+        ("25.50", "EUR", "25.50"),
+        ("15000.00", "JPY", "15000"),
+    ],
 )
 def test_in_currency_keeps_each_currency_decimals(amount, currency, expected):
     assert str(in_currency(Decimal(amount), currency)) == expected
@@ -158,8 +182,12 @@ def test_in_currency_keeps_each_currency_decimals(amount, currency, expected):
 
 @pytest.mark.parametrize(
     ("stored", "expected"),
-    [("4129.53000000", "4129.53"), ("1.00000000", "1"), ("4000.00000000", "4000"),
-     ("0.86937000", "0.86937")],
+    [
+        ("4129.53000000", "4129.53"),
+        ("1.00000000", "1"),
+        ("4000.00000000", "4000"),
+        ("0.86937000", "0.86937"),
+    ],
 )
 def test_plain_rate_has_no_trailing_zeros_nor_exponent(stored, expected):
     assert str(plain_rate(Decimal(stored))) == expected
@@ -167,7 +195,8 @@ def test_plain_rate_has_no_trailing_zeros_nor_exponent(stored, expected):
 
 def test_rate_values_reads_the_decision():
     assert rate_values({"usd_rate": "4129.53", "rate_date": "2026-10-13"}) == {
-        "usd_rate": Decimal("4129.53"), "rate_date": date(2026, 10, 13),
+        "usd_rate": Decimal("4129.53"),
+        "rate_date": date(2026, 10, 13),
     }
     assert rate_values({}) == {"usd_rate": None, "rate_date": None}
     with pytest.raises(ValueError):

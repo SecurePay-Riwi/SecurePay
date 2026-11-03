@@ -46,8 +46,14 @@ def _row(factory, days_ago, account=ACCOUNT, direction="OUT", **fields):
 
 def test_newest_first_with_every_field(client, sessions):
     older = _row(sessions, 3)
-    newer = _row(sessions, 1, direction="IN", decision="HOLD",
-                 rules_triggered=["velocity"], risk_score=40)
+    newer = _row(
+        sessions,
+        1,
+        direction="IN",
+        decision="HOLD",
+        rules_triggered=["velocity"],
+        risk_score=40,
+    )
     _row(sessions, 1, account=uuid4())  # another account
 
     response = client.get(_url())
@@ -66,12 +72,27 @@ def test_newest_first_with_every_field(client, sessions):
     assert first["amount_usd"] == "230.05"
     # HU-43: the rate behind amount_usd and its day.
     assert first["usd_rate"] == "4129.53"
-    assert first["rate_date"] == (datetime.now(UTC) - timedelta(days=1)).date().isoformat()
+    assert (
+        first["rate_date"] == (datetime.now(UTC) - timedelta(days=1)).date().isoformat()
+    )
     assert set(first) == {
-        "transaction_id", "direction", "counterparty_account_id", "type", "channel",
-        "merchant_id", "amount", "currency", "amount_usd", "usd_rate", "rate_date",
-        "device_id", "decision",
-        "decision_reason", "rules_triggered", "risk_score", "transaction_date",
+        "transaction_id",
+        "direction",
+        "counterparty_account_id",
+        "type",
+        "channel",
+        "merchant_id",
+        "amount",
+        "currency",
+        "amount_usd",
+        "usd_rate",
+        "rate_date",
+        "device_id",
+        "decision",
+        "decision_reason",
+        "rules_triggered",
+        "risk_score",
+        "transaction_date",
         "processed_at",
     }
     assert body["items"][1]["device_id"] is not None
@@ -79,12 +100,22 @@ def test_newest_first_with_every_field(client, sessions):
 
 @pytest.mark.parametrize(
     ("amount", "currency", "shown"),
-    [("950000.00", "COP", "950000.00"), ("25.50", "USD", "25.50"),
-     ("25.50", "EUR", "25.50"), ("15000", "JPY", "15000")],
+    [
+        ("950000.00", "COP", "950000.00"),
+        ("25.50", "USD", "25.50"),
+        ("25.50", "EUR", "25.50"),
+        ("15000", "JPY", "15000"),
+    ],
 )
 def test_each_currency_keeps_its_decimals(client, sessions, amount, currency, shown):
     """HU-43: the column keeps two decimals; JPY is answered without them."""
-    _row(sessions, 1, account=(account := uuid4()), amount=Decimal(amount), currency=currency)
+    _row(
+        sessions,
+        1,
+        account=(account := uuid4()),
+        amount=Decimal(amount),
+        currency=currency,
+    )
 
     item = client.get(_url(account)).json()["items"][0]
 

@@ -16,11 +16,11 @@ PUT al mes. En local se escribe directo en S3.
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
-from shared.aws import cliente
 from services.consumers.batch import leer_lote, respuesta
+from shared.aws import cliente
 
 log = logging.getLogger(__name__)
 
@@ -53,11 +53,8 @@ def handler(event, context=None):
 
 
 def escribir_en_raw(eventos: list[dict]) -> str:
-    ahora = datetime.now(timezone.utc)
-    clave = (
-        f"{PREFIJO}/fecha={ahora:%Y-%m-%d}/"
-        f"{ahora:%H%M%S}-{uuid4().hex}.jsonl"
-    )
+    ahora = datetime.now(UTC)
+    clave = f"{PREFIJO}/fecha={ahora:%Y-%m-%d}/{ahora:%H%M%S}-{uuid4().hex}.jsonl"
     cuerpo = "".join(json.dumps(e, ensure_ascii=False) + "\n" for e in eventos)
 
     _cliente_s3().put_object(

@@ -156,10 +156,16 @@ def test_amount_is_compared_in_usd(amount, currency_, fires):
 
 def test_thresholds_come_from_the_catalog():
     lower = RuleEntry(
-        **{**RULE.model_dump(), "params": {"window_minutes": 60, "min_amount_usd": "100"}}
+        **{
+            **RULE.model_dump(),
+            "params": {"window_minutes": 60, "min_amount_usd": "100"},
+        }
     )
     shorter = RuleEntry(
-        **{**RULE.model_dump(), "params": {"window_minutes": 15, "min_amount_usd": "200"}}
+        **{
+            **RULE.model_dump(),
+            "params": {"window_minutes": 15, "min_amount_usd": "200"},
+        }
     )
 
     assert account_takeover.evaluate(context(BOTH, amount="150.00"), RULE) is None

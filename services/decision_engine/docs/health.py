@@ -11,7 +11,11 @@ HEALTH = {
                 "application/json": {
                     "example": {
                         "status": "ok",
-                        "messaging": {"pendientes": 0, "publicados": 1000, "fallidos": 0},
+                        "messaging": {
+                            "pendientes": 0,
+                            "publicados": 1000,
+                            "fallidos": 0,
+                        },
                     }
                 }
             },

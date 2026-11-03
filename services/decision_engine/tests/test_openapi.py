@@ -22,23 +22,27 @@ def _post_transactions() -> dict:
 def test_every_status_code_the_engine_returns_is_documented():
     # 400 instead of FastAPI's default 422 for an invalid body.
     assert sorted(_post_transactions()["responses"]) == [
-        "200", "400", "409", "422", "503",
+        "200",
+        "400",
+        "409",
+        "422",
+        "503",
     ]
 
 
 def test_request_examples_are_valid_transactions():
-    examples = _post_transactions()["requestBody"]["content"][
-        "application/json"
-    ]["examples"]
+    examples = _post_transactions()["requestBody"]["content"]["application/json"][
+        "examples"
+    ]
 
     for example in examples.values():
         TransactionRequest.model_validate(example["value"])
 
 
 def test_response_examples_are_valid_responses():
-    examples = _post_transactions()["responses"]["200"]["content"][
-        "application/json"
-    ]["examples"]
+    examples = _post_transactions()["responses"]["200"]["content"]["application/json"][
+        "examples"
+    ]
 
     for example in examples.values():
         TransactionResponse.model_validate(example["value"])
@@ -53,9 +57,9 @@ def test_security_events_status_codes_are_documented():
 
 
 def test_security_event_examples_are_valid_requests():
-    examples = _post_security_events()["requestBody"]["content"][
-        "application/json"
-    ]["examples"]
+    examples = _post_security_events()["requestBody"]["content"]["application/json"][
+        "examples"
+    ]
 
     for example in examples.values():
         SecurityEventRequest.model_validate(example["value"])

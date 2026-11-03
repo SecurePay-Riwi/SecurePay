@@ -22,24 +22,26 @@ def _use(factory, account, device, days_ago=1.0, direction="OUT"):
     """One account_transactions row: the account used the device."""
     when = datetime.now(UTC) - timedelta(days=days_ago)
     with factory() as session:
-        session.add(AccountTransaction(
-            transaction_id=uuid4(),
-            account_id=account,
-            direction=direction,
-            counterparty_account_id=None,
-            type="RETIRO",
-            channel="APP",
-            amount=Decimal("10.00"),
-            currency="USD",
-            amount_usd=Decimal("10.00"),
-            device_id=device,
-            decision="APPROVE",
-            decision_reason="Below USD 50.",
-            rules_triggered=[],
-            risk_score=0,
-            transaction_date=when,
-            processed_at=when,
-        ))
+        session.add(
+            AccountTransaction(
+                transaction_id=uuid4(),
+                account_id=account,
+                direction=direction,
+                counterparty_account_id=None,
+                type="RETIRO",
+                channel="APP",
+                amount=Decimal("10.00"),
+                currency="USD",
+                amount_usd=Decimal("10.00"),
+                device_id=device,
+                decision="APPROVE",
+                decision_reason="Below USD 50.",
+                rules_triggered=[],
+                risk_score=0,
+                transaction_date=when,
+                processed_at=when,
+            )
+        )
         session.commit()
     return when
 
@@ -47,22 +49,24 @@ def _use(factory, account, device, days_ago=1.0, direction="OUT"):
 def _case(factory, account, status=CaseStatus.OPEN):
     now = datetime.now(UTC)
     with factory() as session:
-        session.add(Case(
-            transaction_id=uuid4(),
-            account_id=account,
-            decision="HOLD",
-            decision_reason="Mule account.",
-            rules_triggered=["mule"],
-            rules_version="1",
-            amount=Decimal("10.00"),
-            currency="USD",
-            amount_usd=Decimal("10.00"),
-            transaction_date=now,
-            transaction={},
-            status=status.value,
-            created_at=now,
-            due_at=now + timedelta(hours=4),
-        ))
+        session.add(
+            Case(
+                transaction_id=uuid4(),
+                account_id=account,
+                decision="HOLD",
+                decision_reason="Mule account.",
+                rules_triggered=["mule"],
+                rules_version="1",
+                amount=Decimal("10.00"),
+                currency="USD",
+                amount_usd=Decimal("10.00"),
+                transaction_date=now,
+                transaction={},
+                status=status.value,
+                created_at=now,
+                due_at=now + timedelta(hours=4),
+            )
+        )
         session.commit()
 
 
@@ -88,7 +92,12 @@ def test_the_accounts_on_the_same_devices(client, sessions):
     assert body["total"] == 4
     open_cases = {i["account_id"]: i["open_cases"] for i in body["items"]}
     assert open_cases == {str(b): 0, str(c): 2, str(d): 0, str(e): 0}
-    assert set(body["items"][0]) == {"account_id", "device_id", "last_seen", "open_cases"}
+    assert set(body["items"][0]) == {
+        "account_id",
+        "device_id",
+        "last_seen",
+        "open_cases",
+    }
 
 
 def test_one_item_per_shared_device_with_its_last_use(client, sessions):
@@ -103,7 +112,8 @@ def test_one_item_per_shared_device_with_its_last_use(client, sessions):
     items = client.get(_url(a)).json()["items"]
 
     assert [(i["account_id"], i["device_id"]) for i in items] == [
-        (str(b), str(phone)), (str(b), str(laptop)),
+        (str(b), str(phone)),
+        (str(b), str(laptop)),
     ]
     assert datetime.fromisoformat(items[0]["last_seen"]) == last
 
