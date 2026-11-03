@@ -62,7 +62,7 @@ resource "aws_iam_role_policy" "deploy" {
       { Sid = "RegisterTaskDefinition", Effect = "Allow", Action = ["ecs:RegisterTaskDefinition", "ecs:DescribeTaskDefinition"], Resource = "*" }, # ECS does not scope registration
       { Sid = "DeployEngine", Effect = "Allow", Action = ["ecs:UpdateService", "ecs:DescribeServices"], Resource = "${local.arn.ecs}:service/${local.p}/engine" },
       { Sid = "RunMigrations", Effect = "Allow", Action = "ecs:RunTask", Resource = "${local.arn.ecs}:task-definition/${local.p}-admin:*" },
-      { Sid = "DeployLambdas", Effect = "Allow", Action = "lambda:UpdateFunctionCode", Resource = [for name, _ in local.lambdas : "${local.arn.function}-${name}"] },
+      { Sid = "DeployLambdas", Effect = "Allow", Action = ["lambda:UpdateFunctionCode", "lambda:GetFunctionConfiguration"], Resource = [for name, _ in local.lambdas : "${local.arn.function}-${name}"] },
       {
         Sid       = "HandTaskRoles"
         Effect    = "Allow"
