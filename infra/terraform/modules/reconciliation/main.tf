@@ -24,10 +24,6 @@ locals {
 
   entry_point_key = "jobs/reconciliation/match_job.py"
 
-  decisions_path = "s3://${var.datalake_bucket}/raw/decisiones"
-  # The same folder match_dir() builds in services/reconciliation/__init__.py.
-  match_path = "States.Format('s3://${var.datalake_bucket}/curated/conciliacion/fecha={}', $.ingest.day)"
-
   code_key = "jobs/reconciliation/reconciliation-code.zip"
 
   # services/reconciliation and shared without their tests, as match.py
@@ -38,118 +34,19 @@ locals {
     [for f in fileset(var.repo_root, "shared/**/*.py") : f if !strcontains(f, "/tests/")],
   )
 
-  # Lambda's own transient errors and a failed run of the step: twice more,
-  # 1 and 2 minutes later.
-  lambda_retry = [{
-    ErrorEquals     = ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException", "States.TaskFailed"]
-    IntervalSeconds = 60
-    MaxAttempts     = 2
-    BackoffRate     = 2
-  }]
-
-  on_error = [{ ErrorEquals = ["States.ALL"], ResultPath = "$.error", Next = "ReconciliationFailed" }]
-
-  definition = {
-    Comment        = "Nightly reconciliation: read the partners' files, match them with Spark, save the differences, tell treasury."
-    TimeoutSeconds = var.timeout_seconds
-    StartAt        = "ReadStatements"
-    States = {
-      # Input {} (the schedule: yesterday in Bogota) or {"day": "YYYY-MM-DD"}.
-      ReadStatements = {
-        Type       = "Task"
-        Resource   = "arn:aws:states:::lambda:invoke"
-        Parameters = { FunctionName = var.statement_reader_arn, "Payload.$" = "$" }
-        ResultSelector = {
-          "day.$"          = "$.Payload.day"
-          "records_path.$" = "$.Payload.records_path"
-          "files_read.$"   = "$.Payload.files_read"
-          "records.$"      = "$.Payload.records"
-          "rejected.$"     = "$.Payload.rejected"
-        }
-        ResultPath = "$.ingest"
-        Retry      = local.lambda_retry
-        Catch      = local.on_error
-        Next       = "MatchWithSpark"
-      }
-
-      MatchWithSpark = {
-        Type     = "Task"
-        Resource = "arn:aws:states:::glue:startJobRun.sync"
-        Parameters = {
-          JobName = one(aws_glue_job.match[*].name)
-          Arguments = {
-            "--day.$"     = "$.ingest.day"
-            "--records.$" = "$.ingest.records_path"
-            "--decisions" = local.decisions_path
-            "--output.$"  = local.match_path
-          }
-        }
-        ResultPath = null
-        Retry = [{
-          ErrorEquals     = ["States.TaskFailed"]
-          IntervalSeconds = 120
-          MaxAttempts     = 1
-          BackoffRate     = 2
-        }]
-        Catch = local.on_error
-        Next  = "SaveDifferences"
-      }
-
-      SaveDifferences = {
-        Type     = "Task"
-        Resource = "arn:aws:states:::lambda:invoke"
-        Parameters = {
-          FunctionName = var.difference_writer_arn
-          Payload = {
-            "day.$"        = "$.ingest.day"
-            "match_path.$" = local.match_path
-            "files_read.$" = "$.ingest.files_read"
-            "records.$"    = "$.ingest.records"
-            "rejected.$"   = "$.ingest.rejected"
-          }
-        }
-        ResultSelector = {
-          "matched.$"         = "$.Payload.matched"
-          "differences.$"     = "$.Payload.differences"
-          "new_differences.$" = "$.Payload.new_differences"
-        }
-        ResultPath = "$.store"
-        Retry      = local.lambda_retry
-        Catch      = local.on_error
-        Next       = "NotifyTreasury"
-      }
-
-      # Treasury needs the day's result and the pending differences
-      # (assignment, actors). The details are in the cases API.
-      NotifyTreasury = {
-        Type     = "Task"
-        Resource = "arn:aws:states:::sns:publish"
-        Parameters = {
-          TopicArn    = var.business_alerts_topic_arn
-          "Subject.$" = "States.Format('Reconciliation of {} done', $.ingest.day)"
-          "Message.$" = "States.Format('Reconciliation of {} done. Files read: {}. Records: {}. Rejected rows: {}. Matched: {}. Differences of the day: {} (new: {}). Pending differences: GET /reconciliation/differences in the cases API.', $.ingest.day, $.ingest.files_read, $.ingest.records, $.ingest.rejected, $.store.matched, $.store.differences, $.store.new_differences)"
-          MessageAttributes = {
-            audience = { DataType = "String", StringValue = "treasury" }
-          }
-        }
-        ResultPath = null
-        Retry = [{
-          ErrorEquals     = ["States.ALL"]
-          IntervalSeconds = 30
-          MaxAttempts     = 2
-          BackoffRate     = 2
-        }]
-        Catch = local.on_error
-        End   = true
-      }
-
-      ReconciliationFailed = {
-        Type      = "Fail"
-        Error     = "ReconciliationFailed"
-        CausePath = "$.error.Cause"
-      }
-    }
-  }
+  # The machine lives in state_machine.json.tftpl, a JSON template, so the
+  # CI validates it without AWS (services/reconciliation/tests/
+  # test_state_machine.py: states, Next, End, Catch, the fields each step
+  # reads). Each step retries on its own; any error ends in
+  # ReconciliationFailed, which the alarm below counts.
+  definition = templatefile("${path.module}/state_machine.json.tftpl", {
+    timeout_seconds           = var.timeout_seconds
+    statement_reader_arn      = var.statement_reader_arn
+    difference_writer_arn     = var.difference_writer_arn
+    match_job_name            = "${var.name_prefix}-reconciliation-match"
+    datalake_bucket           = var.datalake_bucket
+    business_alerts_topic_arn = var.business_alerts_topic_arn
+  })
 }
 
 resource "aws_s3_object" "entry_point" {
@@ -225,7 +122,9 @@ resource "aws_sfn_state_machine" "reconciliation" {
 
   name       = "${var.name_prefix}-reconciliation"
   role_arn   = var.state_machine_role_arn
-  definition = jsonencode(local.definition)
+  definition = jsonencode(jsondecode(local.definition))
+
+  depends_on = [aws_glue_job.match]
 
 }
 

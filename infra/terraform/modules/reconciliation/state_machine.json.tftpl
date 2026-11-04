@@ -1,0 +1,120 @@
+{
+  "Comment": "Nightly reconciliation: read the partners' files, match them with Spark, save the differences, tell treasury.",
+  "TimeoutSeconds": ${timeout_seconds},
+  "StartAt": "ReadStatements",
+  "States": {
+    "ReadStatements": {
+      "Comment": "Input {} (the schedule: yesterday in Bogota) or {\"day\": \"YYYY-MM-DD\"}.",
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${statement_reader_arn}",
+        "Payload.$": "$"
+      },
+      "ResultSelector": {
+        "day.$": "$.Payload.day",
+        "records_path.$": "$.Payload.records_path",
+        "files_read.$": "$.Payload.files_read",
+        "records.$": "$.Payload.records",
+        "rejected.$": "$.Payload.rejected"
+      },
+      "ResultPath": "$.ingest",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException", "States.TaskFailed"],
+          "IntervalSeconds": 60,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "ReconciliationFailed" }],
+      "Next": "MatchWithSpark"
+    },
+    "MatchWithSpark": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${match_job_name}",
+        "Arguments": {
+          "--day.$": "$.ingest.day",
+          "--records.$": "$.ingest.records_path",
+          "--decisions": "s3://${datalake_bucket}/raw/decisiones",
+          "--output.$": "States.Format('s3://${datalake_bucket}/curated/conciliacion/fecha={}', $.ingest.day)"
+        }
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 120,
+          "MaxAttempts": 1,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "ReconciliationFailed" }],
+      "Next": "SaveDifferences"
+    },
+    "SaveDifferences": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${difference_writer_arn}",
+        "Payload": {
+          "day.$": "$.ingest.day",
+          "match_path.$": "States.Format('s3://${datalake_bucket}/curated/conciliacion/fecha={}', $.ingest.day)",
+          "files_read.$": "$.ingest.files_read",
+          "records.$": "$.ingest.records",
+          "rejected.$": "$.ingest.rejected"
+        }
+      },
+      "ResultSelector": {
+        "matched.$": "$.Payload.matched",
+        "differences.$": "$.Payload.differences",
+        "new_differences.$": "$.Payload.new_differences"
+      },
+      "ResultPath": "$.store",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException", "States.TaskFailed"],
+          "IntervalSeconds": 60,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "ReconciliationFailed" }],
+      "Next": "NotifyTreasury"
+    },
+    "NotifyTreasury": {
+      "Comment": "Treasury needs the day's result and the pending differences (assignment, actors). The details are in the cases API.",
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${business_alerts_topic_arn}",
+        "Subject.$": "States.Format('Reconciliation of {} done', $.ingest.day)",
+        "Message.$": "States.Format('Reconciliation of {} done. Files read: {}. Records: {}. Rejected rows: {}. Matched: {}. Differences of the day: {} (new: {}). Pending differences: GET /reconciliation/differences in the cases API.', $.ingest.day, $.ingest.files_read, $.ingest.records, $.ingest.rejected, $.store.matched, $.store.differences, $.store.new_differences)",
+        "MessageAttributes": {
+          "audience": {
+            "DataType": "String",
+            "StringValue": "treasury"
+          }
+        }
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "ReconciliationFailed" }],
+      "End": true
+    },
+    "ReconciliationFailed": {
+      "Type": "Fail",
+      "Error": "ReconciliationFailed",
+      "CausePath": "$.error.Cause"
+    }
+  }
+}
