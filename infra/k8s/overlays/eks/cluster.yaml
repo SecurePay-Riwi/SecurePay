@@ -1,0 +1,50 @@
+# EKS for one session of HU-58 (ADR-06): created with eksctl, not
+# Terraform, and deleted the same day (the control plane is USD 0.10 per
+# hour). It uses dev's VPC: two managed nodes in the application subnets
+# with sg-engine attached, so the pods reach the cache like the ECS tasks.
+# Replace the <...> values with `terraform output` of envs/dev:
+#   app_subnet_ids, security_group_ids.engine, decisions_topic_arn.
+#   eksctl create cluster -f infra/k8s/overlays/eks/cluster.yaml
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata:
+  name: securepay-dev-eks
+  region: us-east-2
+  version: "1.31"
+  tags:
+    project: securepay
+    environment: dev
+    owner: <OWNER>
+    managed_by: eksctl
+vpc:
+  subnets:
+    private:
+      us-east-2a: { id: <APP_SUBNET_A> }
+      us-east-2b: { id: <APP_SUBNET_B> }
+iam:
+  withOIDC: true
+  # The engine's pods get only what the engine task role has: publish
+  # decisions and read the exchange rates (IRSA).
+  serviceAccounts:
+    - metadata:
+        name: decision-engine
+        namespace: securepay
+      attachPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: ["sns:Publish"]
+            Resource: "<DECISIONS_TOPIC_ARN>"
+          - Effect: Allow
+            Action: ["dynamodb:Query"]
+            Resource: "arn:aws:dynamodb:us-east-2:<ACCOUNT_ID>:table/securepay-dev-exchange-rates"
+managedNodeGroups:
+  - name: engine
+    instanceType: t3.medium
+    minSize: 2
+    desiredCapacity: 2
+    maxSize: 4
+    privateNetworking: true
+    subnets: [<APP_SUBNET_A>, <APP_SUBNET_B>]
+    securityGroups:
+      attachIDs: [<SG_ENGINE>]

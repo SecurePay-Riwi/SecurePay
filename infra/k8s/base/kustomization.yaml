@@ -1,0 +1,18 @@
+# The decision engine on Kubernetes (HU-58): the same image, command and
+# variables as the ECS service (modules/ecs) and Compose. One exercise to
+# compare with Fargate (ADR-06), not part of the architecture. Render with
+#   kubectl kustomize infra/k8s/overlays/<kind|eks>
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: securepay
+labels:
+  - pairs:
+      app.kubernetes.io/name: decision-engine
+      app.kubernetes.io/part-of: securepay
+    includeSelectors: true
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - deployment.yaml
+  - service.yaml
+  - pdb.yaml

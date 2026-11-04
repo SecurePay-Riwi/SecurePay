@@ -1,0 +1,28 @@
+# kind on the team's computer. Only the engine runs in the cluster; Valkey
+# (with the cache loaded by cache-loader) and LocalStack are the Compose
+# stack's, reached through host.docker.internal (Docker Desktop). So the
+# engine on 8000 (Compose) and on 8080 (kind) answer with the same data.
+#   docker build -t securepay-engine:kind .
+#   kind load docker-image securepay-engine:kind --name securepay
+#   kubectl apply -k infra/k8s/overlays/kind
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: securepay
+resources:
+  - ../../base
+images:
+  - name: securepay-engine
+    newName: securepay-engine
+    newTag: kind
+patches:
+  - path: engine.yaml
+  - path: service.yaml
+configMapGenerator:
+  - name: decision-engine
+    behavior: merge
+    literals:
+      - VALKEY_URL=redis://host.docker.internal:6379/0
+      - AWS_ENDPOINT_URL=http://host.docker.internal:4566
+      # LocalStack accepts any credentials; fake on purpose, as in Compose.
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test

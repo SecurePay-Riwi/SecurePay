@@ -1,0 +1,25 @@
+# EKS in dev's VPC (cluster.yaml). The image is the engine's in ECR, the
+# same tag as ECS; the cache, the topic and the table are dev's. Fill the
+# <...> values from `terraform output` of envs/dev, then
+#   kubectl apply -k infra/k8s/overlays/eks
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: securepay
+resources:
+  - ../../base
+  - hpa.yaml
+images:
+  - name: securepay-engine
+    newName: <ACCOUNT_ID>.dkr.ecr.us-east-2.amazonaws.com/securepay-dev-engine
+    newTag: <ENGINE_TAG>
+patches:
+  - path: engine.yaml
+  - path: service.yaml
+configMapGenerator:
+  - name: decision-engine
+    behavior: merge
+    literals:
+      - VALKEY_URL=<CACHE_URL>
+      - VALKEY_CLUSTER=true
+      - SNS_DECISIONES_TOPIC_ARN=<DECISIONS_TOPIC_ARN>
+      - RATES_TABLE=securepay-dev-exchange-rates

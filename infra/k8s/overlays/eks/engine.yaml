@@ -1,0 +1,10 @@
+# The pods run with the service account eksctl created (IRSA), not the
+# node's role.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: decision-engine
+spec:
+  template:
+    spec:
+      serviceAccountName: decision-engine

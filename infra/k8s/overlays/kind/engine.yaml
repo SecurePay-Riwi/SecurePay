@@ -1,0 +1,11 @@
+# The image is loaded into the nodes with `kind load`, never pulled.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: decision-engine
+spec:
+  template:
+    spec:
+      containers:
+        - name: engine
+          imagePullPolicy: Never

@@ -140,6 +140,7 @@ jobs:
   # checks its states (services/reconciliation/tests/test_state_machine.py),
   # runs the Spark jobs on the fixture days and the data quality checks.
   # No AWS credentials: init without backend only downloads the providers.
+  # The same job renders the Kubernetes manifests of HU-58 (infra/k8s).
   terraform:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -160,3 +161,11 @@ jobs:
         run: |
           terraform init -backend=false -input=false
           terraform validate
+
+      # HU-58: the engine's Kubernetes manifests (infra/k8s) must render.
+      # kubectl comes with the runner; nothing reaches a cluster.
+      - name: Kubernetes manifests
+        run: |
+          for overlay in kind eks; do
+            kubectl kustomize "infra/k8s/overlays/${overlay}" > /dev/null
+          done
