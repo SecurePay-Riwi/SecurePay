@@ -363,6 +363,7 @@
       "type": "AMOUNT_MISMATCH",
       "status": "PENDING",
       "age_range": "8+",
+      "currency": "COP",
       "records": 1,
       "amount_difference_total": "-1000.00"
     },
@@ -372,6 +373,7 @@
       "type": "MISSING_IN_PAGOSEGURO",
       "status": "PENDING",
       "age_range": "8+",
+      "currency": "USD",
       "records": 1,
       "amount_difference_total": null
     },
@@ -381,6 +383,7 @@
       "type": "MISSING_IN_PAGOSEGURO",
       "status": "PENDING",
       "age_range": "2-7",
+      "currency": "JPY",
       "records": 1,
       "amount_difference_total": null
     },
@@ -390,6 +393,7 @@
       "type": "MISSING_IN_PARTNER",
       "status": "RESOLVED",
       "age_range": "2-7",
+      "currency": "USD",
       "records": 1,
       "amount_difference_total": null
     },
@@ -399,6 +403,7 @@
       "type": "MISSING_IN_PARTNER",
       "status": "PENDING",
       "age_range": "0-1",
+      "currency": "COP",
       "records": 1,
       "amount_difference_total": null
     },
@@ -408,6 +413,7 @@
       "type": "AMOUNT_MISMATCH",
       "status": "PENDING",
       "age_range": "0-1",
+      "currency": "EUR",
       "records": 1,
       "amount_difference_total": "0.22"
     },
@@ -417,6 +423,7 @@
       "type": "MATCHED",
       "status": null,
       "age_range": null,
+      "currency": null,
       "records": 4,
       "amount_difference_total": null
     },
@@ -426,6 +433,7 @@
       "type": "MATCHED",
       "status": null,
       "age_range": null,
+      "currency": null,
       "records": 3,
       "amount_difference_total": null
     },
@@ -435,6 +443,7 @@
       "type": "MATCHED",
       "status": null,
       "age_range": null,
+      "currency": null,
       "records": 2,
       "amount_difference_total": null
     },
@@ -444,6 +453,7 @@
       "type": "MATCHED",
       "status": null,
       "age_range": null,
+      "currency": null,
       "records": 1,
       "amount_difference_total": null
     },
@@ -453,6 +463,7 @@
       "type": "MATCHED",
       "status": null,
       "age_range": null,
+      "currency": null,
       "records": 4,
       "amount_difference_total": null
     },
@@ -462,6 +473,7 @@
       "type": "MATCHED",
       "status": null,
       "age_range": null,
+      "currency": null,
       "records": 3,
       "amount_difference_total": null
     },
@@ -471,6 +483,7 @@
       "type": "MATCHED",
       "status": null,
       "age_range": null,
+      "currency": null,
       "records": 2,
       "amount_difference_total": null
     },
@@ -480,6 +493,7 @@
       "type": "MATCHED",
       "status": null,
       "age_range": null,
+      "currency": null,
       "records": 1,
       "amount_difference_total": null
     },
@@ -489,6 +503,7 @@
       "type": "MATCHED",
       "status": null,
       "age_range": null,
+      "currency": null,
       "records": 4,
       "amount_difference_total": null
     },
@@ -498,6 +513,7 @@
       "type": "MATCHED",
       "status": null,
       "age_range": null,
+      "currency": null,
       "records": 3,
       "amount_difference_total": null
     },
@@ -507,6 +523,7 @@
       "type": "MATCHED",
       "status": null,
       "age_range": null,
+      "currency": null,
       "records": 2,
       "amount_difference_total": null
     },
@@ -516,6 +533,7 @@
       "type": "MATCHED",
       "status": null,
       "age_range": null,
+      "currency": null,
       "records": 1,
       "amount_difference_total": null
     }

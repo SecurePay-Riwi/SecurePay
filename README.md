@@ -574,6 +574,13 @@ The fixture day works with nothing else running:
 uv run python -m services.analytics --day 2026-10-05 --raw services/analytics/tests/fixtures
 ```
 
+To read the cases and differences of a real day, first export them from
+PostgreSQL to the raw layer (needs `DATABASE_URL`):
+
+``` bash
+uv run python -m services.analytics.export --day 2026-10-05
+```
+
 With the local stack: copy the generator's labels and read the
 decisions the analytics consumer left in LocalStack.
 

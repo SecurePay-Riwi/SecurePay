@@ -890,6 +890,7 @@ def expected_q5(differences, matched):
             "type": "MATCHED",
             "status": None,
             "age_range": None,
+            "currency": None,
             "records": m["matched"],
             "amount_difference_total": None,
         }
@@ -899,7 +900,14 @@ def expected_q5(differences, matched):
     for d in differences:
         age = (DAY - date.fromisoformat(d["run_day"])).days
         groups[
-            (d["run_day"], d["partner"], d["type"], d["status"], _age_range(age))
+            (
+                d["run_day"],
+                d["partner"],
+                d["type"],
+                d["status"],
+                _age_range(age),
+                d["currency"],
+            )
         ].append(d)
     return [
         {
@@ -908,6 +916,7 @@ def expected_q5(differences, matched):
             "type": k[2],
             "status": k[3],
             "age_range": k[4],
+            "currency": k[5],
             "records": len(items),
             "amount_difference_total": money(
                 sum(

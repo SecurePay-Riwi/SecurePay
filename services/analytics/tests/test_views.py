@@ -1,7 +1,6 @@
 """Each view and its control query over the fixture day (contract C3):
 both give the numbers of expected_views.json. One case per view: a view
-that is not in sql/ yet is skipped (q2 and q3 come with HU-45 and HU-46,
-q4 to q6 with Yulianis's stories). Spark tests: they skip without Java."""
+that is not in sql/ is skipped. Spark tests: they skip without Java."""
 
 from datetime import date
 from decimal import Decimal
