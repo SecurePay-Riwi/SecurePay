@@ -62,6 +62,7 @@ See [Seed](../components/seed.mdx).
 | `HISTORY_DEVICE_DAYS` | `30` | How long an account stays on a device's history (`dev:{device}`), for the shared device rule. At least 30, the longest window the catalog accepts. |
 | `HISTORY_SECURITY_MINUTES` | `60` | Security events kept per account (`sec:{account}`), for the account takeover rule (1 hour). |
 | `DECISION_TIMEOUT_MS` | `120` | How long the engine waits for the rules before applying the default decision (RN-01). Below 200 ms so the answer and the network still fit. |
+| `SLOW_DECISION_MS` | `150` | A decision at least this slow is written to the `securepay.decisions` log as one JSON line, like every HOLD, REJECT or default decision (HU-59). The CloudWatch metric filters and saved queries read those lines. |
 | `DECISION_WORKERS` | `40` | Threads that evaluate the rules. A timed-out evaluation keeps its thread until it ends. |
 | `RULES_REFRESH_SECONDS` | `1` | How often the engine checks Valkey for a new catalog version published by the [rules API](../components/rules-api.mdx). A change reaches the decisions within this time. |
 | `RATES_TABLE` | `pagoseguro-exchange-rates` | Sprint 5 (HU-42): DynamoDB table of the daily exchange rates that [securepay-apis](../components/exchange_rates.mdx) loads. In AWS Terraform sets it to `securepay-<env>-exchange-rates`. Loaded in memory by the engine at startup ([Exchange rate of the day](../components/decision-engine.mdx#exchange-rate-of-the-day)). |

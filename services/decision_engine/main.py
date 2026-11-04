@@ -32,6 +32,12 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
+# The decision lines (HU-59) are bare JSON, so CloudWatch metric filters
+# and Logs Insights read their fields: no prefix, not repeated by root.
+_decisions_handler = logging.StreamHandler()
+_decisions_handler.setFormatter(logging.Formatter("%(message)s"))
+logging.getLogger("securepay.decisions").addHandler(_decisions_handler)
+logging.getLogger("securepay.decisions").propagate = False
 
 
 @asynccontextmanager

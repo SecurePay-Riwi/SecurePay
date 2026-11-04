@@ -467,6 +467,16 @@ def evaluate(ctx: RuleContext, rule: RuleEntry) -> TriggeredRule | None:
 
 Each new decision is published to SNS by a background thread without making the core wait. See [Messaging](./messaging.mdx).
 
+## Decision log (HU-59)
+
+The engine writes one JSON line on the `securepay.decisions` logger for every decision worth looking at: every `HOLD` or `REJECT`, every default decision (`by_default`) and every decision slower than `SLOW_DECISION_MS` (150 ms). A fast `APPROVE` writes nothing, so the log stays small at 50 tx/s.
+
+```json
+{"event": "decision", "transaction_id": "7a2d3b5f-...", "decision": "HOLD", "rules_triggered": ["velocity"], "risk_score": 35, "by_default": false, "rules_version": "4", "elapsed_ms": 9.8}
+```
+
+`elapsed_ms` is the whole decision, including the idempotency check and the publish to the in-memory queue. In AWS, CloudWatch metric filters count these lines (default, held or rejected, slow decisions) and the alarms of [Alarms and thresholds](../architecture/infrastructure.mdx#alarms) read them; the saved Logs Insights queries `securepay-<env>/slow-decisions` and `default-decisions` list them.
+
 ## Code map
 
 | File | Role |
@@ -474,7 +484,7 @@ Each new decision is published to SNS by a background thread without making the 
 | `main.py` | FastAPI app, endpoints, error-to-status mapping, graceful shutdown of the publisher. |
 | `schemas.py` | Request and response models, their validation and the field descriptions Swagger shows. |
 | `docs/` | Swagger documentation, one file per group of endpoints (`transactions.py`, `security.py`, `health.py`), plus the API description (`app.py`) and the error bodies (`errors.py`). Keep its examples equal to this page. |
-| `decision_service.py` | Idempotency + catalog rules + publish. |
+| `decision_service.py` | Idempotency + catalog rules + publish, and the decision log line (`decision_line()`). |
 | `catalog.py` | `current()`: the rule catalog the engine decides with, refreshed from Valkey. |
 | `idempotency.py` | `idem:{id}` keys in Valkey. |
 | `history.py` | `out:{account}`, `in:{account}` and `dev:{device}` sorted sets: the history every rule reads. `record()` writes any history key. |
