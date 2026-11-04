@@ -51,7 +51,7 @@ uv run python -m services.analytics.labels --day 2026-10-05
 uv run python -m services.analytics --day 2026-10-05 --raw s3://pagoseguro-datalake
 ```
 
-`--raw` is the root of `raw/` (default `ANALYTICS_DATA_DIR`; it may be `s3://`, read through `services/reconciliation/storage.py`). `--output` is where `curated/`, `analytics/` and `views/` go (default `ANALYTICS_DATA_DIR`); a local Spark session writes local folders only. `views/q<N>/` is the Parquet Power BI imports in development (D6). In AWS the Glue job `securepay-<env>-analytics` runs `etl.main --day --raw --output` with `s3://<datalake>` for both (HU-66, Jorge).
+`--raw` is the root of `raw/` (default `ANALYTICS_DATA_DIR`; it may be `s3://`, read through `services/reconciliation/storage.py`). `--output` is where `curated/`, `analytics/` and `views/` go (default `ANALYTICS_DATA_DIR`); a local Spark session writes local folders only. `views/q<N>/` is the Parquet Power BI imports in development (D6). In AWS the Glue job `securepay-<env>-analytics` runs `infra/spark/analytics_job.py --day --raw --output` (`etl.run_day()` and then the quality checks) with `s3://<datalake>` for both; see [In AWS](#in-aws-hu-66).
 
 ## The builders
 
@@ -82,6 +82,16 @@ Each builder is `build(spark, day, raw, output) -> {table: rows written}`, regis
 # After the ETL of the day (exit code 1 and the failures if a check fails):
 uv run python -m services.analytics.quality --day 2026-10-05 --output generated/analytics
 ```
+
+## In AWS (HU-66)
+
+The nightly state machine `securepay-<env>-reconciliation` builds the day after it saves the differences, before the treasury e-mail: the Lambda `-analytics-export` (`export.handler`, read-only database user `analytics_export`) → the Glue job `-analytics` (AWS Glue 6.0: builders and quality checks) → `CREATE OR REPLACE VIEW` of q1..q6 in Athena. A failure in any of the three e-mails `-ops-alarms` and the reconciliation still ends; run the job again with `--day` once the cause is fixed. Terraform: `infra/terraform/modules/analytics`.
+
+- **Catalog.** The Glue database `GLUE_DATABASE` (`securepay_<env>_analytics`) has one Parquet table per entry of `TABLES`, built from `infra/terraform/modules/analytics/tables.json`. After a change to `shared/analytics.py`, run `uv run python -m services.analytics.catalog` and commit the file (`test_glue_job.py` fails until you do). Daily tables have the partition key `fecha` with partition projection, so Athena reads `fecha=<day>/` without a crawler or `MSCK REPAIR`; the views filter by `day`, the column inside the files.
+- **Views.** Terraform passes the six `sql/q*.sql` (without comments) to the state machine, which recreates them every night in the workgroup `ATHENA_WORKGROUP` (`securepay-<env>-powerbi`, results in `athena-results/powerbi/`, at most 1 GB per query). Power BI reads them there with the `powerbi` IAM user, whose key Habith creates by hand.
+- **Code.** Both Spark jobs share one zip (`services/reconciliation`, `services/analytics`, `shared`), which Terraform builds and the Deploy workflow uploads again on every merge (`infra/spark/package.py`). Glue installs SQLAlchemy, python-dotenv and pydantic at the versions of `uv.lock` (`python_modules` of the module; `test_glue_job.py` checks them).
+
+The step by step and the test with the fixture day: [Deploy to AWS, step 8](../getting-started/deploy-aws-terraform.mdx#the-analytics-after-the-reconciliation-hu-66).
 
 ## The export (C6)
 
@@ -200,6 +210,7 @@ The rules API runs the same simulation in `POST /rules/simulations`, one day at 
 | :--- | :--- | :--- |
 | `shared/tests/test_analytics_contract.py` | The paths, the tables and columns of C2, types, this model page | Nothing |
 | `services/analytics/tests/test_etl.py` | curated (window, repeated lines), every table and its schema, running a day again | Java |
+| `services/analytics/tests/test_glue_job.py` | The Glue entry point keeps its arguments and builds and checks the fixture day; `python_modules` matches `uv.lock`; the deploy zip has the folders Terraform zips; `tables.json` is up to date with `TABLES` | Java (one test) |
 | `services/analytics/tests/test_quality.py` | The fixture day passes every check; a null id, an empty id, an unknown currency or decision, a zero amount, a score or ratio out of range each fail their check; optional columns may be null | Java |
 | `services/analytics/tests/test_views.py` | Each view and its control query against the answer key (one case per view) | Java |
 | `services/analytics/tests/test_metrics.py` | The metrics' definitions by hand, both versions against the answer key, the command's replay, a Kaggle replay through the ETL to `q2` and `q3` | Java (the last test) |

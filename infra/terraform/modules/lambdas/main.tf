@@ -22,7 +22,7 @@ locals {
     DATABASE_NAME = var.database.name
     CREATE_SCHEMA = "false"
   }
-  database_user = { for user in ["cases_consumer", "history_consumer", "alerts", "reconciliation", "list_loader"] : user => merge(local.database_common, {
+  database_user = { for user in ["cases_consumer", "history_consumer", "alerts", "reconciliation", "list_loader", "analytics_export"] : user => merge(local.database_common, {
     DATABASE_USER               = user
     DATABASE_PASSWORD_PARAMETER = "${var.database.parameter_path}/${user}"
   }) }
@@ -74,6 +74,17 @@ locals {
       in_vpc      = true
       queue       = null
       environment = merge(local.database_user["reconciliation"], { RECON_DATA_DIR = "s3://${var.datalake_bucket}" })
+    }
+    # Exports the cases and the reconciliation of the window to the raw
+    # layer (HU-66, C6); a step of the nightly state machine after the store.
+    analytics-export = {
+      command = "services.analytics.export.handler"
+      in_vpc  = true
+      queue   = null
+      environment = merge(local.database_user["analytics_export"], {
+        ANALYTICS_DATA_DIR = "s3://${var.datalake_bucket}"
+        RECON_DATA_DIR     = "s3://${var.datalake_bucket}"
+      })
     }
     # Copies accounts, merchants and the restricted list from PostgreSQL
     # into the cache once a day (HU-67); the engine never reads PostgreSQL.

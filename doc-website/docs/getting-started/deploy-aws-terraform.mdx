@@ -380,6 +380,44 @@ The match runs on AWS Glue, not EMR Serverless: on AWS's free account plan EMR i
 
 **Cost.** Glue 6.0 charges USD 0.308 per DPU-hour, per second while the job runs, with a 1-minute minimum. The job uses two G.1X workers (1 DPU each, Glue's minimum), so a run of a few minutes costs about two cents. Nothing is charged between runs. Step Functions includes 4,000 free state transitions a month; a run uses about 10. The session still costs what step 6 costs.
 
+### The analytics after the reconciliation (HU-66)
+
+After `SaveDifferences` the same execution builds the analytics of the day, before the treasury e-mail:
+
+5. **ExportAnalytics**: the Lambda `securepay-dev-analytics-export` (`services/analytics/export.py`, read-only database user `analytics_export`) writes the cases and the reconciliation of the last 30 days to `raw/cases/` and `raw/reconciliation/` (with `matched.jsonl`).
+6. **BuildAnalytics**: the Glue job `securepay-dev-analytics` (`infra/spark/analytics_job.py`) runs every builder (`raw` → `curated/decisiones` → `analytics/<table>/`) and then the [data quality checks](../components/analytics.mdx#data-quality-hu-66); a failed check fails the job.
+7. **RefreshViews**: `CREATE OR REPLACE VIEW` of q1..q6 (`services/analytics/sql/`) in the Athena workgroup `securepay-dev-powerbi`, database `securepay_dev_analytics`.
+
+If any of the three fails, the day is still reconciled: the execution sends `Analytics of <day> failed` with the cause to `-ops-alarms`, then the treasury e-mail, and ends `Succeeded`. The Glue catalog (13 tables with partition projection) and the workgroup exist from the first apply; the views appear after the first execution.
+
+1. Apply once more after pulling the change: it adds the catalog, the workgroup, the `analytics-export` role and Lambda, the database user's password, the analytics job and its file, and updates the state machine and the roles. `db-bootstrap` runs again by itself and creates the `analytics_export` user.
+
+2. Upload the analytics fixture day too (decisions and the generator's labels of 2026-10-05; the export writes the cases and the reconciliation from RDS):
+
+   ```powershell
+   aws s3 cp ../../../../services/analytics/tests/fixtures/raw/decisiones "s3://$LAKE/raw/decisiones" --recursive
+   ```
+
+   ```powershell
+   aws s3 cp ../../../../services/analytics/tests/fixtures/raw/labels "s3://$LAKE/raw/labels" --recursive
+   ```
+
+3. Start the day again (step 5 above) and wait for `Succeeded`. In the graph, `ExportAnalytics`, `BuildAnalytics` and `RefreshViews` are green; `WarnAnalyticsFailed` is not run. The job's output log ends with `"quality": {"day": "2026-10-05", "tables": 13, "failures": {}}`.
+
+4. Query a view (or open **Athena → Query editor**, workgroup `securepay-dev-powerbi`, database `securepay_dev_analytics`):
+
+   ```powershell
+   $Q = aws athena start-query-execution --work-group securepay-dev-powerbi --query-execution-context Database=securepay_dev_analytics --query-string "SELECT decision, SUM(transactions) AS transactions FROM q1_transactions WHERE day = DATE '2026-10-05' GROUP BY decision" --query QueryExecutionId --output text
+   ```
+
+   ```powershell
+   aws athena get-query-results --query-execution-id $Q --query "ResultSet.Rows[].Data[].VarCharValue"
+   ```
+
+   Every decision of the day comes back with its count. Locally, `uv run python -m services.analytics --day 2026-10-05 --raw <a folder with both fixture sets>` gives the same numbers.
+
+**Cost.** One more Glue run of a few minutes (about two cents), and Athena charges USD 5 per TB scanned with a 10 MB minimum per query: the fixture day costs less than a cent. `CREATE VIEW` scans nothing.
+
 ## 9. Load the daily exchange rates
 
 The engine converts each amount to USD with the rate of its day, which it reads from the DynamoDB table `securepay-dev-exchange-rates` (HU-42). The Lambda `securepay-dev-exchange-rates` fills it: every day at 11:00 Bogotá (16:00 UTC, after Frankfurter publishes) EventBridge Scheduler runs it, it asks Frankfurter for the day's rates and writes one item. It runs the **securepay-apis** image, not the engine's, outside the VPC (it only calls Frankfurter and DynamoDB). Without it the table is empty and the engine converts with the fixed rates of October 1.

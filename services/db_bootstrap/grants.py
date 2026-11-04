@@ -43,6 +43,14 @@ TABLES: dict[str, dict[str, tuple[str, ...]]] = {
         "reconciliation_runs": ("SELECT", "INSERT", "UPDATE"),
         "reconciliation_differences": ("SELECT", "INSERT"),
     },
+    # services/analytics/export.py: the current state of the cases and the
+    # reconciliation of the export window, read only (HU-66, C6).
+    "analytics_export": {
+        "cases": READ,
+        "case_events": READ,
+        "reconciliation_differences": READ,
+        "reconciliation_runs": READ,
+    },
     # services/cache_loader/loader.py: copies the reference data to the cache.
     "list_loader": {
         "cuentas": READ,
