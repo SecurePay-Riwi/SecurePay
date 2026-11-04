@@ -1,0 +1,212 @@
+{
+  "name": "SecurePay",
+  "dataColors": [
+    "#0B3FA8",
+    "#1E88E5",
+    "#4FC3F7",
+    "#C4B5FD",
+    "#7C3AED",
+    "#0E9AA7",
+    "#8A94A6",
+    "#E9A23B"
+  ],
+  "background": "#FFFFFF",
+  "foreground": "#10234A",
+  "tableAccent": "#0B2A6B",
+  "good": "#0E9AA7",
+  "neutral": "#E9A23B",
+  "bad": "#D64545",
+  "textClasses": {
+    "title": {
+      "fontFace": "Segoe UI Semibold",
+      "fontSize": 12,
+      "color": "#10234A"
+    },
+    "label": {
+      "fontFace": "Segoe UI",
+      "fontSize": 10,
+      "color": "#3F4F6B"
+    },
+    "callout": {
+      "fontFace": "Segoe UI Semibold",
+      "fontSize": 24,
+      "color": "#10234A"
+    },
+    "header": {
+      "fontFace": "Segoe UI Semibold",
+      "fontSize": 11,
+      "color": "#10234A"
+    }
+  },
+  "visualStyles": {
+    "page": {
+      "*": {
+        "background": [
+          {
+            "color": {
+              "solid": {
+                "color": "#F1F5FB"
+              }
+            },
+            "transparency": 0
+          }
+        ],
+        "outspace": [
+          {
+            "color": {
+              "solid": {
+                "color": "#F1F5FB"
+              }
+            },
+            "transparency": 0
+          }
+        ]
+      }
+    },
+    "*": {
+      "*": {
+        "background": [
+          {
+            "show": false
+          }
+        ],
+        "border": [
+          {
+            "show": false
+          }
+        ],
+        "title": [
+          {
+            "show": false
+          }
+        ],
+        "visualHeader": [
+          {
+            "show": true
+          }
+        ]
+      }
+    },
+    "slicer": {
+      "*": {
+        "header": [
+          {
+            "show": false
+          }
+        ],
+        "data": [
+          {
+            "mode": "Dropdown"
+          }
+        ]
+      }
+    },
+    "tableEx": {
+      "*": {
+        "columnHeaders": [
+          {
+            "backColor": {
+              "solid": {
+                "color": "#0B2A6B"
+              }
+            },
+            "fontColor": {
+              "solid": {
+                "color": "#FFFFFF"
+              }
+            },
+            "bold": true,
+            "fontSize": 11
+          }
+        ],
+        "values": [
+          {
+            "fontSize": 11,
+            "backColorSecondary": {
+              "solid": {
+                "color": "#F4F7FC"
+              }
+            }
+          }
+        ],
+        "grid": [
+          {
+            "gridHorizontal": true,
+            "gridHorizontalColor": {
+              "solid": {
+                "color": "#E2E8F0"
+              }
+            },
+            "gridVertical": false
+          }
+        ],
+        "total": [
+          {
+            "totals": false
+          }
+        ]
+      }
+    },
+    "clusteredBarChart": {
+      "*": {
+        "labels": [
+          {
+            "show": true
+          }
+        ],
+        "valueAxis": [
+          {
+            "show": false
+          }
+        ],
+        "categoryAxis": [
+          {
+            "showAxisTitle": false
+          }
+        ],
+        "legend": [
+          {
+            "show": false
+          }
+        ]
+      }
+    },
+    "donutChart": {
+      "*": {
+        "legend": [
+          {
+            "show": true,
+            "position": "Right"
+          }
+        ],
+        "labels": [
+          {
+            "show": true,
+            "labelStyle": "Percent of total"
+          }
+        ]
+      }
+    },
+    "lineClusteredColumnComboChart": {
+      "*": {
+        "legend": [
+          {
+            "show": true,
+            "position": "Top"
+          }
+        ],
+        "categoryAxis": [
+          {
+            "showAxisTitle": false
+          }
+        ],
+        "valueAxis": [
+          {
+            "showAxisTitle": true,
+            "secShowAxisTitle": true
+          }
+        ]
+      }
+    }
+  }
+}
