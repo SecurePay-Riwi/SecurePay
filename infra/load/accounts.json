@@ -1,0 +1,418 @@
+{
+  "accounts": [
+    {
+      "id": "05ced263-d16c-5f77-a064-c5e8db53b0a0",
+      "currency": "COP"
+    },
+    {
+      "id": "05e6f341-48e9-569b-bf8a-b9a13a74eb46",
+      "currency": "COP"
+    },
+    {
+      "id": "0b1ecefe-8cbb-5f8a-bb6a-7c10e024c4c3",
+      "currency": "COP"
+    },
+    {
+      "id": "1009abb7-b69e-5ae2-8029-9d57ad1d7abc",
+      "currency": "COP"
+    },
+    {
+      "id": "1055c20f-24b8-5383-9605-e021fb98ae1b",
+      "currency": "COP"
+    },
+    {
+      "id": "1298cc65-792f-5d66-965a-4cf92bf612f6",
+      "currency": "USD"
+    },
+    {
+      "id": "14f02089-f5db-55ff-b47c-6ae348430c97",
+      "currency": "USD"
+    },
+    {
+      "id": "16295c6b-ae45-51a6-b144-fcaaf9434464",
+      "currency": "USD"
+    },
+    {
+      "id": "192ff234-4475-5daf-9675-a43763bd02ee",
+      "currency": "JPY"
+    },
+    {
+      "id": "1ace908e-2464-598e-9214-ed54eae07eb0",
+      "currency": "COP"
+    },
+    {
+      "id": "1decba87-af8e-593f-85e3-0c72bbfb83ce",
+      "currency": "COP"
+    },
+    {
+      "id": "1eafb040-5255-5027-bf8d-358bccda9dd9",
+      "currency": "EUR"
+    },
+    {
+      "id": "22210943-ba63-5999-b688-513522cbe425",
+      "currency": "USD"
+    },
+    {
+      "id": "23ee5a4b-9eee-5319-9270-378befca2fa2",
+      "currency": "JPY"
+    },
+    {
+      "id": "24a28363-3f33-5f6a-911b-b9a15dd0757f",
+      "currency": "USD"
+    },
+    {
+      "id": "25a8891d-6698-58fa-b123-ef6de14e1432",
+      "currency": "JPY"
+    },
+    {
+      "id": "282aeb8f-bd52-5cea-a610-889a85c622c9",
+      "currency": "JPY"
+    },
+    {
+      "id": "2a0d281d-049b-5c48-9589-2cab51685e02",
+      "currency": "USD"
+    },
+    {
+      "id": "2c9333cc-3316-514a-a85c-e3e48277c391",
+      "currency": "COP"
+    },
+    {
+      "id": "2e189a47-e06f-515b-9612-81faf2150188",
+      "currency": "COP"
+    },
+    {
+      "id": "32e29339-0bfb-5376-82c4-4463b6e7a0e4",
+      "currency": "COP"
+    },
+    {
+      "id": "32e48e8b-482b-5499-9285-09c4902dfa1e",
+      "currency": "COP"
+    },
+    {
+      "id": "3e1a0cdb-e3c9-5dba-b7b1-7ac28a50254a",
+      "currency": "EUR"
+    },
+    {
+      "id": "43bf1e27-5b17-5eda-a9a9-8c2a131525d0",
+      "currency": "USD"
+    },
+    {
+      "id": "48918b87-6a5c-5dab-a97e-4e37ab19c780",
+      "currency": "JPY"
+    },
+    {
+      "id": "48ca5f06-7fc6-5e64-80ca-91ee4f49cffd",
+      "currency": "EUR"
+    },
+    {
+      "id": "4a253aa8-1651-55d9-b3b7-674d4beae535",
+      "currency": "COP"
+    },
+    {
+      "id": "4a7d48a5-579d-5349-acc6-b1d5c34448d8",
+      "currency": "EUR"
+    },
+    {
+      "id": "4b38d4ee-17dc-523a-94ae-e4ad5e0a01b5",
+      "currency": "COP"
+    },
+    {
+      "id": "4e404bca-e792-5157-9013-215a01c3e3c6",
+      "currency": "EUR"
+    },
+    {
+      "id": "52537115-8346-50cc-a1a6-7b5455ec4175",
+      "currency": "USD"
+    },
+    {
+      "id": "52f364fe-8113-5932-9175-f6418989a41f",
+      "currency": "USD"
+    },
+    {
+      "id": "55c192bb-e911-5bf4-8f3a-84ef16c9d85b",
+      "currency": "EUR"
+    },
+    {
+      "id": "56f9fde0-6081-530e-a403-2881a8b115e7",
+      "currency": "EUR"
+    },
+    {
+      "id": "574deed9-d05d-56ae-8779-033d3ea048db",
+      "currency": "COP"
+    },
+    {
+      "id": "66361ac3-3752-5974-8334-d6bcf75455d9",
+      "currency": "USD"
+    },
+    {
+      "id": "676dbcbd-ee63-5f58-b129-c30d71c0b2ba",
+      "currency": "COP"
+    },
+    {
+      "id": "677f0e38-f78b-53df-8927-b3def7ae9217",
+      "currency": "COP"
+    },
+    {
+      "id": "67ed86a4-7c38-515d-9343-11961091ec26",
+      "currency": "COP"
+    },
+    {
+      "id": "69e323b0-13d7-51c6-ba1f-2d25119a76a3",
+      "currency": "EUR"
+    },
+    {
+      "id": "6b4d1d0d-18b9-5408-885f-023eb6c4e58b",
+      "currency": "USD"
+    },
+    {
+      "id": "70c14634-911c-58dc-b40d-52c19f13091d",
+      "currency": "COP"
+    },
+    {
+      "id": "744e14a9-1040-51ff-a6e8-403eb5db3333",
+      "currency": "USD"
+    },
+    {
+      "id": "7659ea4e-0fb8-5380-bc38-9ee3d242086c",
+      "currency": "EUR"
+    },
+    {
+      "id": "79886f9d-e57f-5511-8d46-3bcfb1d7ac5c",
+      "currency": "COP"
+    },
+    {
+      "id": "7a57f075-2024-55de-9c04-9765535ee25b",
+      "currency": "COP"
+    },
+    {
+      "id": "7ac3ab3f-55ad-5569-a438-edb9b7395efa",
+      "currency": "USD"
+    },
+    {
+      "id": "7d67f9c9-602a-533d-b2fa-74d41a19b822",
+      "currency": "JPY"
+    },
+    {
+      "id": "8004a6ce-2c9b-597e-b7c9-db5ea3cb8583",
+      "currency": "COP"
+    },
+    {
+      "id": "851de67d-52ae-5bc6-b38c-2c3b57bedfc6",
+      "currency": "USD"
+    },
+    {
+      "id": "8704ea97-a536-5586-8a48-f9cb0545c953",
+      "currency": "COP"
+    },
+    {
+      "id": "870f0c16-3dd7-5432-b3d2-ccc28e374cdb",
+      "currency": "EUR"
+    },
+    {
+      "id": "8910bbd7-fe23-57ab-a21f-409b5902b100",
+      "currency": "COP"
+    },
+    {
+      "id": "8f5dea33-16c6-5efe-9243-20e713d5af2d",
+      "currency": "COP"
+    },
+    {
+      "id": "9099906c-b2a9-5d90-a1cd-147c59c37db2",
+      "currency": "USD"
+    },
+    {
+      "id": "92dc9b2a-010d-5fcb-9ac2-4f628e61ecd7",
+      "currency": "COP"
+    },
+    {
+      "id": "94e4cd85-0884-53cc-b9e4-c35640b276f2",
+      "currency": "USD"
+    },
+    {
+      "id": "95e36a68-32ef-5039-bb3c-d1d50bf17c2c",
+      "currency": "COP"
+    },
+    {
+      "id": "96a880c4-fe23-5825-bf05-10fdb46e7cc0",
+      "currency": "USD"
+    },
+    {
+      "id": "97a6bf9f-2365-570d-ad2a-1e566b705f8d",
+      "currency": "COP"
+    },
+    {
+      "id": "9c8a7252-adbc-548c-af4c-cbf1069fa34c",
+      "currency": "COP"
+    },
+    {
+      "id": "9fbe7c65-c94c-5f91-88ec-2a06070ef3c1",
+      "currency": "USD"
+    },
+    {
+      "id": "a0b44e21-6bb5-586a-982a-27090d7f4994",
+      "currency": "USD"
+    },
+    {
+      "id": "a8d456b7-ae6a-5481-9a4b-64deb0d295f7",
+      "currency": "EUR"
+    },
+    {
+      "id": "ab979a3c-43ee-5d5f-b98a-b7b634233fde",
+      "currency": "USD"
+    },
+    {
+      "id": "af5ea0b1-c351-5e69-9d12-8fade2756cee",
+      "currency": "COP"
+    },
+    {
+      "id": "afa357bb-6d6f-5c8d-ad25-76f7fd811e41",
+      "currency": "COP"
+    },
+    {
+      "id": "b0a03d51-ce95-59c3-ab39-6d8ba32d2b8e",
+      "currency": "JPY"
+    },
+    {
+      "id": "b1c14356-967b-5006-bfdb-4221e49af653",
+      "currency": "COP"
+    },
+    {
+      "id": "bb2d8290-8c8e-56b6-bf21-966945c5ad1b",
+      "currency": "USD"
+    },
+    {
+      "id": "bc706501-8107-5257-adc5-478fc29ec6c8",
+      "currency": "COP"
+    },
+    {
+      "id": "bcd0b162-0f81-5852-882d-282a98099627",
+      "currency": "USD"
+    },
+    {
+      "id": "bec4a860-8abe-54e6-9659-6d1cbada6f60",
+      "currency": "COP"
+    },
+    {
+      "id": "c18fddbb-3d3a-530e-968c-caa09986cd63",
+      "currency": "COP"
+    },
+    {
+      "id": "c8ae2cc0-bff4-5dcf-89e9-0794d47bd69f",
+      "currency": "COP"
+    },
+    {
+      "id": "c8c8d225-b91e-53a4-b50e-f93a524913b6",
+      "currency": "USD"
+    },
+    {
+      "id": "c9562c3a-d079-52c6-8c9c-f1f4f580ed39",
+      "currency": "USD"
+    },
+    {
+      "id": "ca19480c-fe7e-5ff8-ae05-aaf024f4ffda",
+      "currency": "USD"
+    },
+    {
+      "id": "cc013f26-d993-5dc2-9673-be5779b90420",
+      "currency": "COP"
+    },
+    {
+      "id": "d6468eec-119a-5bba-b39a-d80f01d82e36",
+      "currency": "JPY"
+    },
+    {
+      "id": "df8cbb3f-2688-5887-85a0-0d07562188d9",
+      "currency": "COP"
+    },
+    {
+      "id": "e4f417d0-f551-524e-bebb-4e3e161b27b5",
+      "currency": "COP"
+    },
+    {
+      "id": "e754c920-c53e-54b0-a5ac-9c238a2f553c",
+      "currency": "USD"
+    },
+    {
+      "id": "e8776c2d-27b3-54f8-b96f-6b7666e43cd4",
+      "currency": "COP"
+    },
+    {
+      "id": "ea0c9d60-fbaf-526c-809f-19ce643b78c1",
+      "currency": "EUR"
+    },
+    {
+      "id": "eb86cd89-52f3-59d1-9666-5628da2f0a11",
+      "currency": "USD"
+    },
+    {
+      "id": "ed106695-2b1e-53c1-a478-29e76a36ff73",
+      "currency": "COP"
+    },
+    {
+      "id": "f6a97d76-e9fe-5be5-ad1d-9449333d6102",
+      "currency": "JPY"
+    },
+    {
+      "id": "f6de8859-bf76-5047-8bf2-c2d8819e7932",
+      "currency": "COP"
+    },
+    {
+      "id": "f8cb4378-3196-5ab0-95fa-84b1949ef186",
+      "currency": "USD"
+    },
+    {
+      "id": "f921b3cd-48a9-5003-91b6-eaf12d65c834",
+      "currency": "COP"
+    },
+    {
+      "id": "fad6794d-b95c-5e99-8d94-b0f3a5bffade",
+      "currency": "COP"
+    },
+    {
+      "id": "fb8b3945-da68-5d8c-94d5-fdaca1e88b3e",
+      "currency": "COP"
+    },
+    {
+      "id": "fbe471b7-16b7-5a93-aab4-df76fd0a304f",
+      "currency": "COP"
+    },
+    {
+      "id": "fbe83064-b168-58bf-8bc7-674ad308f8d8",
+      "currency": "COP"
+    },
+    {
+      "id": "fc367f23-f20c-52e4-b906-a92b59a96805",
+      "currency": "COP"
+    },
+    {
+      "id": "fda9008c-e290-574e-a906-19f8bbc121eb",
+      "currency": "COP"
+    },
+    {
+      "id": "feab8938-a29e-5851-932a-b828b34c2ff9",
+      "currency": "COP"
+    }
+  ],
+  "merchants": [
+    "0063eac1-1785-515d-9377-8004d02dd256",
+    "0b3774c2-baab-537c-9a2c-f43893fc6a76",
+    "20453787-7671-5842-816c-e6c2a96790bf",
+    "24755b2b-1e6e-55a9-af83-6ec4e6a27085",
+    "2cd8c04a-56ed-5c29-9869-ad2162a89fec",
+    "3fc441c0-1347-5c14-8784-bfd01cc78075",
+    "457afa1e-82b9-5943-bc1e-1e0a359a8869",
+    "4e6b2594-fae7-5ec6-9564-115c92273405",
+    "57e905d3-eab4-54cb-887c-f4b638182a5d",
+    "701c809e-2a96-5169-bec6-6b8e4d955573",
+    "92915492-615d-5f31-83ac-94f5ebbf6ba8",
+    "9655f48e-45cc-52c8-bd51-ac1daa1d78da",
+    "9db6dff3-f7d1-5726-bb2b-be8be0674b61",
+    "a5f2c362-606e-5567-97e0-484866cd2174",
+    "abf0c205-83ce-52f1-9830-54ed8bb43b11",
+    "c652a1c3-f35f-5656-9145-3be9d77020db",
+    "c79e0b91-fd9d-52a4-90e8-5a0a740f7a01",
+    "e6218f79-5903-563e-a3b1-ae27d4de5654",
+    "eee65927-2249-58bb-8633-58ec34de93bd",
+    "f6977fda-559b-529a-aac2-89c36b7afb7e"
+  ]
+}
