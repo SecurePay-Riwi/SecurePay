@@ -724,4 +724,6 @@ Para levantar el motor: subir las imágenes a ECR con el commit corto como tag, 
 
 **Nightly reconciliation (HU-36, Sprint 5).** With `lambda_image_tag` Terraform adds the Lambdas `-statement-reader` and `-difference-writer`, the AWS Glue 6.0 job `securepay-dev-reconciliation-match` (Spark 4.1.1; EMR is not available on AWS's free account plan, Glue is; Terraform zips and uploads the job's code itself, no build step), the state machine `securepay-dev-reconciliation` (02:00 Bogotá), the 06:30 check and the failure alarm; `treasury_emails` gets the result of each night. The test with the fixture day is section 8 of `deploy-aws-terraform.mdx`.
 
+**Kubernetes (HU-58).** `infra/k8s/` runs the same engine on kind (local, free) and on EKS (one session in dev, deleted the same day) to compare it with Fargate (ADR-06): `kind create cluster --name securepay --config infra/k8s/overlays/kind/kind.yaml`, `kubectl apply -k infra/k8s/overlays/kind` and `uv run python infra/k8s/latency.py http://localhost:8000 http://localhost:8080`. Steps: `doc-website/docs/getting-started/kubernetes.mdx`.
+
 El estado (`terraform.tfstate`) y `terraform.tfvars` quedan en tu equipo y git los ignora. El estado guarda las contraseñas de RDS, así que no se comparte. Corre `apply` y `destroy` siempre desde el mismo equipo.

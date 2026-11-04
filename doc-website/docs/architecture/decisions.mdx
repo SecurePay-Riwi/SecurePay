@@ -95,7 +95,31 @@ Each record follows the same format: context, decision, alternatives considered 
 
 **Consequences.** The solution is tied to AWS. In exchange, high availability comes with each service and the team spends its time on the business rules instead of running infrastructure.
 
-**Kubernetes comparison.** The course program asks to deploy the decision engine on Kubernetes and compare it with Fargate. This is done as a one-off exercise, not as part of the architecture: in week 5 the engine runs on EKS for a few hours, with a Deployment, a Service and a namespace, under the same load as on Fargate; latency, operation effort and cost are measured, and the cluster is destroyed the same day. The control plane bills per hour, so the exercise costs a few dollars instead of $73/month. The results are recorded here and confirm or revise this decision.
+**Kubernetes comparison.** The course program asks to deploy the decision engine on Kubernetes and compare it with Fargate. This is done as a one-off exercise, not as part of the architecture: the engine runs on EKS for one session in dev's VPC, with a Deployment, a Service and a namespace, under the same load as on Fargate; latency, operation effort and cost are measured, and the cluster is destroyed the same day. The control plane bills per hour, so the exercise costs a few dollars instead of $73/month. The results are recorded here and confirm or revise this decision.
+
+**Kubernetes comparison: how (HU-58).** The manifests are in `infra/k8s/` (kustomize: one `base` and the overlays `kind` and `eks`); the steps, in [Run the engine on Kubernetes](../getting-started/kubernetes.mdx). The same image, command, size (0.5 vCPU, 1 GB) and variables as the ECS service. First on **kind**, a real Kubernetes cluster whose nodes are Docker containers on the team's computer: it costs nothing and proves the engine runs on Kubernetes unchanged, but it has no AWS (no load balancer, IAM or zones), so it cannot measure latency against Fargate. Then on **EKS** for one session, if the account's plan allows it, measured with the same load test as Fargate (HU-60).
+
+| | ECS Fargate (today) | EKS (managed nodes) |
+| :--- | :--- | :--- |
+| Fixed cost | None | $0.10/hour per cluster ($73/month) for the control plane |
+| Compute | Per task: 4 tasks of 0.5 vCPU and 1 GB, about $72/month | Per node, whether full or not: 2 `t3.medium` are about $60/month, and more nodes for the peak |
+| What the team writes | Task definition, service and autoscaling in Terraform (`modules/ecs`) | Deployment, Service, PodDisruptionBudget, HPA, plus the cluster, node group, service account (IRSA) and metrics-server |
+| What the team operates | Nothing below the task | Kubernetes versions (a minor version every ~4 months, upgrade of control plane and nodes), node AMIs, add-ons (CNI, CoreDNS, kube-proxy, metrics-server) |
+| Scaling | Tasks in about 1 minute | Pods in seconds if a node has room; a new node takes minutes (Cluster Autoscaler or Karpenter to install) |
+| Load balancer and IAM | ALB and task role, native | AWS Load Balancer Controller or the in-tree NLB; IAM through IRSA or Pod Identity |
+| Portability | AWS only | Any Kubernetes (the same manifests run on kind) |
+
+**Kubernetes comparison: result.** To be completed with the measured numbers:
+
+| Measure | Compose (local) | kind (local) | ECS Fargate (dev) | EKS (dev) |
+| :--- | :--- | :--- | :--- | :--- |
+| p50 / p95 / p99 (ms) | | | | |
+| Errors | | | | |
+| Time for a new task or pod to be ready | — | | | |
+| Team hours to get it running | — | | | |
+| Cost of the session | $0 | $0 | | |
+
+With the measured numbers pending, the decision stands: for one service with constant load and a team of 3 to 4, Fargate gives the same Deployment-like behaviour (rolling deploys, health checks, autoscaling, two zones) without a control plane to pay for or a cluster to upgrade. Kubernetes would pay off with many services, several teams, or a need to leave AWS, none of which this project has.
 
 ## ADR-07 — The engine's autoscaling maximum goes from 12 to 24 tasks {/* #adr-07 */}
 
