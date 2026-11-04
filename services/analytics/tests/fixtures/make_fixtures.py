@@ -862,7 +862,14 @@ def expected_q5(differences):
     for d in differences:
         age = (DAY - date.fromisoformat(d["run_day"])).days
         groups[
-            (d["run_day"], d["partner"], d["type"], d["status"], _age_range(age))
+            (
+                d["run_day"],
+                d["partner"],
+                d["type"],
+                d["status"],
+                _age_range(age),
+                d["currency"],
+            )
         ].append(d)
     return [
         {
@@ -871,6 +878,7 @@ def expected_q5(differences):
             "type": k[2],
             "status": k[3],
             "age_range": k[4],
+            "currency": k[5],
             "differences": len(items),
             "amount_difference_total": money(
                 sum(

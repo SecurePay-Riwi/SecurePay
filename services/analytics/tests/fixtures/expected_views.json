@@ -349,6 +349,7 @@
       "type": "AMOUNT_MISMATCH",
       "status": "PENDING",
       "age_range": "8+",
+      "currency": "COP",
       "differences": 1,
       "amount_difference_total": "-1000.00"
     },
@@ -358,6 +359,7 @@
       "type": "MISSING_IN_PAGOSEGURO",
       "status": "PENDING",
       "age_range": "8+",
+      "currency": "USD",
       "differences": 1,
       "amount_difference_total": null
     },
@@ -367,6 +369,7 @@
       "type": "MISSING_IN_PAGOSEGURO",
       "status": "PENDING",
       "age_range": "2-7",
+      "currency": "JPY",
       "differences": 1,
       "amount_difference_total": null
     },
@@ -376,6 +379,7 @@
       "type": "MISSING_IN_PARTNER",
       "status": "RESOLVED",
       "age_range": "2-7",
+      "currency": "USD",
       "differences": 1,
       "amount_difference_total": null
     },
@@ -385,6 +389,7 @@
       "type": "MISSING_IN_PARTNER",
       "status": "PENDING",
       "age_range": "0-1",
+      "currency": "COP",
       "differences": 1,
       "amount_difference_total": null
     },
@@ -394,6 +399,7 @@
       "type": "AMOUNT_MISMATCH",
       "status": "PENDING",
       "age_range": "0-1",
+      "currency": "EUR",
       "differences": 1,
       "amount_difference_total": "0.22"
     }
