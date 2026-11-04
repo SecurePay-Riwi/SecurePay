@@ -45,24 +45,54 @@ Grouped by service, so a service that solves several things is counted once.
 | Amazon EventBridge Scheduler | Reconciliation, exchange rates, 5-minute alerts | $0.00 | $0.00 |
 | AWS Step Functions | Reconciliation orchestration | $0.00 | $0.00 |
 | Amazon DynamoDB | Durable device–account pairs (30 days) + exchange rates table | $0.90 | $0.10 |
-| AWS EMR Serverless | 5 Spark jobs | $7.27 | $0.50 |
+| AWS Glue 6.0 | 2 Spark jobs every night: the reconciliation match and the analytics ETL, 2 G.1X workers, ~10 minutes each at $0.308 per DPU-hour (was EMR Serverless, $7.27: not on AWS's free plan, [ADR-05](./decisions.mdx#adr-05)) | $6.16 | $0.10 |
 | AWS Systems Manager | Session Manager + Parameter Store | $0.00 | $0.00 |
 | Amazon RDS PostgreSQL | Multi-AZ instance + storage + backups: users, rules, cases | $31.35 | $5.50 |
 | NAT Gateway (×2) | Outbound traffic from private subnets to AWS services | $72.52 | $2.28 |
 | Data transfer | Cross-AZ + internet egress | ~$2.60 | ~$0.20 |
-| Amazon CloudWatch | Logs, metrics, alarms | $10.07 | $1.50 |
-| AWS X-Ray | Transaction tracing | $9.00 | $0.50 |
+| Amazon CloudWatch | Logs, metrics, the alarms and dashboard of HU-59 (about 40 alarm metrics at $0.10 after the 10 free, 6 custom metrics from log filters at $0.30) | $13.97 | $1.50 |
+| AWS X-Ray | Transaction tracing: designed, not built (the decision log of HU-59 covers it); $9.00 if it is added | $0.00 | $0.00 |
 | Amazon S3 | Data Lake + immutable evidence for 10 years (storage and writes) | $5.26 | $0.50 |
 | Amazon Athena | SQL over S3 | $1.43 | $0.15 |
 | AWS Glue Data Catalog | Table catalog for Athena | $0.01 | $0.00 |
 | Amazon ECR | Docker image registry | $0.50 | $0.50 |
 | Public IPv4 addresses | 4 addresses (2 NAT + 2 ALB) at $0.005 an hour | $14.60 | — |
-| Amazon Data Firehose | Removed in Sprint 6: not on AWS's free plan. The analytics queue batches instead (~$0.65 of S3 PUTs). Recalculated with the final costs after the load test | $3.58 | — |
+| Amazon Data Firehose | Removed in Sprint 6: not on AWS's free plan. The analytics queue batches 1,000 decisions per S3 file instead (~$0.65 of S3 PUTs, counted here) | $0.65 | — |
 | IAM, KMS (AWS keys), VPC, Budgets, CloudTrail | Roles, encryption at rest, network, credit alerts, audit | $0.00 | $0.00 |
 | Power BI Desktop, GitHub Actions, Frankfurter API | Dashboard, CI/CD, exchange rates | $0.00 | $0.00 |
-| **Total** | | **$346.45** | **≈ $17.18** |
+| **Total** | | **$337.31** | **≈ $16.28** |
 
-The total assumes 300 MB of cache memory. At 150 MB it would be about $43 less; at 1 GB, about $10 more. See [Open questions](./open-questions.mdx).
+The total is option A of [Three options](#options). It assumes 300 MB of cache memory. At 150 MB it would be about $43 less; at 1 GB, about $10 more. See [Open questions](./open-questions.mdx).
+
+## Three options {/* #options */}
+
+The assignment asks for the final cost with at least two alternatives (E-07). These are three, all at production size (50 tx/s sustained, 300 at the peak, two zones), monthly, in `us-east-2`. Rates from the public AWS price list (November 4, 2026); each line says what it assumes.
+
+| | A. Managed and serverless (built) | B. Everything on Fargate | C. The assignment's stack on EKS |
+| :--- | :--- | :--- | :--- |
+| Engine | Fargate, 4 tasks | Fargate, 4 tasks | Pods on EKS |
+| Consumers, alerts, loaders, APIs | Lambda + API Gateway | 12 Fargate tasks of 0.25 vCPU / 0.5 GB (two per component, to survive a zone) behind the same ALB | Pods on EKS |
+| Messaging | SNS + SQS | SNS + SQS | RabbitMQ (3 replicas, on EKS) |
+| Orchestration | Step Functions + EventBridge Scheduler | Step Functions + EventBridge Scheduler | Airflow with Celery (on EKS, metadata in a second RDS) |
+| Spark | AWS Glue | AWS Glue | Spark on our own containers (on EKS) |
+| **Monthly** | **$337.31** | **$408.41** | **$664.89** |
+
+**How B is computed:** A without Lambda ($35.55) and API Gateway ($1.10), plus 12 tasks × $0.0123 an hour × 730 hours = $107.75 ([ADR-02](./decisions.mdx#adr-02)).
+
+**How C is computed:** A without Fargate ($72.08), SQS ($31.10), Lambda ($35.55), Glue ($6.16) and API Gateway ($1.10), plus:
+
+| Line | Assumption | Monthly |
+| :--- | :--- | ---: |
+| EKS control plane | $0.10 an hour, one cluster | $73.00 |
+| Nodes | 6 × `t3.large` (2 vCPU, 8 GB, $0.0832 an hour), 3 per zone: about 12 vCPU and 30 GB for the engine at 50 tx/s (2 vCPU), the consumers (1.5), RabbitMQ (3 × 1 vCPU / 2 GB), Airflow (scheduler, web server, 2 Celery workers, Redis: 2.5 vCPU) and the nightly Spark job (3 vCPU / 12 GB). The 300 tx/s peak needs more nodes, like Fargate needs more tasks | $364.42 |
+| Airflow metadata database | A second RDS like ours (`db.t3.micro` Multi-AZ) | $31.35 |
+| RabbitMQ disks | 3 × 20 GB gp3 at $0.08 per GB-month | $4.80 |
+
+The managed version of C costs more still: Amazon MQ for RabbitMQ as a 3-node `mq.m5.large` cluster is $630.72 a month and Amazon MWAA (managed Airflow) starts at $357.70 (small environment), against $0 for Step Functions and Scheduler at our volume.
+
+**What the numbers do not show.** A and B have nothing to patch below the container; C needs Kubernetes upgrades every few months, node AMIs, the RabbitMQ cluster and Airflow's database, and the team has 4 people for 6 weeks ([ADR-06](./decisions.mdx#adr-06), with the ECS vs EKS table). A is the cheapest and the one with the least to operate, so it stays.
+
+**Pending the load test (HU-60).** The Fargate line (4 tasks at 50 tx/s, up to ~12 at 300) and the cache size (300 MB assumed) are estimates until [Load test the engine](../getting-started/load-test.mdx) measures them; both lines move A and B equally. The B and C figures are computed from the price list, not loaded into the Pricing Calculator.
 
 ## AWS Pricing Calculator {/* #pricing-calculator */}
 
@@ -81,7 +111,9 @@ What changed against the earlier estimate of $333.21:
 | CloudWatch + alarms | $10.45 | $10.07 | The calculator archives 15 % of the ingested logs |
 | Rest | | ±$0.50 | Rounding (RDS, EMR, DynamoDB, Athena, Glue, NAT) |
 
-**Evaluated and not applied:** moving to ARM (Graviton) would save ~$24 a month (Fargate, Lambda, RDS `db.t4g.micro`, EMR), but needs `arm64` images. A regional NAT Gateway was also evaluated and rejected; one zonal NAT per zone stays ([ADR-08](./decisions.mdx#adr-08)).
+After the calculator (Sprint 6, HU-61), four lines changed by hand with the `us-east-2` price list of November 4, 2026: EMR Serverless $7.27 → Glue $6.16, Firehose $3.58 → $0.65 of S3 writes, X-Ray $9.00 → $0.00 (not built) and CloudWatch $10.07 → $13.97 (the alarms that exist now). $346.45 → $337.31.
+
+**Evaluated and not applied:** moving to ARM (Graviton) would save ~$24 a month (Fargate, Lambda, RDS `db.t4g.micro`, Glue does not change), but needs `arm64` images. A regional NAT Gateway was also evaluated and rejected; one zonal NAT per zone stays ([ADR-08](./decisions.mdx#adr-08)).
 
 **One-off costs**, outside the monthly table: the load test at 50, 150 and 300 tx/s (USD 5 to 10 per full run) and running the full-mode seed against RDS (a couple of dollars).
 

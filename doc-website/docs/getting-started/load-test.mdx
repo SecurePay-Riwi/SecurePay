@@ -66,6 +66,7 @@ Locust's numbers say what a client sees, and they are the ones to look at for er
    | Default decisions | Locust's `decisions` line; dashboard: decisions |
    | Engine tasks running | **ECS → securepay-dev → Services → engine**: running count; or `aws ecs describe-services --cluster securepay-dev --services engine --query "services[0].runningCount"` |
    | CPU of the tasks | Dashboard, or the service's CPU in ECS |
+   | Cache size and use | **CloudWatch → Metrics → ElastiCache**: `BytesUsedForCache` (max) and `ElastiCacheProcessingUnits` (sum) of `securepay-dev-cache`, at the end of the 300 step. It closes the cache size question of [Open questions](../architecture/open-questions.mdx) |
    | Queues and database | Dashboard: queue age, RDS CPU and connections. Each decision also goes to the three queues and becomes database rows |
    | Alarms that fired | **CloudWatch → Alarms**, and the `ops-alarms` inbox |
 
@@ -84,11 +85,11 @@ Locust's numbers say what a client sees, and they are the ones to look at for er
 
 To be completed after the run:
 
-| Step | Tasks | p50 / p99 in AWS (ms) | p50 / p99 at the client (ms) | Errors | Default decisions | Alarms |
-| :--- | ---: | :--- | :--- | ---: | ---: | :--- |
-| 50 tx/s | | | | | | |
-| 150 tx/s | | | | | | |
-| 300 tx/s | | | | | | |
+| Step | Tasks | Cache (MB) | p50 / p99 in AWS (ms) | p50 / p99 at the client (ms) | Errors | Default decisions | Alarms |
+| :--- | ---: | ---: | :--- | :--- | ---: | ---: | :--- |
+| 50 tx/s | | | | | | | |
+| 150 tx/s | | | | | | | |
+| 300 tx/s | | | | | | | |
 
 With the numbers:
 - check alarm 1 (p99 > 180 ms) and alarm 7 (fewer than 2 healthy tasks per zone), and adjust `latency_p99_seconds` or `min_healthy_tasks_per_zone` of `modules/monitoring` if they fired with the engine healthy;
