@@ -110,3 +110,13 @@ output "glue_database" {
   description = "Glue catalog database of the analytics model (Power BI's ODBC Schema)."
   value       = module.analytics.glue_database
 }
+
+output "dashboard_url" {
+  description = "The CloudWatch dashboard of the environment (HU-59)."
+  value       = module.monitoring.dashboard_url
+}
+
+output "alarm_names" {
+  description = "The alarms of modules/monitoring (the DLQ, reconciliation and alerts alarms live with their resources)."
+  value       = module.monitoring.alarm_names
+}

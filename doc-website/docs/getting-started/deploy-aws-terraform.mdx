@@ -471,7 +471,41 @@ Then step 3 and `terraform destroy`. Terraform warns that `-target` is for excep
 
 **Cost.** One run a day costs nothing (the Lambda and DynamoDB free tiers cover it), and nothing is charged between runs.
 
-## 10. Prove that evidence cannot be deleted
+## 10. Watch the platform and provoke an alarm (HU-59)
+
+The first `apply` already created the monitoring of `modules/monitoring`: the dashboard, the alarms of [Alarms and thresholds](../architecture/infrastructure.mdx#alarms), the metric filters on the engine log and two saved queries. Every alarm e-mails `-ops-alarms` (confirm its subscription first). The engine alarms appear once `engine_image_tag` is set.
+
+1. Open the dashboard. It shows the engine's p99 against the 200 ms limit, requests and 5xx, the decisions (default, held or rejected, slow), healthy tasks per zone, the queues and DLQs, the database, the Lambdas and the reconciliation:
+
+   ```powershell
+   terraform output -raw dashboard_url
+   terraform output -json alarm_names
+   ```
+
+   **CloudWatch → Alarms** lists them; all must be "OK" or "Insufficient data" (a metric with no data yet) before the test.
+
+2. See the decision log. Send `restricted-transaction.json` again (step 7.3), then **CloudWatch → Logs Insights → Queries → `securepay-dev/default-decisions`** or `slow-decisions` → Run. The engine writes one JSON line per HOLD, REJECT or default decision and per decision slower than `SLOW_DECISION_MS` (150 ms); a fast APPROVE writes nothing:
+
+   ```json
+   {"event": "decision", "transaction_id": "7a2d3b5f-...", "decision": "REJECT", "rules_triggered": ["restricted_list"], "risk_score": 100, "by_default": false, "rules_version": "0", "elapsed_ms": 12.4}
+   ```
+
+3. **Provoke a failure (CT-09).** Invoke the analytics export with a day that is not a date. It raises, Lambda counts one error, and within 5 minutes the alarm `securepay-dev-analytics-export-errors` goes to "In alarm" and e-mails `-ops-alarms`:
+
+   ```powershell
+   aws lambda invoke --function-name securepay-dev-analytics-export --payload '{\"day\": \"not-a-day\"}' --cli-binary-format raw-in-base64-out export-error.json
+   Get-Content export-error.json
+   ```
+
+   The file shows `"errorType": "ValueError"`. Nothing was written and nothing must be reverted: the alarm goes back to "OK" on its own after the next 5 minutes without errors. Take the screenshot of the e-mail and of the alarm's history for the evidence.
+
+   The same alarm exists for every Lambda except the alerts task, which catches the error of each job and alarms on its `ERROR` log lines instead (`securepay-dev-alerts-failing`). The DLQ alarm (number 3) is slower to show: a message the consumer cannot read is retried 5 times with 7 minutes of visibility, about 35 minutes before it lands in the DLQ.
+
+4. **Before the load test (HU-60).** The thresholds are proposals: after the run at 50, 150 and 300 tx/s, compare the p99 and the healthy tasks on the dashboard with alarms 1 and 7 and change `latency_p99_seconds` or `min_healthy_tasks_per_zone` of `modules/monitoring` if they fire with the engine healthy.
+
+**Cost.** The first 10 alarms, 3 dashboards and 5 GB of logs a month are free; dev has more alarms than that, which costs about USD 0.10 per alarm and month, a few cents for a day's test.
+
+## 11. Prove that evidence cannot be deleted
 
 The evidence bucket has Object Lock. In dev it has no default retention, so `destroy` works the same day; instead, you upload a test object locked for 5 minutes in COMPLIANCE mode. Decide the time before uploading: COMPLIANCE can be extended but never shortened.
 
@@ -511,7 +545,7 @@ The evidence bucket has Object Lock. In dev it has no default retention, so `des
 
 Delete the local `test.txt` so it does not end up in a commit.
 
-## 11. Destroy it
+## 12. Destroy it
 
 Once the lock of the last uploaded version has passed, destroy everything and type `yes`. RDS takes another 10 to 15 minutes:
 
