@@ -95,3 +95,28 @@ output "exchange_rates_function_name" {
   description = "aws lambda invoke --function-name <this> out.json, once after the apply that sets apis_image_tag."
   value       = module.lambdas.exchange_rates_function_name
 }
+
+output "analytics_job_name" {
+  description = "The analytics Glue job (HU-66); the nightly state machine runs it after the store."
+  value       = module.analytics.job_name
+}
+
+output "athena_workgroup" {
+  description = "Workgroup of the views q1..q6 and of Power BI."
+  value       = module.analytics.athena_workgroup
+}
+
+output "glue_database" {
+  description = "Glue catalog database of the analytics model (Power BI's ODBC Schema)."
+  value       = module.analytics.glue_database
+}
+
+output "dashboard_url" {
+  description = "The CloudWatch dashboard of the environment (HU-59)."
+  value       = module.monitoring.dashboard_url
+}
+
+output "alarm_names" {
+  description = "The alarms of modules/monitoring (the DLQ, reconciliation and alerts alarms live with their resources)."
+  value       = module.monitoring.alarm_names
+}

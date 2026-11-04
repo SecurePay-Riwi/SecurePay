@@ -334,6 +334,18 @@ def test_list_loader_copies_the_reference_data(admin, as_user, cache):  # noqa: 
     assert (counts["accounts"], counts["merchants"], counts["restricted"]) == (1, 1, 1)
 
 
+def test_analytics_export_writes_the_raw_layer(admin, as_user, monkeypatch, tmp_path):
+    from services.analytics import export
+
+    monkeypatch.setattr(export, "SessionLocal", as_user("analytics_export"))
+    monkeypatch.setattr(export, "ANALYTICS_DATA_DIR", str(tmp_path))
+
+    result = export.handler({"day": "2026-10-05"})
+
+    assert result["day"] == "2026-10-05"
+    assert (tmp_path / "raw" / "cases" / "fecha=2026-10-05" / "cases.jsonl").exists()
+
+
 # --- and nothing more ---------------------------------------------------------
 
 
@@ -362,6 +374,14 @@ def test_no_user_can_drop_change_or_create_tables(admin, as_user, user):
         ("reconciliation", "DELETE FROM reconciliation_differences"),
         ("list_loader", "INSERT INTO listas_restrictivas (documento) VALUES ('1')"),
         ("list_loader", "SELECT count(*) FROM cases"),
+        ("analytics_export", "SELECT count(*) FROM usuarios"),
+        ("analytics_export", "SELECT count(*) FROM account_transactions"),
+        ("analytics_export", "UPDATE cases SET status = 'RESOLVED'"),
+        ("analytics_export", "DELETE FROM reconciliation_differences"),
+        (
+            "analytics_export",
+            "INSERT INTO reconciliation_runs (run_day) VALUES ('2026-10-05')",
+        ),
     ],
 )
 def test_each_user_is_denied_what_it_does_not_need(admin, as_user, user, statement):

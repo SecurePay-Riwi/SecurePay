@@ -1,0 +1,111 @@
+---
+sidebar_position: 6
+title: Run the engine on Kubernetes
+description: The decision engine on kind (local) and on EKS (one session in AWS), and how to compare it with Fargate (HU-58).
+---
+
+# Run the engine on Kubernetes
+
+The course asks to run the decision engine on Kubernetes and compare it with Fargate ([ADR-06](../architecture/decisions.mdx#adr-06)). This page does it twice with the same manifests (`infra/k8s/`): **locally on kind**, at no cost, and **on EKS** for one session in dev's VPC. The architecture does not change: ECS Fargate stays the engine's platform, and this is an exercise to measure it against.
+
+## What kind is
+
+[kind](https://kind.sigs.k8s.io/) ("Kubernetes in Docker") runs a real Kubernetes cluster on your computer: each node of the cluster is a Docker container, and inside it run the same components as in any cluster (API server, scheduler, kubelet, containerd). `kubectl` talks to it like to EKS, and the same Deployment, Service and probes work unchanged. What kind does **not** have is AWS: no load balancer, no IAM, no zones. So kind proves that the engine runs on Kubernetes and shows how much work the manifests are; the latency against Fargate is only fair on EKS, in the same VPC as the ECS service.
+
+## The manifests
+
+| File | What it is |
+| :--- | :--- |
+| `base/` | Namespace `securepay`, ConfigMap with the engine's variables (the ones of Compose), Deployment (2 pods of 0.5 vCPU and 1 GB, like an ECS task; `/health` as readiness and liveness; one new pod ready before an old one goes; spread over zones), Service, PodDisruptionBudget |
+| `overlays/kind/` | `kind.yaml` (one control plane and two workers, the engine on `localhost:8080`), the image loaded with `kind load`, Valkey and LocalStack of the Compose stack through `host.docker.internal` |
+| `overlays/eks/` | `cluster.yaml` (eksctl: dev's application subnets, two `t3.medium` nodes with `sg-engine`, a service account with only the engine's permissions), the image in ECR, a Network Load Balancer, an HPA at 60 % CPU like ECS |
+| `latency.py` | Sends the same transactions to two engines and prints p50, p95 and p99 |
+
+The CI renders both overlays (`kubectl kustomize`, job `terraform`) and `services/decision_engine/tests/test_k8s_manifests.py` checks that the command, port, size and variables are the engine's.
+
+## On kind (local)
+
+Needs Docker Desktop and the Compose stack running ([Local setup](./local-setup.mdx)): the engine in kind uses its Valkey, with the cache already loaded by `cache-loader`.
+
+1. Install kind and kubectl (PowerShell):
+
+   ```powershell
+   winget install Kubernetes.kind Kubernetes.kubectl
+   ```
+
+2. Create the cluster, build the engine image and load it into the nodes (from the root of `SecurePay`):
+
+   ```powershell
+   kind create cluster --name securepay --config infra/k8s/overlays/kind/kind.yaml
+   docker build -t securepay-engine:kind .
+   kind load docker-image securepay-engine:kind --name securepay
+   ```
+
+3. Deploy and wait for the two pods:
+
+   ```powershell
+   kubectl apply -k infra/k8s/overlays/kind
+   kubectl -n securepay rollout status deployment/decision-engine
+   kubectl -n securepay get pods -o wide
+   ```
+
+   Two pods `Running`, one on each worker. `curl.exe http://localhost:8080/health` answers like `http://localhost:8000/health` (the Compose engine).
+
+4. Compare both engines with the same requests:
+
+   ```powershell
+   uv run python infra/k8s/latency.py http://localhost:8000 http://localhost:8080 --requests 1000 --workers 10
+   ```
+
+   One JSON line per engine with `per_second`, `p50_ms`, `p95_ms`, `p99_ms` and the decisions. Both run on the same computer, so the numbers say whether Kubernetes adds latency (the NodePort hop), not how fast AWS is.
+
+5. Try what Kubernetes gives: delete a pod and watch the Deployment replace it (`kubectl -n securepay delete pod <name>`, then `get pods -w`); the Service keeps answering from the other one.
+
+6. Delete the cluster: `kind delete cluster --name securepay`.
+
+If the pods cannot reach Valkey (`CacheUnavailable` in `kubectl -n securepay logs deployment/decision-engine`), `host.docker.internal` does not resolve in your Docker: replace it in `overlays/kind/kustomization.yaml` with the gateway of the `kind` network (`docker network inspect kind`).
+
+## On EKS (one session in AWS)
+
+Costs about USD 0.10 an hour for the control plane plus two `t3.medium` (about USD 0.08 an hour) on top of dev. Do it in the same session as the Fargate load test (HU-60) and delete the cluster the same day. If the account's plan refuses EKS (the free plan limits some services), write it down in ADR-06 and keep the kind result.
+
+1. Dev must be up with the engine on Fargate ([Deploy to AWS](./deploy-aws-terraform.mdx), steps 4 to 7). Install eksctl (`winget install eksctl`).
+
+2. Fill the `<...>` values of `infra/k8s/overlays/eks/cluster.yaml` and `kustomization.yaml` from `envs/dev` (do not commit them):
+
+   ```powershell
+   terraform -chdir=infra/terraform/envs/dev output -json app_subnet_ids
+   terraform -chdir=infra/terraform/envs/dev output -json public_subnet_ids      # for step 3
+   terraform -chdir=infra/terraform/envs/dev output -json security_group_ids   # .engine
+   terraform -chdir=infra/terraform/envs/dev output -raw decisions_topic_arn
+   terraform -chdir=infra/terraform/envs/dev output -json ecr_repository_urls   # .engine; the tag is engine_image_tag of terraform.tfvars
+   terraform -chdir=infra/terraform/envs/dev output -raw cache_address          # VALKEY_URL = rediss://<address>:6379
+   ```
+
+3. Tag dev's two public subnets so the Network Load Balancer can find them (eksctl does not tag a VPC it did not create), then create the cluster (about 15 minutes):
+
+   ```powershell
+   aws ec2 create-tags --resources <PUBLIC_SUBNET_A> <PUBLIC_SUBNET_B> --tags Key=kubernetes.io/role/elb,Value=1
+   eksctl create cluster -f infra/k8s/overlays/eks/cluster.yaml
+   ```
+
+4. Deploy the engine, metrics-server for the HPA, and get the load balancer's name:
+
+   ```powershell
+   kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.7.2/components.yaml
+   kubectl apply -k infra/k8s/overlays/eks
+   kubectl -n securepay rollout status deployment/decision-engine
+   kubectl -n securepay get service decision-engine   # EXTERNAL-IP: the NLB's name
+   ```
+
+5. Measure both platforms with the same load and from the same place: the HU-60 load test against the ALB of Fargate and then against the NLB of EKS (`http://<NLB>`), and `latency.py` for a quick check. Write down p50, p95, p99, errors, how long a new pod or task takes to be ready, and the time spent on each.
+
+6. Delete everything the same day, before `terraform destroy` of dev (the cluster uses dev's subnets):
+
+   ```powershell
+   kubectl delete -k infra/k8s/overlays/eks   # removes the NLB
+   eksctl delete cluster -f infra/k8s/overlays/eks/cluster.yaml
+   aws ec2 delete-tags --resources <PUBLIC_SUBNET_A> <PUBLIC_SUBNET_B> --tags Key=kubernetes.io/role/elb
+   ```
+
+Record the numbers in [ADR-06, "Kubernetes comparison: result"](../architecture/decisions.mdx#adr-06).

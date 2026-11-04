@@ -1,0 +1,11 @@
+# A Network Load Balancer in front of the pods (the in-tree controller,
+# no AWS Load Balancer Controller to install for one session). HTTP on 80:
+# the comparison measures latency, not TLS.
+apiVersion: v1
+kind: Service
+metadata:
+  name: decision-engine
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+spec:
+  type: LoadBalancer

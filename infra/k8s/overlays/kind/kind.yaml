@@ -1,0 +1,18 @@
+# Local cluster for HU-58: one control plane and two workers (the two
+# "zones"), and the engine's NodePort 30080 published on localhost:8080,
+# next to the Compose engine on 8000.
+#   kind create cluster --name securepay --config infra/k8s/overlays/kind/kind.yaml
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 8080
+        protocol: TCP
+  - role: worker
+    labels:
+      topology.kubernetes.io/zone: kind-a
+  - role: worker
+    labels:
+      topology.kubernetes.io/zone: kind-b

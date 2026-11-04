@@ -141,6 +141,7 @@ Team members reach resources inside the VPC through **AWS Systems Manager Sessio
 | 22 | `rol-despliegue-apis` | GitHub Actions (OIDC), securepay-apis | Publish the securepay-apis image and update the exchange-rates Lambda. Nothing else |
 | 23 | `usuario-powerbi` | IAM user (Power BI Desktop) | Query the analytics layer through Athena |
 | 24 | `rol-db-bootstrap` | Lambda | Read the master password and the component passwords to create the tables, the users and their grants (Sprint 6) |
+| 25 | `rol-analytics-export` | Lambda | Read the cases and the reconciliation from the database, count what matched and write them to the raw layer (Sprint 6, HU-66) |
 
 That is 22 roles and one user, compared with 12 in version 1.0 (number 6 is kept empty so the numbers below do not change). What changed: the engine's execution role was split from its application role; the escalation task became the alerts Lambda (which also reviews transactions approved by fallback); the daily list load, the list service, the rule refresh in the cache, EventBridge Scheduler and the admin task were added; and statement ingestion was split into the two reconciliation Lambdas. The Power BI user is the only long-lived credential (Power BI Desktop does not assume roles): read only, with keys rotated every 90 days.
 
@@ -273,9 +274,13 @@ It requests the full list from the list service over HTTPS (`GET /lista`), witho
 
 | Action | Resource | Purpose |
 | :--- | :--- | :--- |
-| `lambda:InvokeFunction` | Lambdas `lee-extractos` and `escribe-diferencias` | Steps 1 and 3 |
-| `glue:StartJobRun`, `glue:GetJobRun`, `glue:GetJobRuns`, `glue:BatchStopJobRun` | the Glue job `conciliacion-cruce` | Step 2 and waiting for it (`.sync` integration). The match runs on AWS Glue: EMR is not available on AWS's free account plan (Sprint 5, HU-36) |
-| `sns:Publish` | `tema:alertas-negocio` | Step 4: e-mail treasury the day's result (`audience = treasury`) |
+| `lambda:InvokeFunction` | Lambdas `lee-extractos`, `escribe-diferencias` and `analytics-export` | Steps 1, 3 and the analytics export |
+| `glue:StartJobRun`, `glue:GetJobRun`, `glue:GetJobRuns`, `glue:BatchStopJobRun` | the Glue jobs `conciliacion-cruce` and `analytics` | The match, the analytics ETL and waiting for them (`.sync` integration). Both run on AWS Glue: EMR is not available on AWS's free account plan (Sprint 5, HU-36; Sprint 6, HU-66) |
+| `sns:Publish` | `tema:alertas-negocio` | E-mail treasury the day's result (`audience = treasury`) |
+| `sns:Publish` | `tema:alarmas-operativas` | Warn the team when an analytics step fails; the reconciliation still ends (HU-66) |
+| `athena:StartQueryExecution`, `GetQueryExecution`, `GetQueryResults`, `StopQueryExecution`, `GetWorkGroup` | workgroup `powerbi` | `CREATE OR REPLACE VIEW` of the views q1..q6 |
+| `glue:GetDatabase`, `GetTable`, `GetTables`, `CreateTable`, `UpdateTable` | the catalog, database `<env>_analytics` and its tables | Athena stores each view as a table of the catalog |
+| `s3:PutObject`, `s3:GetObject`, `s3:AbortMultipartUpload`; `s3:GetBucketLocation`, `s3:ListBucket`, `s3:ListBucketMultipartUploads` | `datalake/athena-results/powerbi/*`; the bucket | The results of those queries |
 
 The Glue job runs with its own role, `rol-glue-jobs` (role 17). Terraform hands it the role when it creates the job (`iam:PassRole` to `glue.amazonaws.com`); Step Functions does not.
 
@@ -284,11 +289,20 @@ The Glue job runs with its own role, `rol-glue-jobs` (role 17). Terraform hands 
 | Action | Resource | Purpose |
 | :--- | :--- | :--- |
 | `s3:GetObject`, `s3:ListBucket` | `pagoseguro-prod-datalake` (the whole bucket) | Read the layers |
-| `s3:PutObject`, `s3:DeleteObject` | `pagoseguro-prod-datalake/curated/*` | Write the curated layer. `DeleteObject` because Spark replaces partitions. It never writes to `raw/` |
+| `s3:PutObject`, `s3:DeleteObject` | `pagoseguro-prod-datalake/curated/*` and `/analytics/*` | Write the curated and analytics layers. `DeleteObject` because Spark replaces partitions. It never writes to `raw/` |
 | `s3:GetObject` | artifacts bucket, `jobs/` prefix | Read the jobs' code |
 | `logs:CreateLogGroup`, `logs:CreateLogStream`, `logs:PutLogEvents` | `/aws-glue/*` | The job's logs |
 
-Sprint 5 added it for the reconciliation, and Sprint 6 removed `rol-emr-jobs`, which nothing used: EMR Serverless is not on AWS's free plan. Today only the reconciliation match uses it. The other Spark jobs (daily ETL, weekly rule effectiveness and device network) add their permissions, such as `/analytics/*` and the Glue catalog tables for Athena, when they are built on Glue.
+Sprint 5 added it for the reconciliation, and Sprint 6 removed `rol-emr-jobs`, which nothing used: EMR Serverless is not on AWS's free plan. The reconciliation match and the analytics ETL (HU-66, which also writes `/analytics/*`) use it. The job does not touch the Glue catalog: its tables come from Terraform, with partition projection.
+
+**25. `rol-analytics-export`** (assumed by Lambda, inside the VPC)
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `ssm:GetParameter` | parameter `/rds/analytics_export` | Its database password (read-only user) |
+| `s3:ListBucket` (prefix `curated/conciliacion/*`), `s3:GetObject` | `datalake/curated/conciliacion/*` | Count what matched in each run's output (`matched.jsonl`, contract v1.1) |
+| `s3:PutObject` | `datalake/raw/cases/*`, `datalake/raw/reconciliation/*` | Write the export of the day |
+| VPC networking | — | It reaches RDS |
 
 **18. `rol-scheduler`** (assumed by EventBridge Scheduler)
 
@@ -504,7 +518,7 @@ This is how they are written in Terraform. `<cuenta>` and the identifiers are pa
 | :--- | :--- | :--- |
 | `/pagoseguro/prod/rds/master-password` | The admin task (seed) and `db-bootstrap` | Generated by Terraform. No other component uses the master user |
 | `/pagoseguro/prod/kaggle/token` | The Kaggle download script, if it runs in AWS | Today each team member runs it locally with their own token |
-| `/pagoseguro/prod/rds/<user>` (8) | Each component, only its own: `cases_consumer`, `history_consumer`, `alerts`, `reconciliation`, `list_loader` (deployed), and `cases_api`, `rules_api`, `rules_reader` (their components are not deployed yet), plus `db-bootstrap` for the five deployed ones | Passwords generated by Terraform. The cache has no password: it uses IAM (see [Identity and access](#iam)) |
+| `/pagoseguro/prod/rds/<user>` (8) | Each component, only its own: `cases_consumer`, `history_consumer`, `alerts`, `reconciliation`, `list_loader`, `analytics_export` (deployed), and `cases_api`, `rules_api`, `rules_reader` (their components are not deployed yet), plus `db-bootstrap` for the five deployed ones | Passwords generated by Terraform. The cache has no password: it uses IAM (see [Identity and access](#iam)) |
 
 AWS managed keys were chosen instead of customer managed KMS keys because they encrypt just as well and cost nothing; a customer managed key adds manual rotation and fine-grained policies, which no requirement of this project asks for, at $1 a month per key. For the same reason, Parameter Store instead of Secrets Manager: the advantage of Secrets Manager is automatic rotation, and these secrets do not rotate.
 
@@ -529,5 +543,6 @@ The components skip `create_schema()` in AWS (`CREATE_SCHEMA=false`): it runs `A
 | `alerts` | Alerts | `SELECT`, `UPDATE` on `cases`, `compliance_reports`; `SELECT`, `INSERT` on `case_events`; `SELECT`, `DELETE` on `account_transactions` (30-day purge); `SELECT` on `reconciliation_runs`; `USAGE` on the `case_events` sequence |
 | `reconciliation` | Difference writer | `SELECT`, `INSERT`, `UPDATE` on `reconciliation_runs`; `SELECT`, `INSERT` on `reconciliation_differences` |
 | `list_loader` | `list-loader` | `SELECT` on `cuentas`, `usuarios`, `comercios`, `listas_restrictivas` |
+| `analytics_export` | Analytics export (HU-66) | `SELECT` on `cases`, `case_events`, `reconciliation_differences`, `reconciliation_runs` |
 
 `INSERT ... RETURNING` also needs `SELECT`, and `SELECT ... FOR UPDATE` needs `UPDATE`. No user may `DROP`, `TRUNCATE` or `ALTER` a table, delete cases, or change `case_events`. The cases API, the rules API and the rules cache refresh get their users in the pull request that deploys them. The tests in `services/db_bootstrap/tests/` run each component's real code with its own user against PostgreSQL, and check what each user is denied.

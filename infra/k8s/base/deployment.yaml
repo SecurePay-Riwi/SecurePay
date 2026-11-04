@@ -1,0 +1,58 @@
+# One pod = one ECS task: 0.5 vCPU and 1 GB (engine_cpu 512, engine_memory
+# 1024), the same uvicorn command, /health as the load balancer's check.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: decision-engine
+spec:
+  replicas: 2
+  # Like the ECS service: a new pod must be ready before an old one goes.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    spec:
+      # Spread over zones (EKS) or nodes (kind), like the two subnets of ECS.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: decision-engine
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: engine
+          image: securepay-engine
+          command: ["uvicorn", "services.decision_engine.main:app", "--host", "0.0.0.0", "--port", "8000"]
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: decision-engine
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false

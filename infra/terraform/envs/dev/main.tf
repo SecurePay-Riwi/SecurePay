@@ -15,6 +15,8 @@ provider "aws" {
 
 locals {
   name_prefix = "securepay-${var.environment}"
+  # SLOW_DECISION_MS of the engine and the slow-decision filter (HU-59).
+  slow_decision_ms = 150
 }
 
 data "aws_availability_zones" "available" {
@@ -134,7 +136,7 @@ module "ecs" {
   admin_security_group_id  = module.security_groups.ids["admin"]
   domain_name              = var.domain_name
   container_insights       = false
-  log_retention_days       = 7
+  log_retention_days       = 14
 
   engine_repository_url     = module.ecr.repository_urls["engine"]
   engine_image_tag          = var.engine_image_tag
@@ -152,6 +154,8 @@ module "ecs" {
     VALKEY_CLUSTER           = "true"
     SNS_DECISIONES_TOPIC_ARN = module.messaging.decisions_topic_arn
     RATES_TABLE              = module.storage.exchange_rates_table
+    # The decisions at least this slow are logged; the alarms use the same.
+    SLOW_DECISION_MS = tostring(local.slow_decision_ms)
   }
 
   admin_repository_url     = module.ecr.repository_urls["admin"]
@@ -213,7 +217,7 @@ module "lambdas" {
   evidence_bucket           = module.storage.bucket_names["evidence"]
   evidence_retention_days   = "0.0035"
   case_due_minutes          = var.case_due_minutes
-  log_retention_days        = 7
+  log_retention_days        = 14
 
   apis_repository_url  = module.ecr.repository_urls["apis"]
   apis_image_tag       = var.apis_image_tag
@@ -244,4 +248,51 @@ module "reconciliation" {
   repo_root      = "${path.root}/../../../.."
   schedule       = var.reconciliation_schedule
   check_schedule = var.reconciliation_check_schedule
+
+  # The analytics steps after the store (HU-66).
+  analytics_export_arn = lookup(module.lambdas.function_arns, "analytics-export", "")
+  analytics_job_name   = "${local.name_prefix}-analytics"
+  athena_workgroup     = module.analytics.athena_workgroup
+  glue_database        = module.analytics.glue_database
+  view_queries         = module.analytics.view_queries
+}
+
+# The analytics model (HU-66): the Glue catalog and the Athena workgroup
+# always (Power BI can be set up first), the Spark job with the Lambdas.
+# The nightly state machine runs export -> job -> views after the store.
+module "analytics" {
+  source = "../../modules/analytics"
+
+  name_prefix       = local.name_prefix
+  enabled           = var.lambda_image_tag != null
+  glue_job_role_arn = module.iam.role_arns["glue-jobs"]
+  datalake_bucket   = module.storage.bucket_names["datalake"]
+  artifacts_bucket  = module.storage.bucket_names["artifacts"]
+  code_path         = module.reconciliation.code_path
+  repo_root         = "${path.root}/../../../.."
+}
+
+# Metrics, logs and alarms (HU-59): the dashboard securepay-dev, the
+# alarms of infrastructure.mdx that do not live with their resource, and
+# the saved Logs Insights queries. Every alarm e-mails -ops-alarms.
+module "monitoring" {
+  source = "../../modules/monitoring"
+
+  name_prefix          = local.name_prefix
+  ops_alarms_topic_arn = module.messaging.ops_alarms_topic_arn
+
+  engine_deployed         = var.engine_image_tag != null
+  alb_arn_suffix          = module.ecs.alb_arn_suffix
+  target_group_arn_suffix = module.ecs.target_group_arn_suffix
+  engine_log_group_name   = module.ecs.engine_log_group_name
+  cluster_name            = module.ecs.cluster_name
+  availability_zones      = slice(data.aws_availability_zones.available.names, 0, 2)
+
+  queues                       = [for name in ["cases", "history", "analytics"] : "${local.name_prefix}-${name}"]
+  lambda_function_names        = module.lambdas.function_names
+  exchange_rates_deployed      = var.apis_image_tag != null
+  exchange_rates_function_name = module.lambdas.exchange_rates_function_name
+  state_machine_arn            = module.reconciliation.state_machine_arn
+  db_instance_identifier       = "${local.name_prefix}-db"
+  slow_decision_ms             = local.slow_decision_ms
 }

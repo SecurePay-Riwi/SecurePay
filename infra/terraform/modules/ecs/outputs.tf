@@ -28,3 +28,16 @@ output "admin_run_task_command" {
     "--network-configuration \"awsvpcConfiguration={subnets=[${join(",", var.app_subnet_ids)}],securityGroups=[${var.admin_security_group_id}],assignPublicIp=DISABLED}\"",
   ])
 }
+
+# For the dashboard and the alarms (modules/monitoring, HU-59).
+output "alb_arn_suffix" {
+  value = aws_lb.this.arn_suffix
+}
+
+output "target_group_arn_suffix" {
+  value = aws_lb_target_group.engine.arn_suffix
+}
+
+output "engine_log_group_name" {
+  value = aws_cloudwatch_log_group.this["engine"].name
+}

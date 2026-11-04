@@ -1,0 +1,7 @@
+# A node drain never takes every engine pod at once.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: decision-engine
+spec:
+  minAvailable: 1

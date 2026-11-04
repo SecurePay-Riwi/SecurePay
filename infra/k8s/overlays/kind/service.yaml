@@ -1,0 +1,12 @@
+# localhost:8080 -> node port 30080 (kind.yaml) -> the engine pods.
+apiVersion: v1
+kind: Service
+metadata:
+  name: decision-engine
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      nodePort: 30080

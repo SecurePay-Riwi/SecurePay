@@ -37,10 +37,11 @@ locals {
     artifacts     = "arn:${local.aws}:s3:::${local.p}-artifacts-${local.account}"
   }
 
-  glue_database = replace("${local.p}", "-", "_")
+  # GLUE_DATABASE of services/analytics (modules/analytics creates it).
+  glue_database = "${replace(local.p, "-", "_")}_analytics"
 
-  # The 12 Lambdas of infrastructure.mdx plus db-bootstrap (MAG-361);
-  # true = runs inside the VPC.
+  # The 12 Lambdas of infrastructure.mdx plus db-bootstrap (MAG-361) and
+  # analytics-export (HU-66); true = runs inside the VPC.
   lambdas = {
     cases-consumer      = true
     history-consumer    = true
@@ -55,6 +56,7 @@ locals {
     statement-reader    = false
     difference-writer   = true
     db-bootstrap        = true
+    analytics-export    = true
   }
 
   ecr_token = {

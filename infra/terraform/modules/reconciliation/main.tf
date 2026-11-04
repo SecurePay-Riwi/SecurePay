@@ -4,7 +4,14 @@
 #     1. ReadStatements   Lambda statement-reader   (ingest.handler)
 #     2. MatchWithSpark   AWS Glue Spark job         (match.main)
 #     3. SaveDifferences  Lambda difference-writer  (store.handler)
-#     4. NotifyTreasury   SNS business-alerts, audience = treasury
+#     4. ExportAnalytics  Lambda analytics-export   (analytics export.handler)
+#     5. BuildAnalytics   AWS Glue Spark job         (analytics etl + quality)
+#     6. RefreshViews     Athena, the views q1..q6  (modules/analytics)
+#     7. NotifyTreasury   SNS business-alerts, audience = treasury
+#
+# A failed analytics step (4 to 6) does not fail the reconciliation: it
+# e-mails ops-alarms (WarnAnalyticsFailed) and treasury still gets its
+# e-mail.
 #
 # Each step retries on its own. The machine stops after timeout_seconds
 # (02:00 + 4 h 30 min = 06:30 Bogota), and at 06:30 the alerts Lambda checks
@@ -24,14 +31,18 @@ locals {
 
   entry_point_key = "jobs/reconciliation/match_job.py"
 
-  code_key = "jobs/reconciliation/reconciliation-code.zip"
+  # One zip for both Spark jobs (the match and the analytics ETL, HU-66).
+  # The Deploy workflow uploads the same zip on every merge to main
+  # (infra/spark/package.py, MAG-295): keep CODE_FOLDERS there equal to
+  # this list (test_glue_job.py checks it).
+  code_key = "jobs/code/securepay-jobs.zip"
 
-  # services/reconciliation and shared without their tests, as match.py
-  # imports them.
+  # services/reconciliation, services/analytics and shared without their
+  # tests, as match.py and the analytics builders import them.
+  code_folders = ["services/reconciliation", "services/analytics", "shared"]
   code_files = concat(
     ["services/__init__.py"],
-    [for f in fileset(var.repo_root, "services/reconciliation/**/*.py") : f if !strcontains(f, "/tests/")],
-    [for f in fileset(var.repo_root, "shared/**/*.py") : f if !strcontains(f, "/tests/")],
+    flatten([for folder in local.code_folders : [for f in fileset(var.repo_root, "${folder}/**/*.py") : f if !strcontains(f, "/tests/")]]),
   )
 
   # The machine lives in state_machine.json.tftpl, a JSON template, so the
@@ -46,6 +57,12 @@ locals {
     match_job_name            = "${var.name_prefix}-reconciliation-match"
     datalake_bucket           = var.datalake_bucket
     business_alerts_topic_arn = var.business_alerts_topic_arn
+    ops_alarms_topic_arn      = var.ops_alarms_topic_arn
+    analytics_export_arn      = var.analytics_export_arn
+    analytics_job_name        = var.analytics_job_name
+    athena_workgroup          = var.athena_workgroup
+    glue_database             = var.glue_database
+    view_queries_json         = jsonencode(var.view_queries)
   })
 }
 

@@ -138,9 +138,10 @@ This is the inventory of what Terraform must create, not of what exists today. D
 | Power BI IAM user | 1 | Read only on the analytics layer; keys rotated every 90 days | Designed |
 | Parameter Store parameters | 8 | Master password, 6 component passwords and the Kaggle token (see [Encryption and secrets](./security.mdx#encryption)) | Designed |
 | Cache users | 5 | `motor`, `historial`, `reglas`, `carga_lista` and the disabled default user, in a user group with IAM authentication | Designed |
-| CloudWatch log groups | 14 | One per Lambda and two for ECS; 30-day retention | Designed |
-| Metric filter | 1 | `EVENTO_NO_PUBLICADO` in the engine logs | Designed |
-| CloudWatch alarms | 10 | See [Alarms and thresholds](#alarms) | Designed |
+| CloudWatch log groups | 14 | One per Lambda and two for ECS; 14-day retention | Built |
+| Metric filters | 5 | On the engine log: default, held or rejected, and slow decisions, `EVENTO_NO_PUBLICADO`, fixed exchange rates | Built (HU-59) |
+| CloudWatch alarms | 13 kinds | See [Alarms and thresholds](#alarms) | Built (HU-59) |
+| CloudWatch dashboard | 1 | `securepay-<env>`: engine, queues, database, Lambdas, reconciliation | Built (HU-59) |
 | Budgets | 2 | 80 % and 100 % of the credit | Decided |
 
 ## Database backup strategy {/* #backups */}
@@ -159,23 +160,30 @@ A 7-day retention is enough because the database holds operational state, not th
 
 ## Alarms and thresholds {/* #alarms */}
 
-Each threshold comes from a requirement, not from intuition. Proposed: the thresholds are tuned with the load test data.
+Each threshold comes from a requirement, not from intuition. Built (HU-59): every CloudWatch alarm e-mails `ops-alarms`; the thresholds are tuned with the load test data (HU-60). The last column says where each one is in Terraform.
 
-| # | Alarm | Threshold | Where the threshold comes from | Action |
-| :--- | :--- | :--- | :--- | :--- |
-| 1 | Engine latency | p99 > 180 ms for 5 minutes | The limit is 200 ms; the alarm fires before it is broken | Check the cache and the scaling |
-| 2 | Fallback decisions | > 1% of decisions in 5 minutes | A degraded decision; above 1% it is no longer exceptional | Check the engine and its dependencies |
-| 3 | Messages in a dead-letter queue | ≥ 1 | Any message there is work that was not done | Review and reprocess |
-| 4 | Age of the oldest message | > 5 minutes in any queue | A consumer fell behind | Check the consumer |
-| 5 | Reconciliation not finished | Not finished at 06:30 | The deadline is 07:00; half an hour to react | Manual intervention |
-| 6 | Load balancer errors | 5xx > 1% in 5 minutes | The engine is failing, not just slow | Check the tasks |
-| 7 | Healthy engine tasks | < 2 in any zone | Below that, losing a zone is no longer tolerable | Check the scaling |
-| 8 | Database | CPU > 80% for 15 minutes, or connections > 80% of the maximum | `db.t3.micro` running out | Check queries and connections |
-| 9 | Cache refreshed by expiry | ≥ 1 time | A rule change event was lost | Check the subscription |
-| 10 | Budget | 80% and 100% of the $200 credit | Spending control on the team's credit | Review and, if needed, destroy the development environment |
-| 11 | Unpublished events | ≥ 1 log line with `EVENTO_NO_PUBLICADO` in the engine | The engine keeps answering even if SNS fails three times or its in-memory queue fills up; those events never reached the queues | Republish from the log, which keeps the full event |
+| # | Alarm | Threshold | Where the threshold comes from | Action | Terraform |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| 1 | Engine latency | p99 > 180 ms for 5 minutes | The limit is 200 ms; the alarm fires before it is broken | Check the cache and the scaling | `modules/monitoring` (`-engine-latency`) |
+| 2 | Fallback decisions | > 1% of decisions in 5 minutes | A degraded decision; above 1% it is no longer exceptional | Check the engine and its dependencies | `modules/monitoring` (`-engine-fallbacks`, from the engine's decision log) |
+| 3 | Messages in a dead-letter queue | ≥ 1 | Any message there is work that was not done | Review and reprocess | `modules/messaging` (one per DLQ) |
+| 4 | Age of the oldest message | > 5 minutes in any queue | A consumer fell behind | Check the consumer | `modules/monitoring` (`<queue>-oldest-message`) |
+| 5 | Reconciliation not finished | Not finished at 06:30 | The deadline is 07:00; half an hour to react | Manual intervention | `modules/reconciliation` (06:30 check and failed executions) |
+| 6 | Load balancer errors | 5xx > 1% in 5 minutes | The engine is failing, not just slow | Check the tasks | `modules/monitoring` (`-engine-errors-5xx`) |
+| 7 | Healthy engine tasks | < 2 in any zone, or a task failing `/health` for 3 minutes | Below that, losing a zone is no longer tolerable | Check the scaling | `modules/monitoring` (`-engine-healthy-<zone>`, `-engine-unhealthy`) |
+| 8 | Database | CPU > 80% for 15 minutes, or connections > 80% of the maximum | `db.t3.micro` running out | Check queries and connections | `modules/monitoring` (`-db-cpu`, `-db-connections`) |
+| 9 | Cache refreshed by expiry | — | Not needed: the engine reads `{rules}:version` every second, so no rule change event can be lost | — | — |
+| 10 | Budget | 80% and 100% of the $200 credit | Spending control on the team's credit | Review and, if needed, destroy the development environment | `envs/dev` (AWS Budgets) |
+| 11 | Unpublished events | ≥ 1 log line with `EVENTO_NO_PUBLICADO` in the engine | The engine keeps answering even if SNS fails three times or its in-memory queue fills up; those events never reached the queues | Republish from the log, which keeps the full event | `modules/monitoring` (`-engine-unpublished`) |
+| 12 | Lambda errors | ≥ 1 error in 5 minutes | A consumer, the reader, the writer or the export failed; SQS retries, but someone must look | Check the function's log | `modules/monitoring` (`<function>-errors`); the alerts Lambda alarms on its `ERROR` lines in `modules/lambdas` |
+| 13 | Exchange rates stale | No successful run of the exchange-rates Lambda in 4 days | The engine falls back to the last earlier rate; after 4 days the USD amounts drift | Invoke the Lambda and check Frankfurter | `modules/monitoring` (`-exchange-rates-stale`) |
+| 14 | Fixed exchange rates | ≥ 1 log line "using the fixed" in the engine | The table has no rate for the day or any day before it | Invoke the exchange-rates Lambda | `modules/monitoring` (`-engine-fixed-rates`) |
 
-Alarm 10 is an AWS Budgets alert; the other ten are CloudWatch alarms. The easiest one to show live is number 3: a message the consumer cannot process is sent on purpose, it lands in the dead-letter queue and the alarm sends the email.
+Alarm 10 is an AWS Budgets alert; the others are CloudWatch alarms. The engine alarms (1, 2, 6, 7, 11, 14) exist only once the engine is deployed (`engine_image_tag`). The easiest one to show live is number 3: a message the consumer cannot process is sent on purpose, it lands in the dead-letter queue and the alarm sends the email (step by step in [Deploy to AWS](../getting-started/deploy-aws-terraform.mdx)).
+
+**Logs and dashboard.** The engine writes one JSON line on the `securepay.decisions` logger for every HOLD, REJECT or default decision and for every decision slower than `SLOW_DECISION_MS` (150 ms); a fast APPROVE writes nothing, so the log stays small at 50 tx/s. CloudWatch metric filters turn those lines into the metrics `FallbackDecisions`, `HeldOrRejected` and `SlowDecisions` (namespace `SecurePay/securepay-<env>`), and two saved Logs Insights queries list them (`slow-decisions`, `default-decisions`). The dashboard `securepay-<env>` shows latency, requests and errors, decisions, healthy tasks, queues, the database, the Lambdas and the reconciliation; `terraform output dashboard_url` opens it. Logs are kept 14 days.
+
+**Not built: X-Ray.** Tracing a request across the engine, SNS and the consumers needs the X-Ray SDK in the engine and a sidecar on Fargate; with the decision log and the load balancer metrics the team can already tell a slow rule from a slow cache. It stays as a possible improvement.
 
 ## Estimated figures and how they were calculated {/* #estimates */}
 

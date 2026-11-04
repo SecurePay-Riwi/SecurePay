@@ -1,5 +1,7 @@
+import json
 import logging
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as DecisionTimeout
 from datetime import UTC, datetime
@@ -34,6 +36,14 @@ SEVERITY = {Decision.APPROVE: 0, Decision.HOLD: 1, Decision.REJECT: 2}
 NO_RULES_REASON = "The transaction did not trigger any configured rule."
 
 log = logging.getLogger(__name__)
+
+# One JSON line per decision worth looking at (HU-59): every HOLD,
+# REJECT or default decision, and any decision slower than
+# SLOW_DECISION_MS. CloudWatch metric filters count the default ones
+# (alarm 2) and Logs Insights finds the slow ones. A plain fast APPROVE
+# is not logged: logging every transaction would be over 100 GB a month.
+decisions_log = logging.getLogger("securepay.decisions")
+SLOW_DECISION_MS = int(os.getenv("SLOW_DECISION_MS", "150"))
 
 # RN-01: every transaction gets a decision in 200 ms. The engine stops
 # waiting for the rules well before that, so the default decision and
@@ -313,12 +323,14 @@ def process_transaction(payload: TransactionRequest) -> tuple[dict, bool]:
     if previous:
         return previous, True
 
+    started = time.perf_counter()
     try:
         result = _decide_in_time(payload)
     except Exception:
         # No decision means nothing to replay: the retry must decide.
         idem.liberar(payload.id)
         raise
+    log_decision(result, (time.perf_counter() - started) * 1000)
 
     idem.guardar(payload.id, fingerprint, result)
 
@@ -326,3 +338,29 @@ def process_transaction(payload: TransactionRequest) -> tuple[dict, bool]:
     publisher.publicar(evento_decision(transaction, result))
 
     return result, False
+
+
+def decision_line(result: dict, elapsed_ms: float) -> dict | None:
+    """The JSON line of a decision, or None when it is not worth a line
+    (a fast APPROVE that no default decided)."""
+    plain = result["decision"] == Decision.APPROVE.value and not result.get(
+        "by_default"
+    )
+    if plain and elapsed_ms < SLOW_DECISION_MS:
+        return None
+    return {
+        "event": "decision",
+        "transaction_id": result["transaction_id"],
+        "decision": result["decision"],
+        "rules_triggered": result.get("rules_triggered", []),
+        "risk_score": result.get("risk_score", 0),
+        "by_default": bool(result.get("by_default")),
+        "rules_version": result.get("rules_version"),
+        "elapsed_ms": round(elapsed_ms, 1),
+    }
+
+
+def log_decision(result: dict, elapsed_ms: float) -> None:
+    line = decision_line(result, elapsed_ms)
+    if line is not None:
+        decisions_log.info(json.dumps(line, ensure_ascii=False))

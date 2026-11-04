@@ -1,0 +1,21 @@
+# Like the ECS autoscaling (engine_cpu_target 60 %), between 2 and 8 pods:
+# 4 t3.medium nodes fit about 8 pods of 0.5 vCPU. Needs metrics-server:
+#   kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.7.2/components.yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: decision-engine
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: decision-engine
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60

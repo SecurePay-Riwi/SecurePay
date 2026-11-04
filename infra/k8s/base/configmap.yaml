@@ -1,0 +1,27 @@
+# The engine's variables with the values of Compose (docker-compose.yml);
+# each overlay replaces where the cache, SNS and DynamoDB are. No secrets:
+# the engine needs none (no DATABASE_URL, HU-67).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: decision-engine
+data:
+  VALKEY_URL: redis://valkey:6379/0
+  VALKEY_CLUSTER: "false"
+  AWS_DEFAULT_REGION: us-east-2
+  SNS_DECISIONES_TOPIC_ARN: arn:aws:sns:us-east-2:000000000000:decisiones
+  RATES_TABLE: pagoseguro-exchange-rates
+  IDEMPOTENCY_TTL_SECONDS: "3600"
+  HISTORY_OUT_HOURS: "24"
+  HISTORY_IN_MINUTES: "60"
+  HISTORY_DEVICE_DAYS: "30"
+  HISTORY_SECURITY_MINUTES: "60"
+  DECISION_TIMEOUT_MS: "120"
+  DECISION_WORKERS: "40"
+  SLOW_DECISION_MS: "150"
+  PUBLISH_BATCH_WAIT_MS: "500"
+  PUBLISH_BUFFER_SIZE: "10000"
+  PUBLISH_RETRIES: "3"
+  RULES_REFRESH_SECONDS: "1"
+  RATES_REFRESH_SECONDS: "3600"
+  REFDATA_TTL_HOURS: "48"

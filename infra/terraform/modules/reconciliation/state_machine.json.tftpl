@@ -82,6 +82,117 @@
         }
       ],
       "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "ReconciliationFailed" }],
+      "Next": "ExportAnalytics"
+    },
+    "ExportAnalytics": {
+      "Comment": "HU-66: the current state of the cases and the reconciliation of the window, PostgreSQL -> raw/cases and raw/reconciliation. From here on a failure warns ops-alarms and the reconciliation still ends DONE.",
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${analytics_export_arn}",
+        "Payload": {
+          "day.$": "$.ingest.day"
+        }
+      },
+      "ResultSelector": {
+        "cases.$": "$.Payload.cases",
+        "differences.$": "$.Payload.differences",
+        "matched.$": "$.Payload.matched"
+      },
+      "ResultPath": "$.export",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException", "States.TaskFailed"],
+          "IntervalSeconds": 60,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.analytics_error", "Next": "WarnAnalyticsFailed" }],
+      "Next": "BuildAnalytics"
+    },
+    "BuildAnalytics": {
+      "Comment": "raw -> curated -> analytics with every builder, then the data quality checks (a failed check fails the job).",
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${analytics_job_name}",
+        "Arguments": {
+          "--day.$": "$.ingest.day",
+          "--raw": "s3://${datalake_bucket}",
+          "--output": "s3://${datalake_bucket}"
+        }
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": ["Glue.ConcurrentRunsExceededException", "Glue.ThrottlingException"],
+          "IntervalSeconds": 120,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.analytics_error", "Next": "WarnAnalyticsFailed" }],
+      "Next": "ListViews"
+    },
+    "ListViews": {
+      "Type": "Pass",
+      "Result": ${view_queries_json},
+      "ResultPath": "$.views",
+      "Next": "RefreshViews"
+    },
+    "RefreshViews": {
+      "Comment": "CREATE OR REPLACE VIEW q1..q6 (services/analytics/sql/) in the Power BI workgroup. Scans nothing.",
+      "Type": "Map",
+      "ItemsPath": "$.views",
+      "MaxConcurrency": 2,
+      "ItemProcessor": {
+        "ProcessorConfig": { "Mode": "INLINE" },
+        "StartAt": "CreateView",
+        "States": {
+          "CreateView": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::athena:startQueryExecution.sync",
+            "Parameters": {
+              "QueryString.$": "$",
+              "WorkGroup": "${athena_workgroup}",
+              "QueryExecutionContext": { "Database": "${glue_database}" }
+            },
+            "Retry": [
+              {
+                "ErrorEquals": ["Athena.TooManyRequestsException", "Athena.AmazonAthenaException"],
+                "IntervalSeconds": 10,
+                "MaxAttempts": 3,
+                "BackoffRate": 2
+              }
+            ],
+            "End": true
+          }
+        }
+      },
+      "ResultPath": null,
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.analytics_error", "Next": "WarnAnalyticsFailed" }],
+      "Next": "NotifyTreasury"
+    },
+    "WarnAnalyticsFailed": {
+      "Comment": "The day is reconciled; only the dashboard is late. Tell the team, then treasury as usual.",
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${ops_alarms_topic_arn}",
+        "Subject.$": "States.Format('Analytics of {} failed', $.ingest.day)",
+        "Message.$": "States.Format('The reconciliation of {} is done, but its analytics failed: {}. Open the execution in Step Functions; run the Glue job ${analytics_job_name} again with --day {} once the cause is fixed.', $.ingest.day, $.analytics_error.Cause, $.ingest.day)"
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": null, "Next": "NotifyTreasury" }],
       "Next": "NotifyTreasury"
     },
     "NotifyTreasury": {
