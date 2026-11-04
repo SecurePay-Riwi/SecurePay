@@ -412,13 +412,17 @@ def build():
     write_jsonl(
         HERE / "raw" / "cases" / "fecha=2026-10-05" / "case_events.jsonl", case_events
     )
-    differences, runs = make_reconciliation(events)
+    differences, runs, matched = make_reconciliation(events)
     write_jsonl(
         HERE / "raw" / "reconciliation" / "fecha=2026-10-05" / "differences.jsonl",
         differences,
     )
     write_jsonl(
         HERE / "raw" / "reconciliation" / "fecha=2026-10-05" / "runs.jsonl", runs
+    )
+    write_jsonl(
+        HERE / "raw" / "reconciliation" / "fecha=2026-10-05" / "matched.jsonl",
+        matched,
     )
 
     day_events = {
@@ -437,7 +441,7 @@ def build():
         "q2": expected_q2(day_events, labels),
         "q3": expected_q3(day_events, labels),
         "q4": expected_q4(cases, case_events),
-        "q5": expected_q5(differences),
+        "q5": expected_q5(differences, matched),
         "q6": expected_q6(day_events, labels, cases),
     }
     (HERE / "expected_views.json").write_text(
@@ -722,7 +726,16 @@ def make_reconciliation(events):
         }
         for d, run_id in runs.items()
     ]
-    return rows, run_rows
+    # What matched per partner (the MATCHED rows of each run's match
+    # output): adds up to the run's matched.
+    split = (("banco_andino", 4), ("cajeros_express", 3), ("qr_pagos", 2))
+    split += (("red_corresponsales", 1),)
+    matched = [
+        {"run_day": d, "partner": partner, "matched": n}
+        for d in runs
+        for partner, n in split
+    ]
+    return rows, run_rows, matched
 
 
 # --- The answer key ----------------------------------------------------------------
@@ -791,6 +804,7 @@ def expected_q3(day_events, labels):
     rows = []
     for pattern, decisions in sorted(by_pattern.items()):
         detected = [d for d in decisions if _detected(d)]
+        missed = [d for d in decisions if not _detected(d)]
         rules = Counter(r for d in detected for r in d["rules_triggered"])
         top = min(rules, key=lambda r: (-rules[r], r)) if rules else None
         rows.append(
@@ -801,6 +815,12 @@ def expected_q3(day_events, labels):
                 "detected": len(detected),
                 "missed": len(decisions) - len(detected),
                 "detection_rate": ratio(len(detected), len(decisions)),
+                "detected_amount_usd": money(
+                    sum((Decimal(d["amount_usd"]) for d in detected), Decimal(0))
+                ),
+                "missed_amount_usd": money(
+                    sum((Decimal(d["amount_usd"]) for d in missed), Decimal(0))
+                ),
                 "top_rule": top,
             }
         )
@@ -811,10 +831,14 @@ def expected_q4(cases, case_events):
     groups = defaultdict(list)
     for c in cases:
         created = datetime.fromisoformat(c["created_at"])
-        groups[(created.date().isoformat(), c["status"], c["outcome"])].append(c)
+        analyst = c["resolved_by"] or c["assignee"]
+        groups[(created.date().isoformat(), analyst, c["status"], c["outcome"])].append(
+            c
+        )
     rows = []
-    for (day, status, outcome), items in sorted(
-        groups.items(), key=lambda kv: (kv[0][0], kv[0][1], kv[0][2] or "")
+    for (day, analyst, status, outcome), items in sorted(
+        groups.items(),
+        key=lambda kv: (kv[0][0], kv[0][1] or "", kv[0][2], kv[0][3] or ""),
     ):
         minutes = sorted(
             math.floor(
@@ -831,6 +855,7 @@ def expected_q4(cases, case_events):
         rows.append(
             {
                 "day": day,
+                "analyst": analyst,
                 "status": status,
                 "outcome": outcome,
                 "cases": len(items),
@@ -857,7 +882,20 @@ def _age_range(age: int) -> str:
     raise ValueError(age)
 
 
-def expected_q5(differences):
+def expected_q5(differences, matched):
+    matched_rows = [
+        {
+            "run_day": m["run_day"],
+            "partner": m["partner"],
+            "type": "MATCHED",
+            "status": None,
+            "age_range": None,
+            "currency": None,
+            "records": m["matched"],
+            "amount_difference_total": None,
+        }
+        for m in matched
+    ]
     groups = defaultdict(list)
     for d in differences:
         age = (DAY - date.fromisoformat(d["run_day"])).days
@@ -879,7 +917,7 @@ def expected_q5(differences):
             "status": k[3],
             "age_range": k[4],
             "currency": k[5],
-            "differences": len(items),
+            "records": len(items),
             "amount_difference_total": money(
                 sum(
                     Decimal(d["amount_difference"])
@@ -891,7 +929,7 @@ def expected_q5(differences):
             else None,
         }
         for k, items in sorted(groups.items())
-    ]
+    ] + matched_rows
 
 
 LEVEL = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}

@@ -252,11 +252,32 @@ def test_the_metrics_give_the_answer_key(expected):
     _, day = _fixture_history()
     decisions, labels = _engine_decisions(day), generator_labels(str(LABELS))
 
+    amounts = {t: Decimal(e["decision"]["amount_usd"]) for t, e in day.items()}
+
     rules = metrics.rule_metrics(decisions, labels, default_catalog())
-    patterns = metrics.pattern_coverage(decisions, labels)
+    patterns = metrics.pattern_coverage(decisions, labels, amounts)
 
     assert _plain(rules) == _sorted_q2(expected["q2"])
     assert _plain(patterns) == expected["q3"]
+
+
+def test_pattern_coverage_adds_the_usd_detected_and_missed():
+    labels = [label("a", True, "MULE"), label("b", True, "MULE")]
+    decisions = [decision("a", "HOLD"), decision("b", "APPROVE")]
+    amounts = {"a": Decimal("100.005"), "b": Decimal("20")}
+
+    (row,) = metrics.pattern_coverage(decisions, labels, amounts)
+
+    assert row.detected_amount_usd == Decimal("100.01")
+    assert row.missed_amount_usd == Decimal("20.00")
+
+
+def test_pattern_coverage_without_amounts_leaves_them_null():
+    labels = [label("a", True, "MULE")]
+
+    (row,) = metrics.pattern_coverage([decision("a", "HOLD")], labels)
+
+    assert row.detected_amount_usd is None and row.missed_amount_usd is None
 
 
 def _sorted_q2(rows):

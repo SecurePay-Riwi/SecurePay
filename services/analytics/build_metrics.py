@@ -32,7 +32,8 @@ RAW_SCHEMAS = {
     ),
     "pattern_coverage": (
         "pattern string, label_source string, frauds int, detected int, "
-        "missed int, detection_rate string, top_rule string, rules_version string"
+        "missed int, detection_rate string, top_rule string, rules_version string, "
+        "detected_amount_usd string, missed_amount_usd string"
     ),
 }
 
@@ -50,11 +51,11 @@ def _ratio(numerator, denominator):
 
 def labeled(spark, output: str):
     """One row per decision with a label: transaction_id, rules_version,
-    label_source, is_fraud, pattern, decision, opens_case."""
+    label_source, is_fraud, pattern, decision, opens_case, amount_usd."""
     from pyspark.sql import functions as F
 
     decisions = sp.read(spark, "fact_decision", output).select(
-        "transaction_id", "rules_version", "decision", "opens_case"
+        "transaction_id", "rules_version", "decision", "opens_case", "amount_usd"
     )
     labels = sp.read(spark, "fact_label", output).select(
         "transaction_id",
@@ -133,9 +134,12 @@ def pattern_coverage(spark, output: str):
             F.col("decision").isin(*DETECTED) | F.coalesce("opens_case", F.lit(False)),
         )
     )
+    usd = F.coalesce(F.col("amount_usd"), F.lit(0).cast("decimal(18,2)"))
     counts = frauds.groupBy(*group).agg(
         F.count(F.lit(1)).alias("frauds"),
         F.sum(F.when(F.col("_detected"), 1).otherwise(0)).alias("detected"),
+        F.sum(F.when(F.col("_detected"), usd).otherwise(0)).alias("_detected_usd"),
+        F.sum(F.when(F.col("_detected"), 0).otherwise(usd)).alias("_missed_usd"),
     )
     best = Window.partitionBy(*group).orderBy(F.col("_n").desc(), F.col("rule"))
     top = (
@@ -154,6 +158,8 @@ def pattern_coverage(spark, output: str):
         "detected",
         (F.col("frauds") - F.col("detected")).alias("missed"),
         _ratio(F.col("detected"), F.col("frauds")).alias("detection_rate"),
+        F.col("_detected_usd").cast("decimal(18,2)").alias("detected_amount_usd"),
+        F.col("_missed_usd").cast("decimal(18,2)").alias("missed_amount_usd"),
         "top_rule",
     )
 

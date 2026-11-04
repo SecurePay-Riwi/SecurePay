@@ -13,20 +13,32 @@ data "aws_region" "current" {}
 locals {
   deploy = var.image_tag != null
 
-  database = { DATABASE_URL = var.database_url }
+  # Each Lambda that reaches RDS connects with its own user (MAG-361): the
+  # environment has the parameter's name, never the password, and
+  # CREATE_SCHEMA=false because db-bootstrap owns the tables.
+  database_common = {
+    DATABASE_HOST = var.database.host
+    DATABASE_PORT = tostring(var.database.port)
+    DATABASE_NAME = var.database.name
+    CREATE_SCHEMA = "false"
+  }
+  database_user = { for user in ["cases_consumer", "history_consumer", "alerts", "reconciliation", "list_loader"] : user => merge(local.database_common, {
+    DATABASE_USER               = user
+    DATABASE_PASSWORD_PARAMETER = "${var.database.parameter_path}/${user}"
+  }) }
 
   functions = {
     cases-consumer = {
       command     = "services.consumers.cases.handler"
       in_vpc      = true
       queue       = "cases"
-      environment = merge(local.database, { CASE_DUE_MINUTES = tostring(var.case_due_minutes) })
+      environment = merge(local.database_user["cases_consumer"], { CASE_DUE_MINUTES = tostring(var.case_due_minutes) })
     }
     history-consumer = {
       command     = "services.consumers.history.handler"
       in_vpc      = true
       queue       = "history"
-      environment = local.database
+      environment = local.database_user["history_consumer"]
     }
     analytics-consumer = {
       command     = "services.consumers.analytics.handler"
@@ -38,7 +50,7 @@ locals {
       command = "services.alerts.handler.handler"
       in_vpc  = true
       queue   = null
-      environment = merge(local.database, {
+      environment = merge(local.database_user["alerts"], {
         BUSINESS_ALERTS_TOPIC   = var.business_alerts_topic_arn
         OPS_ALARMS_TOPIC        = var.ops_alarms_topic_arn
         EVIDENCE_BUCKET         = var.evidence_bucket
@@ -61,7 +73,7 @@ locals {
       command     = "services.reconciliation.store.handler"
       in_vpc      = true
       queue       = null
-      environment = merge(local.database, { RECON_DATA_DIR = "s3://${var.datalake_bucket}" })
+      environment = merge(local.database_user["reconciliation"], { RECON_DATA_DIR = "s3://${var.datalake_bucket}" })
     }
     # Copies accounts, merchants and the restricted list from PostgreSQL
     # into the cache once a day (HU-67); the engine never reads PostgreSQL.
@@ -69,9 +81,21 @@ locals {
       command = "services.cache_loader.loader.handler"
       in_vpc  = true
       queue   = null
-      environment = merge(local.database, {
+      environment = merge(local.database_user["list_loader"], {
         VALKEY_URL     = var.cache_url
         VALKEY_CLUSTER = "true"
+      })
+    }
+    # Tables, component users and grants with the master user (MAG-361).
+    # Invoked by Terraform below, never on a schedule.
+    db-bootstrap = {
+      command = "services.db_bootstrap.bootstrap.handler"
+      in_vpc  = true
+      queue   = null
+      environment = merge(local.database_common, {
+        DATABASE_USER               = var.database.master_username
+        DATABASE_PASSWORD_PARAMETER = "${var.database.parameter_path}/master-password"
+        DATABASE_PARAMETER_PATH     = var.database.parameter_path
       })
     }
   }
@@ -134,6 +158,21 @@ resource "aws_lambda_function" "this" {
   }
 }
 
+# Runs db-bootstrap once the function exists, and again only when the
+# database is new, a password changed or the image changed (grants.py may
+# have new grants). A failure fails the apply. The input carries no secret;
+# the result (user names and counts) is kept in the state.
+resource "aws_lambda_invocation" "db_bootstrap" {
+  count = local.deploy ? 1 : 0
+
+  function_name = aws_lambda_function.this["db-bootstrap"].function_name
+  input = jsonencode({
+    database  = var.database.instance_resource_id
+    passwords = var.database.password_versions
+    image     = var.image_tag
+  })
+}
+
 # One mapping per queue: batches of 10 (analytics: up to
 # analytics_batch_size, waiting at most analytics_batching_window_seconds),
 # and only the messages listed in batchItemFailures go back to the queue
@@ -146,6 +185,9 @@ resource "aws_lambda_event_source_mapping" "this" {
   batch_size                         = try(local.batching[each.key].size, 10)
   maximum_batching_window_in_seconds = try(local.batching[each.key].window, null)
   function_response_types            = ["ReportBatchItemFailures"]
+
+  # No message is read before the tables and the users exist.
+  depends_on = [aws_lambda_invocation.db_bootstrap]
 
   dynamic "scaling_config" {
     for_each = each.value.in_vpc ? [1] : []
@@ -184,6 +226,8 @@ resource "aws_scheduler_schedule" "alerts" {
       maximum_retry_attempts = 0
     }
   }
+
+  depends_on = [aws_lambda_invocation.db_bootstrap]
 }
 
 # The cache loader once a day. The keys live REFDATA_TTL_HOURS (48 h), so a
@@ -207,6 +251,8 @@ resource "aws_scheduler_schedule" "list_loader" {
       maximum_retry_attempts = 2
     }
   }
+
+  depends_on = [aws_lambda_invocation.db_bootstrap]
 }
 
 # The alerts handler catches each job's error (so the others still run) and

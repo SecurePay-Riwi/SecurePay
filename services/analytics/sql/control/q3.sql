@@ -9,7 +9,8 @@ WITH frauds AS (
         COALESCE(l.pattern, 'UNKNOWN') AS pattern,
         CASE
             WHEN d.decision IN ('HOLD', 'REJECT') OR d.opens_case THEN 1 ELSE 0
-        END AS detected
+        END AS detected,
+        COALESCE(d.amount_usd, CAST(0 AS DECIMAL(18, 2))) AS amount_usd
     FROM fact_decision d
     JOIN fact_label l ON l.transaction_id = d.transaction_id
     WHERE l.is_fraud
@@ -53,7 +54,9 @@ counted AS (
         pattern,
         label_source,
         COUNT(*) AS frauds,
-        SUM(detected) AS detected
+        SUM(detected) AS detected,
+        SUM(CASE WHEN detected = 1 THEN amount_usd ELSE 0 END) AS detected_usd,
+        SUM(CASE WHEN detected = 0 THEN amount_usd ELSE 0 END) AS missed_usd
     FROM current_catalog
     GROUP BY pattern, label_source
 )
@@ -66,6 +69,8 @@ SELECT
     CAST(ROUND(
         CAST(c.detected AS DECIMAL(18, 6)) / CAST(c.frauds AS DECIMAL(18, 6)), 4
     ) AS DECIMAL(9, 4)) AS detection_rate,
+    CAST(c.detected_usd AS DECIMAL(18, 2)) AS detected_amount_usd,
+    CAST(c.missed_usd AS DECIMAL(18, 2)) AS missed_amount_usd,
     r.rule AS top_rule
 FROM counted c
 LEFT JOIN ranked r
@@ -80,6 +85,8 @@ SELECT
     p.detected,
     p.missed,
     p.detection_rate,
+    p.detected_amount_usd,
+    p.missed_amount_usd,
     p.top_rule
 FROM pattern_coverage p
 JOIN (

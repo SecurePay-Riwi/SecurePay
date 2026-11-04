@@ -1,6 +1,7 @@
 """The PostgreSQL export (contract C6): what export_day() writes is what
 the builders read. The database tests run in their own schema."""
 
+from collections import Counter
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -11,13 +12,20 @@ from sqlalchemy.exc import OperationalError
 
 from services.analytics import export
 from services.analytics.tests.conftest import DAY, FIXTURES
-from services.reconciliation import storage
+from services.reconciliation import match_dir, storage, store
 from shared import cases as case_tables
 from shared import reconciliation as recon_tables
 from shared.cases import Case, CaseEvent
-from shared.reconciliation import ReconciliationDifference, ReconciliationRun
+from shared.reconciliation import (
+    MatchStatus,
+    Partner,
+    ReconciliationDifference,
+    ReconciliationRun,
+)
 
 NOW = datetime(2026, 10, 6, 1, 0, tzinfo=UTC)
+# The reconciliation's fixture day, as the match output of DAY.
+RECON = str(Path(__file__).parents[2] / "reconciliation" / "tests" / "fixtures")
 
 
 @pytest.fixture
@@ -115,8 +123,31 @@ def test_it_writes_the_window_and_nothing_else(session, tmp_path):
         "case_events": 1,
         "differences": 1,
         "runs": 1,
+        "matched": 0,
     }
     assert _raw(tmp_path, "cases", "cases.jsonl")[0]["id"] == str(inside.id)
+
+
+def test_it_counts_what_matched_per_partner(session, tmp_path):
+    """matched.jsonl (contract v1.1): one row per partner for each run of
+    the window whose match output exists, from the reconciliation's fixture
+    day; a run without output gives none."""
+    _load(session)
+
+    result = export.export_day(session, DAY, str(tmp_path), NOW, matches=RECON)
+
+    rows = _raw(tmp_path, "reconciliation", "matched.jsonl")
+    expected = Counter(
+        r.partner
+        for r in store.load_rows(match_dir(RECON, DAY))
+        if r.status == MatchStatus.MATCHED
+    )
+    assert result["matched"] == len(rows) == len(Partner)
+    assert {r["partner"]: r["matched"] for r in rows} == {
+        p.value: expected[p.value] for p in Partner
+    }
+    assert {r["run_day"] for r in rows} == {DAY.isoformat()}
+    assert set(rows[0]) == set(_raw(FIXTURES, "reconciliation", "matched.jsonl")[0])
 
 
 def test_the_lines_have_the_shape_of_the_fixtures(session, tmp_path):

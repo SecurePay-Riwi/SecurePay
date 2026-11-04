@@ -1,8 +1,10 @@
-"""Builder of fact_difference and dim_partner (Yulianis, HU-52).
+"""Builder of fact_difference, fact_reconciliation_match and dim_partner
+(Yulianis, HU-52).
 
-Reads raw/reconciliation/fecha=<day>/differences.jsonl (written by
-export.py) and writes fact_difference (partition run_day, age_days and
-age_range counted to `day` with AGE_RANGES of shared/reconciliation.py)
+Reads raw/reconciliation/fecha=<day>/differences.jsonl and matched.jsonl
+(written by export.py) and writes fact_difference (partition run_day,
+age_days and age_range counted to `day` with AGE_RANGES of
+shared/reconciliation.py), fact_reconciliation_match (partition run_day)
 and dim_partner (from Partner, partner_for() and PARTNER_UTC_OFFSET).
 """
 
@@ -17,7 +19,7 @@ from shared.reconciliation import (
     partner_for,
 )
 
-TABLES = ("fact_difference", "dim_partner")
+TABLES = ("fact_difference", "fact_reconciliation_match", "dim_partner")
 
 DIFFERENCE_SCHEMA = (
     "id string, run_day string, partner string, type string, status string, "
@@ -25,6 +27,7 @@ DIFFERENCE_SCHEMA = (
     "partner_amount string, amount_difference string, detected_at string, "
     "resolved_at string"
 )
+MATCH_SCHEMA = "run_day string, partner string, matched int"
 # Every value partner_for() is asked about. A partner's lists are what it
 # answers for them, so dim_partner cannot disagree with the reconciliation.
 TX_TYPES = ("P2P", "QR", "RETIRO", "RECARGA")
@@ -78,6 +81,26 @@ def fact_difference(spark, day: date, raw: str):
     )
 
 
+def fact_reconciliation_match(spark, day: date, raw: str):
+    """What matched per run day and partner (contract v1.1), from the
+    export's matched.jsonl."""
+    from pyspark.sql import functions as F
+
+    paths = [
+        path
+        for path in sp.jsonl_files(raw, RAW_RECONCILIATION, [day])
+        if path.rsplit("/", 1)[-1] == "matched.jsonl"
+    ]
+    return (
+        sp.lines(spark, paths)
+        .select(F.from_json("value", MATCH_SCHEMA).alias("row"))
+        .select("row.*")
+        .withColumn("run_day", F.col("run_day").cast("date"))
+        .where(F.col("run_day") <= F.lit(day.isoformat()).cast("date"))
+        .select("run_day", "partner", "matched")
+    )
+
+
 def partner_rows() -> list[tuple]:
     """(partner, tx_types, channels, utc_offset) of every partner."""
     rows = []
@@ -100,23 +123,29 @@ def partner_rows() -> list[tuple]:
 
 
 def build(spark, day: date, raw: str, output: str, **_) -> dict:
-    """Write fact_difference (one partition per run_day) and dim_partner
-    for the export of `day`. Returns the rows written per table."""
-    df = fact_difference(spark, day, raw).cache()
-    try:
-        days = sorted(r["run_day"] for r in df.select("run_day").distinct().collect())
-        written = sum(
-            sp.write(spark, df.where(df["run_day"] == d), "fact_difference", output, d)
-            for d in days
-        )
-    finally:
-        df.unpersist()
+    """Write fact_difference and fact_reconciliation_match (one partition
+    per run_day) and dim_partner for the export of `day`. Returns the rows
+    written per table."""
+    written = {}
+    for table, df in (
+        ("fact_difference", fact_difference(spark, day, raw)),
+        ("fact_reconciliation_match", fact_reconciliation_match(spark, day, raw)),
+    ):
+        df = df.cache()
+        try:
+            days = sorted(
+                r["run_day"] for r in df.select("run_day").distinct().collect()
+            )
+            written[table] = sum(
+                sp.write(spark, df.where(df["run_day"] == d), table, output, d)
+                for d in days
+            )
+        finally:
+            df.unpersist()
     partners = spark.createDataFrame(
         partner_rows(),
         "partner string, tx_types array<string>, channels array<string>, "
         "utc_offset int",
     )
-    return {
-        "fact_difference": written,
-        "dim_partner": sp.write(spark, partners, "dim_partner", output),
-    }
+    written["dim_partner"] = sp.write(spark, partners, "dim_partner", output)
+    return written

@@ -39,7 +39,8 @@ locals {
 
   glue_database = replace("${local.p}", "-", "_")
 
-  # The 12 Lambdas of infrastructure.mdx; true = runs inside the VPC.
+  # The 12 Lambdas of infrastructure.mdx plus db-bootstrap (MAG-361);
+  # true = runs inside the VPC.
   lambdas = {
     cases-consumer      = true
     history-consumer    = true
@@ -53,6 +54,7 @@ locals {
     list-loader         = true
     statement-reader    = false
     difference-writer   = true
+    db-bootstrap        = true
   }
 
   ecr_token = {

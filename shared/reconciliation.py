@@ -44,6 +44,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Session, declarative_base
 
+from shared import config
+
 # RN-10: a record matches when the amount differs by at most 0.01 and the
 # dates by at most one day (both limits included).
 AMOUNT_TOLERANCE = Decimal("0.01")
@@ -316,12 +318,18 @@ Index(
 )
 
 
-def create_schema(session: Session) -> None:
+def create_schema(session: Session, *, force: bool = False) -> None:
     """Create the two tables if they are missing, and commit.
 
     Idempotent and under an advisory lock, so the cases API and the
     reconciliation can both call it at startup at the same time.
+
+    Does nothing when CREATE_SCHEMA is false (AWS), unless force=True:
+    there db-bootstrap creates the tables with the master user and the
+    components' users do not own them.
     """
+    if not (config.CREATE_SCHEMA or force):
+        return
     session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": SCHEMA_LOCK})
     Base.metadata.create_all(session.connection())
     session.commit()

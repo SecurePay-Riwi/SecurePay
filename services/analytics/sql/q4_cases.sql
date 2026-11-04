@@ -1,27 +1,42 @@
 -- q4 (HU-51): case resolution times and escalations, per day of
--- created_at, status and outcome. Power BI page HU-51. The percentile is
--- the nearest rank, written by hand because Athena and Spark have no
--- exact percentile function in common.
+-- created_at, analyst, status and outcome (question 4 of the brief asks
+-- the resolution time per analyst). analyst = resolved_by, or assigned_to
+-- while the case is open. Power BI page HU-51. The percentile is the
+-- nearest rank, written by hand because Athena and Spark have no exact
+-- percentile function in common.
 CREATE OR REPLACE VIEW q4_cases AS
-WITH ranked AS (
+WITH cases AS (
     SELECT
         day,
+        COALESCE(resolved_by, assigned_to) AS analyst,
+        status,
+        outcome,
+        escalated_at,
+        minutes_to_resolve,
+        within_sla
+    FROM fact_case
+),
+ranked AS (
+    SELECT
+        day,
+        analyst,
         status,
         outcome,
         escalated_at,
         minutes_to_resolve,
         within_sla,
         ROW_NUMBER() OVER (
-            PARTITION BY day, status, outcome
+            PARTITION BY day, analyst, status, outcome
             ORDER BY minutes_to_resolve NULLS LAST
         ) AS position,
         COUNT(minutes_to_resolve) OVER (
-            PARTITION BY day, status, outcome
+            PARTITION BY day, analyst, status, outcome
         ) AS resolved
-    FROM fact_case
+    FROM cases
 )
 SELECT
     day,
+    analyst,
     status,
     outcome,
     COUNT(*) AS cases,
@@ -37,4 +52,4 @@ SELECT
         / CAST(COUNT(minutes_to_resolve) AS DECIMAL(18, 6)), 2
     ) AS DECIMAL(9, 2)) END AS within_sla_pct
 FROM ranked
-GROUP BY day, status, outcome
+GROUP BY day, analyst, status, outcome

@@ -10,6 +10,7 @@ of the nightly state machine after the reconciliation's store.
 import argparse
 import json
 import logging
+from collections import Counter
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from uuid import UUID
@@ -18,11 +19,16 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 
 from services.analytics import ANALYTICS_DATA_DIR, ANALYTICS_EXPORT_DAYS
-from services.reconciliation import storage
+from services.reconciliation import RECON_DATA_DIR, match_dir, storage, store
 from shared.analytics import RAW_CASES, RAW_RECONCILIATION, layer_path
 from shared.cases import Case, CaseEvent
 from shared.db import SessionLocal
-from shared.reconciliation import ReconciliationDifference, ReconciliationRun
+from shared.reconciliation import (
+    MatchStatus,
+    Partner,
+    ReconciliationDifference,
+    ReconciliationRun,
+)
 
 log = logging.getLogger(__name__)
 
@@ -51,15 +57,44 @@ def _row(item) -> dict:
     }
 
 
-def export_day(session, day: date, root: str, now: datetime) -> dict:
+def matched_rows(run_days, source: str | None = None) -> list[dict]:
+    """{"run_day", "partner", "matched"} for every partner of each run day
+    whose match output still exists: the MATCHED rows of
+    match_dir(RECON_DATA_DIR, run_day) (contract v1.1). A day without
+    output gives no rows."""
+    source = source or RECON_DATA_DIR
+    rows = []
+    for run_day in sorted(set(run_days)):
+        output = store.load_rows(match_dir(source, run_day))
+        if not output:
+            continue
+        counts = Counter(r.partner for r in output if r.status == MatchStatus.MATCHED)
+        rows.extend(
+            {
+                "run_day": run_day.isoformat(),
+                "partner": p.value,
+                "matched": counts[p.value],
+            }
+            for p in Partner
+        )
+    return rows
+
+
+def export_day(
+    session, day: date, root: str, now: datetime, matches: str | None = None
+) -> dict:
     """Writes the CURRENT state of the cases created in the last
     ANALYTICS_EXPORT_DAYS days up to `day` to
     <root>/raw/cases/fecha=<day>/cases.jsonl and case_events.jsonl, and the
     reconciliation differences and runs of the same window to
-    <root>/raw/reconciliation/fecha=<day>/differences.jsonl and runs.jsonl.
+    <root>/raw/reconciliation/fecha=<day>/differences.jsonl and runs.jsonl,
+    and matched.jsonl: {"run_day", "partner", "matched"} per run of the
+    window and partner, the MATCHED rows of the run's match output
+    (store.load_rows(match_dir(matches or RECON_DATA_DIR, run_day)); 0 rows
+    when the output is gone).
     One line per row, decimal strings, UTC ISO times. Replaces the day's
     files (idempotent). Returns {"day", "cases", "case_events",
-    "differences", "runs"}."""
+    "differences", "runs", "matched"}."""
     first = day - timedelta(days=ANALYTICS_EXPORT_DAYS - 1)
     start = datetime.combine(first, time.min, UTC)
     end = datetime.combine(day + timedelta(days=1), time.min, UTC)
@@ -92,6 +127,8 @@ def export_day(session, day: date, root: str, now: datetime) -> dict:
         (recon_dir, "runs.jsonl", runs),
     ):
         storage.write_jsonl(storage.join(folder, name), [_row(r) for r in rows])
+    matched = matched_rows((run.run_day for run in runs), matches)
+    storage.write_jsonl(storage.join(recon_dir, "matched.jsonl"), matched)
 
     result = {
         "day": day.isoformat(),
@@ -99,6 +136,7 @@ def export_day(session, day: date, root: str, now: datetime) -> dict:
         "case_events": len(events),
         "differences": len(differences),
         "runs": len(runs),
+        "matched": len(matched),
     }
     log.info("Analytics export at %s: %s", now.isoformat(), result)
     return result

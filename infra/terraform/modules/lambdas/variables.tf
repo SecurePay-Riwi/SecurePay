@@ -34,10 +34,22 @@ variable "queue_arns" {
   type        = map(string)
 }
 
-variable "database_url" {
-  description = "DATABASE_URL of the cases, history, alerts, difference-writer and list-loader Lambdas. Temporary: the master user in dev (security.mdx, Encryption and secrets)."
-  type        = string
-  sensitive   = true
+variable "database" {
+  description = <<-EOT
+    Where the Lambdas reach RDS (modules/database outputs). No password: each
+    Lambda reads its own from <parameter_path>/<user> at startup (MAG-361).
+    instance_resource_id and password_versions only make db-bootstrap run
+    again when the database is new or a password changes.
+  EOT
+  type = object({
+    host                 = string
+    port                 = number
+    name                 = string
+    master_username      = string
+    parameter_path       = string
+    instance_resource_id = string
+    password_versions    = string
+  })
 }
 
 variable "cache_url" {

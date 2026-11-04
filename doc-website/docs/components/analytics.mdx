@@ -11,7 +11,7 @@ description: The analytics ETL to the dimensional model, the views for Power BI,
 Sprint 6 takes the engine's decisions, the cases and the reconciliation to a dimensional model in the lake (Parquet), answers the six business questions with one Athena view each, and measures the rules against the labeled history by running the engine again over it.
 
 :::info Status
-Step 0 put the contract in the code (`shared/analytics.py`), the decisions' builder, view `q1`, the replay and the labels. HU-44 to HU-46 added the rule metrics (`rule_metrics`, `pattern_coverage`) and the views `q2` and `q3`, and HU-24 the simulation of a rule version. HU-51 and HU-52 added `fact_case`, `fact_difference`, `dim_partner`, the export and the views `q4` and `q5`. HU-47 added `dim_device` and HU-53 view `q6`. The Lambda and the state machine step of the export are pending (HU-66).
+Step 0 put the contract in the code (`shared/analytics.py`), the decisions' builder, view `q1`, the replay and the labels. HU-44 to HU-46 added the rule metrics (`rule_metrics`, `pattern_coverage`) and the views `q2` and `q3`, and HU-24 the simulation of a rule version. HU-51 and HU-52 added `fact_case`, `fact_difference`, `fact_reconciliation_match` (from the `matched.jsonl` the export counts in the match output), `dim_partner`, the export and the views `q4` (per analyst) and `q5` (differences per currency plus the `MATCHED` rows). HU-47 added `dim_device` and HU-53 view `q6`. The Lambda and the state machine step of the export are pending (HU-66).
 :::
 
 ## The flow

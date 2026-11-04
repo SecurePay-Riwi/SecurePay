@@ -91,6 +91,8 @@ class PatternCoverage:  # HU-46
     detection_rate: Decimal | None
     top_rule: str | None
     rules_version: str | None = None
+    detected_amount_usd: Decimal | None = None  # None without the amounts
+    missed_amount_usd: Decimal | None = None
 
 
 def ratio(numerator: int, denominator: int) -> Decimal | None:
@@ -165,11 +167,25 @@ def rule_metrics(
     return rows
 
 
+def _usd(decisions: list[ReplayDecision], amounts_usd: dict[str, Decimal] | None):
+    if amounts_usd is None:
+        return None
+    total = sum(
+        (amounts_usd.get(d.transaction_id) or Decimal(0) for d in decisions),
+        Decimal(0),
+    )
+    return total.quantize(Decimal("0.01"), ROUND_HALF_UP)
+
+
 def pattern_coverage(
-    decisions: Iterable[ReplayDecision], labels: Iterable[Label]
+    decisions: Iterable[ReplayDecision],
+    labels: Iterable[Label],
+    amounts_usd: dict[str, Decimal] | None = None,
 ) -> list[PatternCoverage]:
     """Per fraud pattern, label source and catalog version (HU-46),
-    ordered by those three."""
+    ordered by those three. With `amounts_usd` (transaction id -> amount
+    in USD) it also adds how much money was detected and how much got
+    through (question 3 of the brief: "how much fraud")."""
     groups: dict[tuple[str, str, str], list[ReplayDecision]] = defaultdict(list)
     for d, label in _labeled(decisions, labels):
         if label.is_fraud:
@@ -178,6 +194,7 @@ def pattern_coverage(
     rows = []
     for (pattern, source, rules_version), frauds in sorted(groups.items()):
         caught = [d for d in frauds if detected(d)]
+        escaped = [d for d in frauds if not detected(d)]
         rules = Counter(r for d in caught for r in set(d.rules_triggered))
         rows.append(
             PatternCoverage(
@@ -189,6 +206,8 @@ def pattern_coverage(
                 detection_rate=ratio(len(caught), len(frauds)),
                 top_rule=min(rules, key=lambda r: (-rules[r], r)) if rules else None,
                 rules_version=rules_version,
+                detected_amount_usd=_usd(caught, amounts_usd),
+                missed_amount_usd=_usd(escaped, amounts_usd),
             )
         )
     return rows
@@ -299,7 +318,7 @@ def measure(snapshot, transactions, labels, reference, security_events=()) -> di
         "transactions": len(decisions),
         "labeled": len(_labeled(decisions, labels)),
         "rule_metrics": rule_metrics(decisions, labels, snapshot),
-        "pattern_coverage": pattern_coverage(decisions, labels),
+        "pattern_coverage": pattern_coverage(decisions, labels, amounts),
         "false_positive_examples": false_positive_examples(decisions, labels, amounts),
         "expected_rule_hits": expected_rule_hits(decisions, labels),
     }

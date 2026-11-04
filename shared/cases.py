@@ -41,6 +41,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Session, declarative_base
 
+from shared import config
 from shared.config import MONEDA_DECIMALES
 
 # RN-09: 4 hours. In minutes so a demo can shorten it.
@@ -293,13 +294,19 @@ def rate_values(decision: dict) -> dict:
     }
 
 
-def create_schema(session: Session) -> None:
+def create_schema(session: Session, *, force: bool = False) -> None:
     """Create the four tables and the append-only trigger if they are
     missing, and commit.
 
     Idempotent and under an advisory lock, so the cases API, the consumers
     and the alerts task can all call it at startup at the same time.
+
+    Does nothing when CREATE_SCHEMA is false (AWS), unless force=True:
+    there db-bootstrap creates the tables with the master user and the
+    components' users do not own them.
     """
+    if not (config.CREATE_SCHEMA or force):
+        return
     session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": SCHEMA_LOCK})
     Base.metadata.create_all(session.connection())
     for statement in ADDED_COLUMNS + APPEND_ONLY_EVENTS:
