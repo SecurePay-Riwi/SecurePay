@@ -1,0 +1,683 @@
+{
+  "fact_decision": {
+    "description": "One row per transaction. Source: curated/decisiones/fecha=<day>, raw/labels (label_source)",
+    "location": "analytics/fact_decision/",
+    "partition": "fecha",
+    "columns": [
+      {
+        "name": "transaction_id",
+        "type": "string",
+        "comment": "Transaction id sent by the core (UUID)."
+      },
+      {
+        "name": "day",
+        "type": "date",
+        "comment": "Day of the transaction in UTC (the partition)."
+      },
+      {
+        "name": "transaction_at",
+        "type": "timestamp",
+        "comment": "transaction_date of the core (UTC)."
+      },
+      {
+        "name": "type",
+        "type": "string",
+        "comment": "P2P, QR, RETIRO or RECARGA."
+      },
+      {
+        "name": "currency",
+        "type": "string",
+        "comment": "COP, USD, EUR or JPY."
+      },
+      {
+        "name": "channel",
+        "type": "string",
+        "comment": "APP, WEB, CORRESPONSAL or CAJERO."
+      },
+      {
+        "name": "amount",
+        "type": "decimal(18,2)",
+        "comment": "Amount in the original currency."
+      },
+      {
+        "name": "amount_usd",
+        "type": "decimal(18,2)",
+        "comment": "Amount in USD (RN-11)."
+      },
+      {
+        "name": "usd_rate",
+        "type": "decimal(18,8)",
+        "comment": "Units of the currency per USD used."
+      },
+      {
+        "name": "rate_date",
+        "type": "date",
+        "comment": "Day of the exchange rate used."
+      },
+      {
+        "name": "decision",
+        "type": "string",
+        "comment": "APPROVE, HOLD or REJECT."
+      },
+      {
+        "name": "risk_score",
+        "type": "int",
+        "comment": "Sum of the fired rules' scores (0-100)."
+      },
+      {
+        "name": "rules_version",
+        "type": "string",
+        "comment": "Catalog version that decided (RN-08)."
+      },
+      {
+        "name": "by_default",
+        "type": "boolean",
+        "comment": "RN-01's default decision was applied."
+      },
+      {
+        "name": "opens_case",
+        "type": "boolean",
+        "comment": "A rule that opens a case fired."
+      },
+      {
+        "name": "device_id",
+        "type": "string",
+        "comment": "Device of the transaction."
+      },
+      {
+        "name": "merchant_id",
+        "type": "string",
+        "comment": "Merchant of a QR payment, else null."
+      },
+      {
+        "name": "source_account_id",
+        "type": "string",
+        "comment": "Source account (null in RECARGA)."
+      },
+      {
+        "name": "destination_account_id",
+        "type": "string",
+        "comment": "Destination account (P2P, RECARGA)."
+      },
+      {
+        "name": "label_source",
+        "type": "string",
+        "comment": "LabelSource of its label; null when it is not labeled."
+      }
+    ]
+  },
+  "fact_rule_hit": {
+    "description": "One row per rule fired in a transaction. Source: curated/decisiones/fecha=<day> (rules_triggered, rule_versions)",
+    "location": "analytics/fact_rule_hit/",
+    "partition": "fecha",
+    "columns": [
+      {
+        "name": "transaction_id",
+        "type": "string",
+        "comment": "Transaction id sent by the core (UUID)."
+      },
+      {
+        "name": "day",
+        "type": "date",
+        "comment": "Day of the transaction in UTC (the partition)."
+      },
+      {
+        "name": "rule",
+        "type": "string",
+        "comment": "Rule code (rules_triggered)."
+      },
+      {
+        "name": "rule_version",
+        "type": "int",
+        "comment": "rule_version of the rule that fired."
+      },
+      {
+        "name": "decision",
+        "type": "string",
+        "comment": "What the rule decides (its catalog action); the transaction's decision for default_timeout."
+      },
+      {
+        "name": "score",
+        "type": "int",
+        "comment": "Score the rule adds (its catalog entry)."
+      }
+    ]
+  },
+  "fact_label": {
+    "description": "One row per labeled transaction. Source: raw/labels/fecha=*/labels.jsonl joined with curated/decisiones/fecha=<day>",
+    "location": "analytics/fact_label/",
+    "partition": "fecha",
+    "columns": [
+      {
+        "name": "transaction_id",
+        "type": "string",
+        "comment": "Transaction id sent by the core (UUID)."
+      },
+      {
+        "name": "day",
+        "type": "date",
+        "comment": "Day of the transaction in UTC (the partition)."
+      },
+      {
+        "name": "source",
+        "type": "string",
+        "comment": "LabelSource: generator, paysim or sparkov."
+      },
+      {
+        "name": "pattern",
+        "type": "string",
+        "comment": "Fraud pattern; null when legitimate."
+      },
+      {
+        "name": "is_fraud",
+        "type": "boolean",
+        "comment": "Whether the transaction is fraud."
+      },
+      {
+        "name": "expected_rule",
+        "type": "string",
+        "comment": "Rule the source expects to fire; null when none."
+      }
+    ]
+  },
+  "fact_case": {
+    "description": "One row per case, its current state. Source: raw/cases/fecha=<day>/cases.jsonl, case_events.jsonl",
+    "location": "analytics/fact_case/",
+    "partition": "fecha",
+    "columns": [
+      {
+        "name": "case_id",
+        "type": "string",
+        "comment": "Case id."
+      },
+      {
+        "name": "transaction_id",
+        "type": "string",
+        "comment": "Transaction id sent by the core (UUID)."
+      },
+      {
+        "name": "day",
+        "type": "date",
+        "comment": "Day of created_at in UTC (the partition)."
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp",
+        "comment": "When the case was opened."
+      },
+      {
+        "name": "due_at",
+        "type": "timestamp",
+        "comment": "created_at + CASE_DUE_MINUTES (RN-09)."
+      },
+      {
+        "name": "assigned_to",
+        "type": "string",
+        "comment": "Current assignee; null if none."
+      },
+      {
+        "name": "assigned_at",
+        "type": "timestamp",
+        "comment": "Last ASSIGNED event; null if none."
+      },
+      {
+        "name": "resolved_at",
+        "type": "timestamp",
+        "comment": "When it was resolved; null if open."
+      },
+      {
+        "name": "resolved_by",
+        "type": "string",
+        "comment": "Who resolved it; null if open."
+      },
+      {
+        "name": "status",
+        "type": "string",
+        "comment": "OPEN, ESCALATED or RESOLVED."
+      },
+      {
+        "name": "outcome",
+        "type": "string",
+        "comment": "FRAUD or LEGITIMATE; null if open."
+      },
+      {
+        "name": "final_decision",
+        "type": "string",
+        "comment": "REJECT or APPROVE; null if open."
+      },
+      {
+        "name": "escalated",
+        "type": "boolean",
+        "comment": "Whether it was escalated (RN-09)."
+      },
+      {
+        "name": "escalated_at",
+        "type": "timestamp",
+        "comment": "When it was escalated; null if not."
+      },
+      {
+        "name": "minutes_to_resolve",
+        "type": "int",
+        "comment": "Whole minutes from created_at to resolved_at; null if open."
+      },
+      {
+        "name": "within_sla",
+        "type": "boolean",
+        "comment": "Resolved in 240 minutes or less (RN-09); null if open."
+      },
+      {
+        "name": "rules_triggered",
+        "type": "array<string>",
+        "comment": "Rules that fired."
+      },
+      {
+        "name": "risk_score",
+        "type": "int",
+        "comment": "risk_score of the decision."
+      },
+      {
+        "name": "amount_usd",
+        "type": "decimal(18,2)",
+        "comment": "Amount in USD of the decision."
+      }
+    ]
+  },
+  "fact_difference": {
+    "description": "One row per reconciliation difference, its current state. Source: raw/reconciliation/fecha=<day>/differences.jsonl",
+    "location": "analytics/fact_difference/",
+    "partition": "fecha",
+    "columns": [
+      {
+        "name": "difference_id",
+        "type": "string",
+        "comment": "Difference id."
+      },
+      {
+        "name": "run_day",
+        "type": "date",
+        "comment": "Day reconciled (the partition)."
+      },
+      {
+        "name": "partner",
+        "type": "string",
+        "comment": "Partner (shared/reconciliation.py Partner)."
+      },
+      {
+        "name": "type",
+        "type": "string",
+        "comment": "MISSING_IN_PARTNER, MISSING_IN_PAGOSEGURO or AMOUNT_MISMATCH."
+      },
+      {
+        "name": "status",
+        "type": "string",
+        "comment": "PENDING or RESOLVED."
+      },
+      {
+        "name": "reference",
+        "type": "string",
+        "comment": "PagoSeguro's transaction id."
+      },
+      {
+        "name": "currency",
+        "type": "string",
+        "comment": "Currency of the amounts."
+      },
+      {
+        "name": "pagoseguro_amount",
+        "type": "decimal(18,2)",
+        "comment": "Our amount; null if missing."
+      },
+      {
+        "name": "partner_amount",
+        "type": "decimal(18,2)",
+        "comment": "Partner's; null if missing."
+      },
+      {
+        "name": "amount_difference",
+        "type": "decimal(18,2)",
+        "comment": "partner - pagoseguro (AMOUNT_MISMATCH only)."
+      },
+      {
+        "name": "age_days",
+        "type": "int",
+        "comment": "Days from run_day to the day of the load."
+      },
+      {
+        "name": "age_range",
+        "type": "string",
+        "comment": "AGE_RANGES of shared/reconciliation.py."
+      },
+      {
+        "name": "detected_at",
+        "type": "timestamp",
+        "comment": "First time it was detected."
+      },
+      {
+        "name": "resolved_at",
+        "type": "timestamp",
+        "comment": "When treasury resolved it."
+      }
+    ]
+  },
+  "fact_reconciliation_match": {
+    "description": "One row per reconciled day and partner. Source: raw/reconciliation/fecha=<day>/matched.jsonl",
+    "location": "analytics/fact_reconciliation_match/",
+    "partition": "fecha",
+    "columns": [
+      {
+        "name": "run_day",
+        "type": "date",
+        "comment": "Day reconciled (the partition)."
+      },
+      {
+        "name": "partner",
+        "type": "string",
+        "comment": "Partner (shared/reconciliation.py Partner)."
+      },
+      {
+        "name": "matched",
+        "type": "int",
+        "comment": "References that matched by amount and date (RN-10)."
+      }
+    ]
+  },
+  "dim_date": {
+    "description": "One day. Source: the days of curated/decisiones",
+    "location": "analytics/dim_date/",
+    "partition": null,
+    "columns": [
+      {
+        "name": "day",
+        "type": "date",
+        "comment": "The day."
+      },
+      {
+        "name": "year",
+        "type": "int",
+        "comment": "Year."
+      },
+      {
+        "name": "month",
+        "type": "int",
+        "comment": "Month (1-12)."
+      },
+      {
+        "name": "day_of_month",
+        "type": "int",
+        "comment": "Day of the month (1-31)."
+      },
+      {
+        "name": "weekday",
+        "type": "int",
+        "comment": "ISO weekday: 1 Monday ... 7 Sunday."
+      },
+      {
+        "name": "is_weekend",
+        "type": "boolean",
+        "comment": "Saturday or Sunday."
+      }
+    ]
+  },
+  "dim_rule": {
+    "description": "One rule in one catalog version. Source: the rule catalog (shared/rule_catalog.py default_catalog(); published versions from GET /rules/versions/{n})",
+    "location": "analytics/dim_rule/",
+    "partition": null,
+    "columns": [
+      {
+        "name": "rule",
+        "type": "string",
+        "comment": "Rule code."
+      },
+      {
+        "name": "rule_version",
+        "type": "int",
+        "comment": "rule_version of the entry."
+      },
+      {
+        "name": "type",
+        "type": "string",
+        "comment": "Rule type (RuleType)."
+      },
+      {
+        "name": "action",
+        "type": "string",
+        "comment": "What it decides when it fires."
+      },
+      {
+        "name": "opens_case",
+        "type": "boolean",
+        "comment": "Whether it opens a case."
+      },
+      {
+        "name": "score",
+        "type": "int",
+        "comment": "Score it adds to risk_score."
+      },
+      {
+        "name": "enabled",
+        "type": "boolean",
+        "comment": "Whether it is evaluated."
+      },
+      {
+        "name": "rules_version",
+        "type": "string",
+        "comment": "Catalog version."
+      }
+    ]
+  },
+  "dim_partner": {
+    "description": "One partner. Source: shared/reconciliation.py (Partner, PARTNER_UTC_OFFSET)",
+    "location": "analytics/dim_partner/",
+    "partition": null,
+    "columns": [
+      {
+        "name": "partner",
+        "type": "string",
+        "comment": "Partner code."
+      },
+      {
+        "name": "tx_types",
+        "type": "array<string>",
+        "comment": "Transaction types it sees."
+      },
+      {
+        "name": "channels",
+        "type": "array<string>",
+        "comment": "Channels it sees."
+      },
+      {
+        "name": "utc_offset",
+        "type": "int",
+        "comment": "Hours from UTC of its files' dates."
+      }
+    ]
+  },
+  "dim_device": {
+    "description": "One device, 30-day window up to the day. Source: curated/decisiones/fecha=<day-29..day>, raw/cases",
+    "location": "analytics/dim_device/",
+    "partition": "fecha",
+    "columns": [
+      {
+        "name": "device_id",
+        "type": "string",
+        "comment": "Device id."
+      },
+      {
+        "name": "accounts_30d",
+        "type": "int",
+        "comment": "Different accounts in 30 days (RN-04)."
+      },
+      {
+        "name": "transactions_30d",
+        "type": "int",
+        "comment": "Transactions in 30 days."
+      },
+      {
+        "name": "held_or_rejected_30d",
+        "type": "int",
+        "comment": "HOLD or REJECT in 30 days."
+      },
+      {
+        "name": "cases_30d",
+        "type": "int",
+        "comment": "Cases opened in 30 days."
+      },
+      {
+        "name": "shared",
+        "type": "boolean",
+        "comment": "accounts_30d > 3 (RN-04)."
+      },
+      {
+        "name": "risk_level",
+        "type": "string",
+        "comment": "LOW, MEDIUM or HIGH (rules in analytics-model.mdx)."
+      },
+      {
+        "name": "as_of",
+        "type": "date",
+        "comment": "Last day of the window (the partition)."
+      }
+    ]
+  },
+  "dim_merchant": {
+    "description": "One merchant, 30-day window up to the day. Source: curated/decisiones/fecha=<day-29..day>, raw/labels",
+    "location": "analytics/dim_merchant/",
+    "partition": "fecha",
+    "columns": [
+      {
+        "name": "merchant_id",
+        "type": "string",
+        "comment": "Merchant id."
+      },
+      {
+        "name": "transactions_30d",
+        "type": "int",
+        "comment": "QR payments in 30 days."
+      },
+      {
+        "name": "held_or_rejected_30d",
+        "type": "int",
+        "comment": "HOLD or REJECT in 30 days."
+      },
+      {
+        "name": "fraud_labeled_30d",
+        "type": "int",
+        "comment": "Labeled as fraud in 30 days."
+      },
+      {
+        "name": "as_of",
+        "type": "date",
+        "comment": "Last day of the window (the partition)."
+      }
+    ]
+  },
+  "rule_metrics": {
+    "description": "One rule, label source and catalog version. Source: fact_decision, fact_label, fact_rule_hit, dim_rule; raw/metrics/kaggle (the replay, C5)",
+    "location": "analytics/rule_metrics/",
+    "partition": null,
+    "columns": [
+      {
+        "name": "rule",
+        "type": "string",
+        "comment": "Rule code."
+      },
+      {
+        "name": "rule_version",
+        "type": "int",
+        "comment": "rule_version in the catalog replayed."
+      },
+      {
+        "name": "rules_version",
+        "type": "string",
+        "comment": "Catalog version replayed."
+      },
+      {
+        "name": "label_source",
+        "type": "string",
+        "comment": "LabelSource of the labels used."
+      },
+      {
+        "name": "hits",
+        "type": "int",
+        "comment": "Labeled transactions where the rule fired."
+      },
+      {
+        "name": "true_positives",
+        "type": "int",
+        "comment": "Fired and is_fraud."
+      },
+      {
+        "name": "false_positives",
+        "type": "int",
+        "comment": "Fired and not is_fraud."
+      },
+      {
+        "name": "precision",
+        "type": "decimal(9,4)",
+        "comment": "true_positives / hits; null when hits = 0."
+      },
+      {
+        "name": "false_positive_rate",
+        "type": "decimal(9,4)",
+        "comment": "false_positives / labeled legitimate transactions."
+      }
+    ]
+  },
+  "pattern_coverage": {
+    "description": "One fraud pattern, label source and catalog version. Source: fact_decision, fact_label, fact_rule_hit; raw/metrics/kaggle (the replay, C5)",
+    "location": "analytics/pattern_coverage/",
+    "partition": null,
+    "columns": [
+      {
+        "name": "pattern",
+        "type": "string",
+        "comment": "Fraud pattern of the label."
+      },
+      {
+        "name": "label_source",
+        "type": "string",
+        "comment": "LabelSource of the labels used."
+      },
+      {
+        "name": "rules_version",
+        "type": "string",
+        "comment": "Catalog version replayed."
+      },
+      {
+        "name": "frauds",
+        "type": "int",
+        "comment": "Labeled frauds of the pattern."
+      },
+      {
+        "name": "detected",
+        "type": "int",
+        "comment": "HOLD, REJECT or opens_case."
+      },
+      {
+        "name": "missed",
+        "type": "int",
+        "comment": "frauds - detected."
+      },
+      {
+        "name": "detection_rate",
+        "type": "decimal(9,4)",
+        "comment": "detected / frauds; null when 0."
+      },
+      {
+        "name": "detected_amount_usd",
+        "type": "decimal(18,2)",
+        "comment": "USD amount of the detected frauds (RN-11)."
+      },
+      {
+        "name": "missed_amount_usd",
+        "type": "decimal(18,2)",
+        "comment": "USD amount of the frauds that got through."
+      },
+      {
+        "name": "top_rule",
+        "type": "string",
+        "comment": "Rule that detects most of the pattern."
+      }
+    ]
+  }
+}
