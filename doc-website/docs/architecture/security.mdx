@@ -85,7 +85,7 @@ One group per function, and the rules are written between groups instead of betw
 **Changes from version 1.0:**
 - **The engine no longer reaches the database.** The engine never queries PostgreSQL: it reads the active rules and the restricted list from the cache, and the day's exchange rate from DynamoDB. The components that read the database to fill the cache are Lambdas (rule refresh, list load). The 5432 rule was removed from `sg-motor`, and so was the inbound rule from `sg-motor` in `sg-rds`. Since HU-67 the engine code reads accounts, owners and the restricted list from the cache too, loaded once a day by the `list-loader` Lambda.
   - **Temporary rule in dev, removed (2026-10-31 to 2026-11-03).** While the engine still read PostgreSQL, the Terraform variable `engine_reads_database` opened 5432/TCP from `sg-engine` to `sg-rds` and let `engine-execution` read `/securepay/<env>/rds/master-url`. MAG-356 removed the variable and both rules once HU-67 was in `main`.
-  - **Temporary in dev too: the Lambdas use the master user (agreed on 2026-11-02, HU-68).** The cases, history and alerts Lambdas get `DATABASE_URL` of the master user as an environment variable (encrypted at rest, but visible to whoever may read the function's configuration). The component users (`cases_consumer`, `alerts`, ...) already have their passwords in Parameter Store; creating them in PostgreSQL with their grants, and reading the password at startup, is pending for every component (engine, Lambdas and admin task).
+  - **The Lambdas no longer use the master user (MAG-361, Sprint 6).** From 2026-11-02 to MAG-361 the cases, history, alerts, difference-writer and `list-loader` Lambdas got `DATABASE_URL` of the master user as an environment variable. Now each one connects with its own user and reads its own password at startup (see [Database users](#database-users)); only the admin task and `db-bootstrap` use the master user.
 - **Port 6380 on the cache.** ElastiCache Serverless uses 6379 (writes and consistent reads) and 6380 (reads from a replica), and many clients open both even if they do not use the second one. With only 6379 the connection could fail.
 - **`sg-admin`**, for the Fargate task that runs the schema migrations and the seed against the database. It had no group before.
 
@@ -140,8 +140,9 @@ Team members reach resources inside the VPC through **AWS Systems Manager Sessio
 | 21 | `rol-despliegue` | GitHub Actions (OIDC) | Publish images and update the service and the Lambdas. No permissions on data |
 | 22 | `rol-despliegue-apis` | GitHub Actions (OIDC), securepay-apis | Publish the securepay-apis image and update the exchange-rates Lambda. Nothing else |
 | 23 | `usuario-powerbi` | IAM user (Power BI Desktop) | Query the analytics layer through Athena |
+| 24 | `rol-db-bootstrap` | Lambda | Read the master password and the component passwords to create the tables, the users and their grants (Sprint 6) |
 
-That is 21 roles and one user, compared with 12 in version 1.0 (number 6 is kept empty so the numbers below do not change). What changed: the engine's execution role was split from its application role; the escalation task became the alerts Lambda (which also reviews transactions approved by fallback); the daily list load, the list service, the rule refresh in the cache, EventBridge Scheduler and the admin task were added; and statement ingestion was split into the two reconciliation Lambdas. The Power BI user is the only long-lived credential (Power BI Desktop does not assume roles): read only, with keys rotated every 90 days.
+That is 22 roles and one user, compared with 12 in version 1.0 (number 6 is kept empty so the numbers below do not change). What changed: the engine's execution role was split from its application role; the escalation task became the alerts Lambda (which also reviews transactions approved by fallback); the daily list load, the list service, the rule refresh in the cache, EventBridge Scheduler and the admin task were added; and statement ingestion was split into the two reconciliation Lambdas. The Power BI user is the only long-lived credential (Power BI Desktop does not assume roles): read only, with keys rotated every 90 days.
 
 ### Detailed permissions per role
 
@@ -178,8 +179,9 @@ The engine calls the list service over HTTPS only if the cache is unavailable; t
 | Action | Resource | Purpose |
 | :--- | :--- | :--- |
 | `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` | queue `historial` | Read the queue |
+| `ssm:GetParameter` | parameter `/rds/history_consumer` | Password of its database user, to write the account history (Sprint 6) |
 
-Since Sprint 4 the history is the PostgreSQL table `account_transactions` (team decision D3), not DynamoDB and the cache, so the role only reads its queue and reaches the database through `sg-lambda`. Sprint 5 removed `dynamodb:PutItem` and `elasticache:Connect` from it.
+Since Sprint 4 the history is the PostgreSQL table `account_transactions` (team decision D3), not DynamoDB and the cache, so the role reads its queue, its database password, and reaches the database through `sg-lambda`. Sprint 5 removed `dynamodb:PutItem` and `elasticache:Connect` from it.
 
 **5. `rol-consumidor-analitica`** · own logs (outside the VPC)
 
@@ -240,7 +242,7 @@ To review the transactions approved by fallback it calls the engine over HTTPS t
 | Action | Resource | Purpose |
 | :--- | :--- | :--- |
 | `elasticache:Connect` | the cache and the user `carga_lista` | Replace the list in the cache |
-| `ssm:GetParameter` | parameter `/rds/list_loader` | Its database password, to read accounts, merchants and the list (in dev it still gets the master `DATABASE_URL`, like the other Lambdas) |
+| `ssm:GetParameter` | parameter `/rds/list_loader` | Its database password, to read accounts, merchants and the list |
 
 It requests the full list from the list service over HTTPS (`GET /lista`), without IAM.
 
@@ -326,6 +328,7 @@ The migrations and the seed connect to the database with the master password inj
 | `ecs:UpdateService`, `ecs:DescribeServices` | service `motor` | Deploy the engine |
 | `ecs:RunTask` | task definition `admin` | Run the migrations before deploying |
 | `lambda:UpdateFunctionCode` | the Lambdas that run the engine image (all except `tasas`) | Deploy the Lambdas |
+| `lambda:InvokeFunction` | Lambda `db-bootstrap` | Apply the tables and grants of a new image before the other Lambdas get it (Sprint 6, MAG-361) |
 | `iam:PassRole` | `rol-motor-ejecucion`, `rol-motor`, `rol-admin-ejecucion` and `rol-admin`, only to `ecs-tasks.amazonaws.com` | Assign the roles to the new task |
 
 The trust relationship only accepts GitHub tokens for the `SecurePay-Riwi/SecurePay` repository on the `main` branch (the token's `aud` and `sub` conditions). No access keys are stored in GitHub.
@@ -348,6 +351,15 @@ The trust relationship only accepts GitHub tokens for `SecurePay-Riwi/securepay-
 | `glue:GetDatabase`, `glue:GetDatabases`, `glue:GetTable`, `glue:GetTables`, `glue:GetPartitions` | catalog and database `pagoseguro` | See the table schemas |
 | `s3:GetObject`, `s3:ListBucket` | `pagoseguro-prod-datalake/analytics/*` | Read only the analytics layer |
 | `s3:PutObject`, `s3:GetObject`, `s3:GetBucketLocation` | `pagoseguro-prod-datalake/athena-results/powerbi/*` | Query results |
+
+**24. `rol-db-bootstrap`** · VPC networking · own logs (Sprint 6, MAG-361)
+
+| Action | Resource | Purpose |
+| :--- | :--- | :--- |
+| `ssm:GetParameter` | parameter `/rds/master-password` | Connect with the master user, the owner of every table |
+| `ssm:GetParameter` | parameters `/rds/alerts`, `/rds/cases_consumer`, `/rds/history_consumer`, `/rds/list_loader`, `/rds/reconciliation` | Give each component user its password |
+
+Terraform invokes it on each apply that creates the database, changes a password or changes the image; nothing else invokes it. See [Database users](#database-users).
 
 ### Resource policies (attached to the resource, not the role)
 
@@ -490,8 +502,32 @@ This is how they are written in Terraform. `<cuenta>` and the identifiers are pa
 
 | Parameter | Who reads it | Note |
 | :--- | :--- | :--- |
-| `/pagoseguro/prod/rds/master-password` | Only the admin task (migrations and seed) | Generated by Terraform. Nobody else uses the master user |
+| `/pagoseguro/prod/rds/master-password` | The admin task (seed) and `db-bootstrap` | Generated by Terraform. No other component uses the master user |
 | `/pagoseguro/prod/kaggle/token` | The Kaggle download script, if it runs in AWS | Today each team member runs it locally with their own token |
-| `/pagoseguro/prod/rds/<usuario>` (6) | Each component, only its own: `consumidor_casos`, `api_reglas`, `api_casos`, `lector_reglas`, `alertas`, `conciliacion` | Passwords generated by Terraform. The cache has no password: it uses IAM (see [Identity and access](#iam)) |
+| `/pagoseguro/prod/rds/<user>` (8) | Each component, only its own: `cases_consumer`, `history_consumer`, `alerts`, `reconciliation`, `list_loader` (deployed), and `cases_api`, `rules_api`, `rules_reader` (their components are not deployed yet), plus `db-bootstrap` for the five deployed ones | Passwords generated by Terraform. The cache has no password: it uses IAM (see [Identity and access](#iam)) |
 
 AWS managed keys were chosen instead of customer managed KMS keys because they encrypt just as well and cost nothing; a customer managed key adds manual rotation and fine-grained policies, which no requirement of this project asks for, at $1 a month per key. For the same reason, Parameter Store instead of Secrets Manager: the advantage of Secrets Manager is automatic rotation, and these secrets do not rotate.
+
+### Database users {/* #database-users */}
+
+Built in Sprint 6 (MAG-361). Each component that reaches PostgreSQL has its own user with only the grants its queries need; nobody but the admin task and `db-bootstrap` uses the master user.
+
+**How a component connects.** Its Lambda has `DATABASE_USER`, `DATABASE_PASSWORD_PARAMETER` (the parameter's name, never the password), `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME` and `CREATE_SCHEMA=false`. At startup `shared/config.py` reads the password with `ssm:GetParameter` and builds the URL with `URL.create()`, because the generated passwords may contain `#`, `?`, `%` or `:`. Whoever can read the function's configuration sees no password. Locally and in CI, `DATABASE_URL` is used as before.
+
+**Who creates the tables, the users and the grants.** The `db-bootstrap` Lambda (`services/db_bootstrap/`, the engine's image), with the master user. Terraform invokes it (`aws_lambda_invocation`) when the database is new, a password changed or the image changed; the queue mappings and the schedules wait for it. It:
+
+1. creates every table: the seed's, the case tables with the append-only trigger of `case_events`, and the reconciliation tables. The seed then finds them and only inserts; its reset uses `TRUNCATE`, so the grants survive every reseed and no manual step is needed after the seed;
+2. creates or updates each user, sending PostgreSQL a SCRAM-SHA-256 verifier instead of the password;
+3. revokes what each user had and grants only what `services/db_bootstrap/grants.py` lists, so a grant removed from the list is removed from the database too.
+
+The components skip `create_schema()` in AWS (`CREATE_SCHEMA=false`): it runs `ALTER TABLE` and `CREATE TRIGGER`, which only the owner may run.
+
+| User | Component | Grants |
+| :--- | :--- | :--- |
+| `cases_consumer` | Cases consumer | `SELECT`, `INSERT` on `cases`, `case_events`, `compliance_reports`; `SELECT` on `cuentas`, `usuarios`, `listas_restrictivas` (restricted-list reports); `USAGE` on the `case_events` sequence |
+| `history_consumer` | History consumer | `SELECT`, `INSERT` on `account_transactions` |
+| `alerts` | Alerts | `SELECT`, `UPDATE` on `cases`, `compliance_reports`; `SELECT`, `INSERT` on `case_events`; `SELECT`, `DELETE` on `account_transactions` (30-day purge); `SELECT` on `reconciliation_runs`; `USAGE` on the `case_events` sequence |
+| `reconciliation` | Difference writer | `SELECT`, `INSERT`, `UPDATE` on `reconciliation_runs`; `SELECT`, `INSERT` on `reconciliation_differences` |
+| `list_loader` | `list-loader` | `SELECT` on `cuentas`, `usuarios`, `comercios`, `listas_restrictivas` |
+
+`INSERT ... RETURNING` also needs `SELECT`, and `SELECT ... FOR UPDATE` needs `UPDATE`. No user may `DROP`, `TRUNCATE` or `ALTER` a table, delete cases, or change `case_events`. The cases API, the rules API and the rules cache refresh get their users in the pull request that deploys them. The tests in `services/db_bootstrap/tests/` run each component's real code with its own user against PostgreSQL, and check what each user is denied.

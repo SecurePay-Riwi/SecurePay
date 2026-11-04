@@ -73,6 +73,8 @@ resource "aws_iam_role_policy" "deploy" {
       { Sid = "DeployEngine", Effect = "Allow", Action = ["ecs:UpdateService", "ecs:DescribeServices"], Resource = "${local.arn.ecs}:service/${local.p}/engine" },
       { Sid = "RunMigrations", Effect = "Allow", Action = "ecs:RunTask", Resource = "${local.arn.ecs}:task-definition/${local.p}-admin:*" },
       { Sid = "DeployLambdas", Effect = "Allow", Action = ["lambda:UpdateFunctionCode", "lambda:GetFunctionConfiguration"], Resource = [for name, _ in local.lambdas : "${local.arn.function}-${name}" if !contains(local.source_lambdas, name)] },
+      # A new image may bring new grants: the workflow runs db-bootstrap before the other Lambdas (MAG-361).
+      { Sid = "RunDbBootstrap", Effect = "Allow", Action = "lambda:InvokeFunction", Resource = "${local.arn.function}-db-bootstrap" },
       {
         Sid       = "HandTaskRoles"
         Effect    = "Allow"

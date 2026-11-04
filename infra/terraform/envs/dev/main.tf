@@ -195,9 +195,17 @@ module "lambdas" {
   queue_arns               = module.messaging.queue_arns
   cache_url                = module.cache.url
 
-  # Temporary: the master user, like the engine (security.mdx). One user
-  # per component is pending.
-  database_url = module.database.master_url
+  # Each Lambda reads its own database password (MAG-361); db-bootstrap
+  # creates the users and grants.
+  database = {
+    host                 = module.database.endpoint
+    port                 = module.database.port
+    name                 = module.database.database_name
+    master_username      = module.database.master_username
+    parameter_path       = module.database.parameter_path
+    instance_resource_id = module.database.instance_resource_id
+    password_versions    = module.database.password_versions
+  }
 
   business_alerts_topic_arn = module.messaging.business_alerts_topic_arn
   ops_alarms_topic_arn      = module.messaging.ops_alarms_topic_arn
