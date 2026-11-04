@@ -33,7 +33,7 @@ concurrency:
 env:
   AWS_REGION: us-east-2
   NAME_PREFIX: securepay-dev
-  LAMBDAS: cases-consumer history-consumer analytics-consumer alerts statement-reader difference-writer list-loader
+  LAMBDAS: cases-consumer history-consumer analytics-consumer alerts statement-reader difference-writer list-loader analytics-export
 
 jobs:
   deploy:
@@ -173,3 +173,21 @@ jobs:
             aws lambda wait function-updated --function-name "${function}"
             echo "${function} running ${IMAGE}"
           done
+
+      # The Spark jobs on Glue read their script and the code zip from the
+      # artifacts bucket on every run, so uploading them deploys the merged
+      # code (MAG-295). Same zip as Terraform's (infra/spark/package.py).
+      - name: Deploy the Spark jobs
+        if: steps.aws.outcome == 'success'
+        run: |
+          if ! aws glue get-job --job-name "${NAME_PREFIX}-analytics" > /dev/null 2>&1; then
+            echo "::notice title=Spark jobs not deployed::The Glue jobs do not exist yet."
+            exit 0
+          fi
+          account=$(aws sts get-caller-identity --query Account --output text)
+          bucket="${NAME_PREFIX}-artifacts-${account}"
+          python3 infra/spark/package.py securepay-jobs.zip
+          aws s3 cp securepay-jobs.zip "s3://${bucket}/jobs/code/securepay-jobs.zip"
+          aws s3 cp infra/spark/match_job.py "s3://${bucket}/jobs/reconciliation/match_job.py"
+          aws s3 cp infra/spark/analytics_job.py "s3://${bucket}/jobs/analytics/analytics_job.py"
+          echo "Spark jobs running ${GITHUB_SHA::7}"
