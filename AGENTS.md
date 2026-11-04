@@ -309,6 +309,11 @@ Pages: `doc-website/docs/components/analytics.mdx` and
   written by `export.py` from the match output); its count column is
   `records`. Athena workgroup: `securepay-<env>-powerbi`, results in
   `athena-results/powerbi/` (the `powerbi` IAM user of `modules/iam`).
+- **Data quality (HU-66):** `quality.py` checks every table of `TABLES`
+  for nulls, formats and ranges, derived from the column names and types
+  (`checks(table)`); `check_day()` raises `QualityError`. CI runs it on the
+  fixture day; the analytics Glue job runs it after the builders. A new
+  column needs no change there unless it needs a new kind of check.
 - **Fixtures:** `services/analytics/tests/fixtures/` is one day
   (2026-10-05) built by `make_fixtures.py` with the engine's rules; do not
   edit them without Habith. Its `README.md` lists the day.
@@ -476,6 +481,10 @@ Read this before touching `shared/reconciliation.py`,
   `partner`, `type`, `reference`) and inserted with `ON CONFLICT DO
   NOTHING`: a repeated run neither duplicates nor reopens it. `RESOLVED`
   is final.
+- **The state machine** is the JSON template
+  `infra/terraform/modules/reconciliation/state_machine.json.tftpl`
+  (`templatefile()`); `test_state_machine.py` renders it and checks it
+  without AWS. Change the machine there, never inline in `main.tf`.
 - **Orchestration:** `python -m services.reconciliation --day` (or
   `--from --to`) runs ingest → match → store; the run is `RUNNING` at the
   start and `FAILED` with `"<step>: <error>"` if a step fails. In AWS:
