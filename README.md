@@ -726,4 +726,6 @@ Para levantar el motor: subir las imágenes a ECR con el commit corto como tag, 
 
 **Kubernetes (HU-58).** `infra/k8s/` runs the same engine on kind (local, free) and on EKS (one session in dev, deleted the same day) to compare it with Fargate (ADR-06): `kind create cluster --name securepay --config infra/k8s/overlays/kind/kind.yaml`, `kubectl apply -k infra/k8s/overlays/kind` and `uv run python infra/k8s/latency.py http://localhost:8000 http://localhost:8080`. Steps: `doc-website/docs/getting-started/kubernetes.mdx`.
 
+**Load test (HU-60).** `uv sync --group load`, then `uv run --group load locust -f infra/load/locustfile.py --headless --host https://<ALB>`: 50, 150 and 300 tx/s against the engine in dev, 5 minutes each. Steps and how to read the result: `doc-website/docs/getting-started/load-test.mdx`.
+
 El estado (`terraform.tfstate`) y `terraform.tfvars` quedan en tu equipo y git los ignora. El estado guarda las contraseñas de RDS, así que no se comparte. Corre `apply` y `destroy` siempre desde el mismo equipo.

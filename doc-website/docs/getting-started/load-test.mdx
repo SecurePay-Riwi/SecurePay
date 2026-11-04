@@ -1,0 +1,97 @@
+---
+sidebar_position: 7
+title: Load test the engine
+description: The engine at 50, 150 and 300 transactions per second in AWS dev, with Locust, and how to read the result against the 200 ms limit (HU-60).
+---
+
+# Load test the engine
+
+RN-01 says every transaction gets its decision in 200 ms or less. The brief sizes the load at 50 tx/s sustained and 300 tx/s at the peak ([Estimated figures](../architecture/infrastructure.mdx#estimates)). This test sends 50, 150 and 300 tx/s to the engine on Fargate in dev, 5 minutes each, and records latency, errors, default decisions and how many tasks autoscaling started.
+
+The files are in `infra/load/`:
+
+| File | What it is |
+| :--- | :--- |
+| `locustfile.py` | [Locust](https://locust.io/): each simulated core sends one transaction per second, so users = tx/s. The shape holds each step of `LOAD_STEPS` for `LOAD_STEP_SECONDS` and stops. At the end it prints how the engine answered (`APPROVE`, `HOLD`, `REJECT`, `default`) |
+| `transactions.py` | The requests: P2P 60 %, QR 25 %, RECARGA 10 %, RETIRO 5 %, between the seed's active accounts, each in the payer's currency, with a new id each |
+| `accounts.json` | The seed's 98 active accounts with their currency, and its 20 active merchants. AWS dev uses the same seed mode (`SEED_MODE=dev`), so these ids exist there. `python -m infra.load.accounts` writes it again if the seed changes |
+
+`services/decision_engine/tests/test_load_transactions.py` checks that every generated transaction is a request the engine accepts.
+
+## Where to read the result
+
+Locust runs on your computer and reaches the load balancer over the internet, so its times include the trip from Colombia to `us-east-2` (about 80 to 120 ms). **The 200 ms limit is judged inside AWS:**
+
+- the load balancer's `TargetResponseTime` p99, which is the time the engine took, on the dashboard `securepay-dev` and in alarm 1;
+- the engine's decision log, which lists every decision slower than 150 ms (query `securepay-dev/slow-decisions`).
+
+Locust's numbers say what a client sees, and they are the ones to look at for errors.
+
+## Run it
+
+1. Dev must be up with the engine on Fargate, the database seeded and the cache loaded: [Deploy to AWS](./deploy-aws-terraform.mdx), steps 4 to 7. In particular, run `-list-loader` once. Otherwise every decision is a default decision and the test measures the wrong thing. Confirm the `ops-alarms` subscription to see which alarms fire.
+
+2. Install Locust (it is in the `load` dependency group, outside the default ones):
+
+   ```powershell
+   uv sync --group load
+   ```
+
+3. Check one request (from the root of `SecurePay`; `$ALB` as in step 6 of the deploy page):
+
+   ```powershell
+   $env:LOAD_STEPS = "5"; $env:LOAD_STEP_SECONDS = "30"
+   uv run --group load locust -f infra/load/locustfile.py --headless --host "https://$ALB" --only-summary
+   ```
+
+   0 failures and mostly `APPROVE` and `HOLD` in the `decisions` line.
+
+4. The full test (15 minutes). Open the dashboard first, and save Locust's numbers as CSV:
+
+   ```powershell
+   Remove-Item Env:LOAD_STEPS, Env:LOAD_STEP_SECONDS
+   New-Item -ItemType Directory -Force load-results
+   1..3 | ForEach-Object { Start-Process -NoNewWindow uv -ArgumentList "run --group load locust -f infra/load/locustfile.py --worker" }
+   uv run --group load locust -f infra/load/locustfile.py --master --expect-workers 3 --headless --host "https://$ALB" --csv load-results/run
+   ```
+
+   Three worker processes and one master. One Locust process tops out at a few hundred requests per second, and 300 tx/s needs headroom. Locust's `--processes` option does not work on Windows. Each worker prints its own `decisions` line at the end, so add them up. If Locust warns that the CPU is above 90 %, the client is the bottleneck, not the engine: add workers or run from a faster computer.
+
+5. While it runs, note for each step (50, 150 and 300):
+
+   | Measure | Where |
+   | :--- | :--- |
+   | p50 and p99 inside AWS | Dashboard: engine latency (`TargetResponseTime`) |
+   | p50 and p99 at the client, errors | Locust's summary, `load-results/run_stats.csv` |
+   | Default decisions | Locust's `decisions` line; dashboard: decisions |
+   | Engine tasks running | **ECS → securepay-dev → Services → engine**: running count; or `aws ecs describe-services --cluster securepay-dev --services engine --query "services[0].runningCount"` |
+   | CPU of the tasks | Dashboard, or the service's CPU in ECS |
+   | Queues and database | Dashboard: queue age, RDS CPU and connections. Each decision also goes to the three queues and becomes database rows |
+   | Alarms that fired | **CloudWatch → Alarms**, and the `ops-alarms` inbox |
+
+6. Write the numbers in the table below and in the logbook, then destroy dev (or keep it for the EKS session of [Run the engine on Kubernetes](./kubernetes.mdx), which uses the same test).
+
+## Expected and how to read it
+
+- **Autoscaling** starts at 4 tasks and adds tasks at 60 % CPU, up to 24. The estimate is about 25 tx/s per task (0.5 vCPU). 50 tx/s should hold on the 4 tasks, and 300 tx/s should reach about 12 tasks. If p99 goes above 180 ms while tasks are still being added, the scaling is too slow for the ramp: lower the CPU target or raise the minimum. Record the time from the start of the 300 step to the last new task.
+- **HOLD is frequent, and that is expected.** 98 accounts carry the whole load, so each one sends several transfers a minute, and velocity (more than 5 in 10 minutes) holds them. A HOLD is a full decision with every rule run, so it is measured the same as an APPROVE. `REJECT` comes from the accounts whose owner is on the restricted list.
+- **Default decisions above 1 %** (alarm 2) mean the rules or the cache did not answer in `DECISION_TIMEOUT_MS`. That is a failure of the test even if the latency looks good.
+- After the test, the engine's history in Valkey keeps these accounts' activity for 24 hours (`out:{account}`), and the cases consumer has opened cases for the restricted accounts. Dev is disposable; do not run this against data that matters.
+
+**Cost.** 15 minutes with up to about 12 tasks is a few cents of Fargate. The Lambdas, the queues and the NAT data of 165,000 decisions add a few more. Dev itself is about USD 0.15 an hour.
+
+## Result
+
+To be completed after the run:
+
+| Step | Tasks | p50 / p99 in AWS (ms) | p50 / p99 at the client (ms) | Errors | Default decisions | Alarms |
+| :--- | ---: | :--- | :--- | ---: | ---: | :--- |
+| 50 tx/s | | | | | | |
+| 150 tx/s | | | | | | |
+| 300 tx/s | | | | | | |
+
+With the numbers:
+- check alarm 1 (p99 > 180 ms) and alarm 7 (fewer than 2 healthy tasks per zone), and adjust `latency_p99_seconds` or `min_healthy_tasks_per_zone` of `modules/monitoring` if they fired with the engine healthy;
+- confirm or revise [ADR-07](../architecture/decisions.mdx#adr-07) (the maximum of 24 tasks).
+
+**Tested locally** (November 4, 2026), against one engine process (`uvicorn`, no workers) with local Valkey: 25 tx/s for a minute, 0 failures, p99 150 ms. That only proves the script. It says nothing about Fargate.
