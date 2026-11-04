@@ -105,3 +105,30 @@ variable "check_schedule" {
   type        = string
   default     = "cron(30 11 * * ? *)"
 }
+
+# The analytics steps after the store (HU-66, modules/analytics).
+
+variable "analytics_export_arn" {
+  description = "ARN of the Lambda analytics-export (services/analytics/export.handler)."
+  type        = string
+}
+
+variable "analytics_job_name" {
+  description = "Name of the analytics Glue job (modules/analytics)."
+  type        = string
+}
+
+variable "athena_workgroup" {
+  description = "Athena workgroup where the views are created (securepay-<env>-powerbi)."
+  type        = string
+}
+
+variable "glue_database" {
+  description = "Glue catalog database of the analytics model."
+  type        = string
+}
+
+variable "view_queries" {
+  description = "CREATE OR REPLACE VIEW of each view (modules/analytics output view_queries)."
+  type        = list(string)
+}

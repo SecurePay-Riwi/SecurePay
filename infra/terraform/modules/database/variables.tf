@@ -48,5 +48,5 @@ variable "disposable" {
 variable "component_users" {
   description = "Database users with their own password in Parameter Store (security.mdx, Encryption and secrets)."
   type        = list(string)
-  default     = ["cases_consumer", "history_consumer", "rules_api", "cases_api", "rules_reader", "alerts", "reconciliation", "list_loader"]
+  default     = ["cases_consumer", "history_consumer", "rules_api", "cases_api", "rules_reader", "alerts", "reconciliation", "list_loader", "analytics_export"]
 }

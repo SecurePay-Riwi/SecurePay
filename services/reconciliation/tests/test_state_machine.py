@@ -43,7 +43,13 @@ def render(values: dict | None = None) -> dict:
 
     def value(found):
         name = found.group(1)
-        return str(values.get(name, 300 if name.endswith("_seconds") else name))
+        if name in values:
+            return str(values[name])
+        if name.endswith("_seconds"):
+            return "300"
+        if name.endswith("_json"):
+            return json.dumps(["CREATE OR REPLACE VIEW q1_x AS SELECT 1"])
+        return name
 
     return json.loads(PLACEHOLDER.sub(value, TEMPLATE.read_text(encoding="utf-8")))
 
@@ -58,8 +64,9 @@ def targets(state: dict) -> list[str]:
     return found
 
 
-def problems(machine: dict) -> list[str]:
-    """What is wrong with a definition; empty when it is valid."""
+def problems(machine: dict, nested: bool = False) -> list[str]:
+    """What is wrong with a definition (or the ItemProcessor of a Map,
+    `nested`, whose errors the Map catches); empty when it is valid."""
     states = machine.get("States", {})
     found = []
     if machine.get("StartAt") not in states:
@@ -79,8 +86,13 @@ def problems(machine: dict) -> list[str]:
                 found.append(f"{name}: unexpected Resource {state.get('Resource')}")
             if not state.get("Retry"):
                 found.append(f"{name}: a Task without Retry")
-            if not state.get("Catch"):
+            if not nested and not state.get("Catch"):
                 found.append(f"{name}: a Task without Catch")
+        if kind == "Map":
+            processor = state.get("ItemProcessor", {})
+            found += [f"{name} > {p}" for p in problems(processor, nested=True)]
+            if not state.get("Catch"):
+                found.append(f"{name}: a Map without Catch")
         for key, value in _paths(state.get("Parameters", {})):
             if not (value.startswith("$") or value.startswith("States.")):
                 found.append(f"{name}: {key} must be a path or an intrinsic")
@@ -93,7 +105,7 @@ def problems(machine: dict) -> list[str]:
         reached.add(name)
         pending.extend(targets(states[name]))
     found += [f"{name}: no state goes to it" for name in states if name not in reached]
-    return found + _unknown_fields(machine)
+    return found if nested else found + _unknown_fields(machine)
 
 
 def _paths(parameters, prefix=""):
@@ -150,22 +162,93 @@ def test_the_reconciliation_path_ends_by_telling_treasury():
         order.append(name)
         name = machine["States"][name].get("Next")
 
-    assert order[:3] == ["ReadStatements", "MatchWithSpark", "SaveDifferences"]
-    assert order[-1] == "NotifyTreasury"
+    assert order == [
+        "ReadStatements",
+        "MatchWithSpark",
+        "SaveDifferences",
+        "ExportAnalytics",
+        "BuildAnalytics",
+        "ListViews",
+        "RefreshViews",
+        "NotifyTreasury",
+    ]
     assert machine["States"]["NotifyTreasury"]["End"] is True
 
 
-def test_every_error_ends_in_reconciliation_failed():
-    machine = render()
-    for name, state in machine["States"].items():
-        for catch in state.get("Catch", []):
-            if catch["ErrorEquals"] == ["States.ALL"] and name in (
-                "ReadStatements",
-                "MatchWithSpark",
-                "SaveDifferences",
-                "NotifyTreasury",
-            ):
-                assert catch["Next"] == "ReconciliationFailed", name
+RECONCILIATION = (
+    "ReadStatements",
+    "MatchWithSpark",
+    "SaveDifferences",
+    "NotifyTreasury",
+)
+ANALYTICS = ("ExportAnalytics", "BuildAnalytics", "RefreshViews")
+
+
+def _catch_all(state: dict) -> dict:
+    return next(c for c in state["Catch"] if c["ErrorEquals"] == ["States.ALL"])
+
+
+def test_a_reconciliation_error_fails_the_run():
+    states = render()["States"]
+    for name in RECONCILIATION:
+        assert _catch_all(states[name])["Next"] == "ReconciliationFailed", name
+
+
+def test_an_analytics_error_warns_ops_and_still_tells_treasury():
+    """HU-66: the day is reconciled even if its dashboard is late."""
+    states = render({"ops_alarms_topic_arn": "arn:ops"})["States"]
+    for name in ANALYTICS:
+        assert _catch_all(states[name])["Next"] == "WarnAnalyticsFailed", name
+    warn = states["WarnAnalyticsFailed"]
+    assert warn["Parameters"]["TopicArn"] == "arn:ops"
+    assert warn["Next"] == _catch_all(warn)["Next"] == "NotifyTreasury"
+
+
+def _view_queries() -> list[str]:
+    """What modules/analytics passes as view_queries: each view file
+    without its comment lines and its final semicolon."""
+    queries = []
+    for path in sorted((ROOT / "services" / "analytics" / "sql").glob("q*_*.sql")):
+        lines = path.read_text(encoding="utf-8").split("\n")
+        sql = "\n".join(line for line in lines if not line.strip().startswith("--"))
+        queries.append(sql.strip().removesuffix(";"))
+    return queries
+
+
+def test_the_six_views_are_created_in_the_power_bi_workgroup():
+    queries = _view_queries()
+    machine = render(
+        {
+            "view_queries_json": json.dumps(queries),
+            "athena_workgroup": "securepay-dev-powerbi",
+            "glue_database": "securepay_dev_analytics",
+        }
+    )
+    states = machine["States"]
+    create = states["RefreshViews"]["ItemProcessor"]["States"]["CreateView"]
+
+    assert problems(machine) == []
+    assert states["ListViews"]["Result"] == queries
+    assert len(queries) == 6
+    for sql in queries:
+        assert sql.upper().startswith("CREATE OR REPLACE VIEW Q")
+        assert "--" not in sql and not sql.endswith(";")
+    assert create["Parameters"]["WorkGroup"] == "securepay-dev-powerbi"
+    assert create["Parameters"]["QueryExecutionContext"] == {
+        "Database": "securepay_dev_analytics"
+    }
+
+
+def test_the_analytics_job_builds_the_day_of_the_run():
+    arguments = render({"datalake_bucket": "lake"})["States"]["BuildAnalytics"][
+        "Parameters"
+    ]["Arguments"]
+
+    assert arguments == {
+        "--day.$": "$.ingest.day",
+        "--raw": "s3://lake",
+        "--output": "s3://lake",
+    }
 
 
 # --- and the checks catch what they should ------------------------------------
@@ -191,6 +274,12 @@ def _broken(change) -> list[str]:
         (
             lambda s: s["SaveDifferences"].update(Next="NotifyTreasury", End=True),
             "SaveDifferences: needs exactly one of Next and End",
+        ),
+        (
+            lambda s: s["RefreshViews"]["ItemProcessor"]["States"]["CreateView"].pop(
+                "End"
+            ),
+            "RefreshViews > CreateView: needs exactly one of Next and End",
         ),
         (
             lambda s: s.update(Orphan={"Type": "Succeed"}),

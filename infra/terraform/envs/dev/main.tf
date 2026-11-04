@@ -244,4 +244,26 @@ module "reconciliation" {
   repo_root      = "${path.root}/../../../.."
   schedule       = var.reconciliation_schedule
   check_schedule = var.reconciliation_check_schedule
+
+  # The analytics steps after the store (HU-66).
+  analytics_export_arn = lookup(module.lambdas.function_arns, "analytics-export", "")
+  analytics_job_name   = "${local.name_prefix}-analytics"
+  athena_workgroup     = module.analytics.athena_workgroup
+  glue_database        = module.analytics.glue_database
+  view_queries         = module.analytics.view_queries
+}
+
+# The analytics model (HU-66): the Glue catalog and the Athena workgroup
+# always (Power BI can be set up first), the Spark job with the Lambdas.
+# The nightly state machine runs export -> job -> views after the store.
+module "analytics" {
+  source = "../../modules/analytics"
+
+  name_prefix       = local.name_prefix
+  enabled           = var.lambda_image_tag != null
+  glue_job_role_arn = module.iam.role_arns["glue-jobs"]
+  datalake_bucket   = module.storage.bucket_names["datalake"]
+  artifacts_bucket  = module.storage.bucket_names["artifacts"]
+  code_path         = module.reconciliation.code_path
+  repo_root         = "${path.root}/../../../.."
 }
