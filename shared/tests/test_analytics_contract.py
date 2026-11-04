@@ -22,13 +22,14 @@ CONTRACT = {
     "fact_label": "transaction_id day source pattern is_fraud expected_rule",
     "fact_case": "case_id transaction_id day created_at due_at assigned_to assigned_at resolved_at resolved_by status outcome final_decision escalated escalated_at minutes_to_resolve within_sla rules_triggered risk_score amount_usd",
     "fact_difference": "difference_id run_day partner type status reference currency pagoseguro_amount partner_amount amount_difference age_days age_range detected_at resolved_at",
+    "fact_reconciliation_match": "run_day partner matched",
     "dim_date": "day year month day_of_month weekday is_weekend",
     "dim_rule": "rule rule_version type action opens_case score enabled rules_version",
     "dim_partner": "partner tx_types channels utc_offset",
     "dim_device": "device_id accounts_30d transactions_30d held_or_rejected_30d cases_30d shared risk_level as_of",
     "dim_merchant": "merchant_id transactions_30d held_or_rejected_30d fraud_labeled_30d as_of",
     "rule_metrics": "rule rule_version rules_version label_source hits true_positives false_positives precision false_positive_rate",
-    "pattern_coverage": "pattern label_source rules_version frauds detected missed detection_rate top_rule",
+    "pattern_coverage": "pattern label_source rules_version frauds detected missed detection_rate detected_amount_usd missed_amount_usd top_rule",
 }
 
 

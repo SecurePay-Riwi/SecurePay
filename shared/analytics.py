@@ -27,9 +27,8 @@ from enum import Enum
 RAW_DECISIONS = "raw/decisiones"  # fecha=<day>/ JSON lines (exists)
 RAW_LABELS = "raw/labels"  # fecha=<day>/labels.jsonl (C4)
 RAW_CASES = "raw/cases"  # fecha=<day>/cases.jsonl, case_events.jsonl (C6)
-RAW_RECONCILIATION = (
-    "raw/reconciliation"  # fecha=<day>/differences.jsonl, runs.jsonl (C6)
-)
+# fecha=<day>/differences.jsonl, runs.jsonl, matched.jsonl (C6)
+RAW_RECONCILIATION = "raw/reconciliation"
 RAW_METRICS = "raw/metrics"  # kaggle/<table>.jsonl: a replay's metrics (HU-44)
 CURATED_DECISIONS = (
     "curated/decisiones"  # fecha=<day>/ Parquet, one row per transaction_id
@@ -312,6 +311,22 @@ TABLES: dict[str, Table] = {
             ),
         ),
         Table(
+            name="fact_reconciliation_match",
+            grain="one row per reconciled day and partner",
+            partition="run_day",
+            source=f"{RAW_RECONCILIATION}/fecha=<day>/matched.jsonl",
+            owner="Yulianis (HU-52)",
+            columns=(
+                _c("run_day", "date", "Day reconciled (the partition)."),
+                _c("partner", "string", "Partner (shared/reconciliation.py Partner)."),
+                _c(
+                    "matched",
+                    "int",
+                    "References that matched by amount and date (RN-10).",
+                ),
+            ),
+        ),
+        Table(
             name="dim_date",
             grain="one day",
             partition=None,
@@ -428,6 +443,16 @@ TABLES: dict[str, Table] = {
                 _c("detected", "int", "HOLD, REJECT or opens_case."),
                 _c("missed", "int", "frauds - detected."),
                 _c("detection_rate", _RATIO, "detected / frauds; null when 0."),
+                _c(
+                    "detected_amount_usd",
+                    "decimal(18,2)",
+                    "USD amount of the detected frauds (RN-11).",
+                ),
+                _c(
+                    "missed_amount_usd",
+                    "decimal(18,2)",
+                    "USD amount of the frauds that got through.",
+                ),
                 _c("top_rule", "string", "Rule that detects most of the pattern."),
             ),
         ),

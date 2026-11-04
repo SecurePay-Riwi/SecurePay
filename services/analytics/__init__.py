@@ -32,7 +32,7 @@ LABELS_SOURCE = os.getenv(
     "LABELS_SOURCE", "../securepay-generator/generated/instance-0/labels.jsonl"
 )
 # Athena in AWS (HU-66): the workgroup and the Glue catalog database.
-ATHENA_WORKGROUP = os.getenv("ATHENA_WORKGROUP", "securepay-dev-analytics")
+ATHENA_WORKGROUP = os.getenv("ATHENA_WORKGROUP", "securepay-dev-powerbi")
 GLUE_DATABASE = os.getenv("GLUE_DATABASE", "securepay_dev_analytics")
 
 if ANALYTICS_EXPORT_DAYS <= 0:
