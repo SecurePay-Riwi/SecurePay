@@ -11,7 +11,7 @@ description: The analytics ETL to the dimensional model, the views for Power BI,
 Sprint 6 takes the engine's decisions, the cases and the reconciliation to a dimensional model in the lake (Parquet), answers the six business questions with one Athena view each, and measures the rules against the labeled history by running the engine again over it.
 
 :::info Status
-Step 0 put the contract in the code (`shared/analytics.py`), the decisions' builder, view `q1`, the replay and the labels. HU-44 to HU-46 added the rule metrics (`rule_metrics`, `pattern_coverage`) and the views `q2` and `q3`, and HU-24 the simulation of a rule version. The other builders, the export and the views `q4` to `q6` have their signatures and come with HU-47 and HU-51 to HU-53.
+Step 0 put the contract in the code (`shared/analytics.py`), the decisions' builder, view `q1`, the replay and the labels. HU-44 to HU-46 added the rule metrics (`rule_metrics`, `pattern_coverage`) and the views `q2` and `q3`, and HU-24 the simulation of a rule version. HU-51 and HU-52 added `fact_case`, `fact_difference`, `dim_partner`, the export and the views `q4` and `q5`. HU-47 added `dim_device` and HU-53 view `q6`. The Lambda and the state machine step of the export are pending (HU-66).
 :::
 
 ## The flow
@@ -61,6 +61,18 @@ Each builder is `build(spark, day, raw, output) -> {table: rows written}`, regis
 - `fact_decision` adds `label_source` from the labels; `fact_rule_hit` takes each rule's `decision` and `score` from the catalog entry `(rule, rule_version)` of `dim_rule` (for `default_timeout`, the transaction's decision). `dim_rule` has the code default catalog (version `"0"`); a published catalog version is not in it yet (the ETL does not read the rules API), so a rule of it that never fired has no `rule_metrics` row.
 - `fact_label` reads every `raw/labels/fecha=*/labels.jsonl` (a labels file covers a whole generator run), once per transaction, without security events or repeated lines, and keeps the transactions of the day.
 - `dim_merchant` counts the QR payments of the 30 days up to the day.
+- `fact_case` reads `raw/cases/fecha=<day>/`, the current state of the cases of the export window, and writes each case to the partition of the day of its `created_at`, so a case that changed state replaces its old row. `assigned_at` is the last `ASSIGNED` event, and `escalated` says whether it has an `ESCALATED` event.
+- `fact_difference` reads `raw/reconciliation/fecha=<day>/` and writes one partition per `run_day`, with `age_days` and `age_range` counted to the day built. `dim_partner` asks `partner_for()` about every type and channel, so it cannot disagree with the reconciliation.
+- `dim_device` counts the 30 days of `curated/decisiones` up to the day, the main account of each transaction, and the transactions with a case in `raw/cases/fecha=<day>/`.
+
+## The export (C6)
+
+`export.py` writes the current state of PostgreSQL to the raw layer, for the cases created and the differences and runs reconciled in the last `ANALYTICS_EXPORT_DAYS` days up to the day. It only reads the database, and it replaces the day's files, so it can run again.
+
+```bash
+# Needs DATABASE_URL. Writes under ANALYTICS_DATA_DIR; without --day, yesterday in Bogota.
+uv run python -m services.analytics.export --day 2026-10-05
+```
 
 ## Labels (C4)
 

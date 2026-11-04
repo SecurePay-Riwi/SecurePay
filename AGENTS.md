@@ -256,6 +256,12 @@ Pages: `doc-website/docs/components/analytics.mdx` and
   Spark reads and writes local folders, and `s3://` only on Glue; raw
   `s3://` (LocalStack) is read through `services/reconciliation/storage.py`.
   pyspark is imported inside the functions.
+- **Cases, differences, devices:** `raw/cases` and
+  `raw/reconciliation` hold the current state of the export window
+  (`python -m services.analytics.export`, read only), so `fact_case`
+  and `fact_difference` write one partition per day found in the file, not only `<day>`. `dim_device` writes
+  `fecha=<day>`. View `q6` reads the latest
+  `as_of` and decides a merchant's level itself.
 - **Curated:** the events of `raw/decisiones/fecha=<day-1..day+1>` whose
   `transaction_date` (UTC) is the day, the first of each `transaction_id`
   (earliest `processed_at`). `fact_rule_hit` takes decision and score from

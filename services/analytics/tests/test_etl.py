@@ -169,6 +169,10 @@ def test_every_table_is_written_with_its_schema(spark, lake):
                     "dim_date",
                     "dim_rule",
                     "dim_merchant",
+                    "dim_device",
+                    "dim_partner",
+                    "fact_difference",
+                    "fact_case",
                 )
             )
         ],
@@ -186,12 +190,95 @@ def test_running_the_day_again_gives_the_same_tables(spark, lake, tmp_path):
     assert len(_rows(spark, "fact_decision", again)) == DAY_TRANSACTIONS
 
 
-def test_the_builders_of_step_0_write_nothing_yet(spark, tmp_path):
-    from services.analytics import build_cases, build_devices, build_reconciliation
-
-    for builder in (build_cases, build_reconciliation, build_devices):
-        assert builder.build(spark, DAY, str(FIXTURES), str(tmp_path)) == {}
+def test_the_decisions_are_built_first():
     assert etl.BUILDERS[0].__module__ == "services.analytics.build_decisions"
+
+
+def test_dim_device_applies_the_risk_rules(spark, lake, expected):
+    rows = {r["device_id"]: r for r in _rows(spark, "dim_device", lake, [DAY])}
+    risky = {r["id"]: r for r in expected["q6"] if r["kind"] == "DEVICE"}
+
+    for device_id, r in risky.items():
+        assert rows[device_id]["accounts_30d"] == r["accounts_30d"]
+        assert rows[device_id]["transactions_30d"] == r["transactions_30d"]
+        assert rows[device_id]["held_or_rejected_30d"] == r["held_or_rejected_30d"]
+        assert rows[device_id]["cases_30d"] == r["cases_30d"]
+        assert rows[device_id]["risk_level"] == r["risk_level"]
+        assert rows[device_id]["shared"] is (r["accounts_30d"] > 3)
+    others = [r for d, r in rows.items() if d not in risky]
+    assert others and {r["risk_level"] for r in others} == {"LOW"}
+    assert {r["as_of"] for r in rows.values()} == {DAY}
+
+
+def test_fact_difference_counts_the_age_to_the_day_built(spark, lake):
+    rows = _rows(spark, "fact_difference", lake)
+    ages = {(r["run_day"], r["age_days"], r["age_range"]) for r in rows}
+
+    assert len(rows) == 6
+    assert ages == {
+        (date(2026, 10, 5), 0, "0-1"),
+        (date(2026, 10, 1), 4, "2-7"),
+        (date(2026, 9, 25), 10, "8+"),
+    }
+    assert sp.stored_days(lake, "fact_difference") == [
+        date(2026, 9, 25),
+        date(2026, 10, 1),
+        date(2026, 10, 5),
+    ]
+
+
+def test_dim_partner_has_every_partner(spark, lake):
+    rows = {r["partner"]: r for r in _rows(spark, "dim_partner", lake)}
+
+    assert set(rows) == {
+        "banco_andino",
+        "red_corresponsales",
+        "cajeros_express",
+        "qr_pagos",
+    }
+    assert rows["banco_andino"]["tx_types"] == ["RECARGA"]
+    assert rows["banco_andino"]["channels"] == ["APP", "WEB"]
+    assert rows["red_corresponsales"]["tx_types"] == ["RECARGA", "RETIRO"]
+    assert rows["red_corresponsales"]["utc_offset"] == -5
+
+
+def test_a_day_without_an_export_writes_no_difference(spark, tmp_path):
+    from services.analytics import build_reconciliation
+
+    result = build_reconciliation.build(
+        spark, date(2026, 1, 1), str(FIXTURES), str(tmp_path)
+    )
+
+    assert result["fact_difference"] == 0
+
+
+def test_fact_case_has_the_state_of_each_case(spark, lake):
+    rows = _rows(spark, "fact_case", lake, [DAY])
+    by_status = {}
+    for r in rows:
+        by_status.setdefault(r["status"], []).append(r)
+
+    assert len(rows) == 5
+    assert {r["day"] for r in rows} == {DAY}
+    assert len(by_status["RESOLVED"]) == 3
+    late = next(r for r in by_status["RESOLVED"] if r["escalated"])
+    assert late["minutes_to_resolve"] == 250
+    assert late["within_sla"] is False
+    assert late["assigned_to"] == "luis"
+    assert late["assigned_at"] is not None
+    assert by_status["ESCALATED"][0]["escalated"] is True
+    assert by_status["ESCALATED"][0]["minutes_to_resolve"] is None
+    assert by_status["ESCALATED"][0]["within_sla"] is None
+    assert by_status["OPEN"][0]["escalated"] is False
+    assert by_status["OPEN"][0]["assigned_at"] is None
+
+
+def test_a_day_without_an_export_writes_no_case(spark, tmp_path):
+    from services.analytics import build_cases
+
+    result = build_cases.build(spark, date(2026, 1, 1), str(FIXTURES), str(tmp_path))
+
+    assert result == {"fact_case": 0}
 
 
 def test_a_local_session_refuses_to_write_to_s3(spark):
