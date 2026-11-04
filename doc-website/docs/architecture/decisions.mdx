@@ -89,7 +89,7 @@ Each record follows the same format: context, decision, alternatives considered 
 
 **Context.** The assignment names RabbitMQ, Airflow with Celery, Spark on custom containers and EKS. The professor allows other services as long as the requirements are met and the choice is argued. The team is 3 to 4 people for 6 weeks.
 
-**Decision.** They are replaced by SQS and SNS, EventBridge Scheduler with Step Functions, EMR Serverless and ECS/Fargate. EKS stays out of the production architecture.
+**Decision.** They are replaced by SQS and SNS, EventBridge Scheduler with Step Functions, managed Spark (EMR Serverless at first, AWS Glue since [ADR-05](#adr-05) was amended) and ECS/Fargate. EKS stays out of the production architecture.
 
 **Alternatives.** Building the assignment's stack as is: about $320/month without replicating the broker or Airflow's metadata database, and the team maintaining four systems. The EKS control plane is $73/month fixed plus continuous operation.
 

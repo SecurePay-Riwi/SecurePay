@@ -86,7 +86,7 @@ cd infra\terraform\envs\dev
    terraform init
    ```
 
-3. See what will be created. It must say `Plan: 183 to add, 0 to change, 0 to destroy` with one budget e-mail and the two test e-mails (161 of the network, data, roles and engine, plus 22 of the messaging: 3 topics, 3 queues and their 3 DLQs, their policies and subscriptions, the 3 e-mail subscriptions, the 3 DLQ alarms and the repository policy that lets Lambda pull the image):
+3. See what will be created. It must say `Plan: 214 to add, 0 to change, 0 to destroy` with one budget e-mail and no supervisor, compliance or treasury e-mail; each address adds one subscription (`terraform plan` of November 4, 2026; what each module adds is in [Terraform](../architecture/terraform.mdx#what-it-creates)):
 
    ```powershell
    terraform plan
@@ -98,7 +98,7 @@ cd infra\terraform\envs\dev
    terraform apply
    ```
 
-   It ends with `Apply complete! Resources: 183 added`. AWS e-mails each address in `supervisor_emails`, `compliance_emails` and `budget_emails` a link "AWS Notification - Subscription Confirmation": **click Confirm subscription in each one.** `apply` does not wait for it, but until you click, SNS sends nothing to that address. Every new environment creates new subscriptions, so this happens after every `apply` from scratch. From this moment it costs money. The engine is not running yet: its service starts in [step 6](#6-deploy-the-engine-on-fargate), once its image is in ECR.
+   It ends with `Apply complete! Resources: 214 added`. AWS e-mails each address in `supervisor_emails`, `compliance_emails` and `budget_emails` a link "AWS Notification - Subscription Confirmation": **click Confirm subscription in each one.** `apply` does not wait for it, but until you click, SNS sends nothing to that address. Every new environment creates new subscriptions, so this happens after every `apply` from scratch. From this moment it costs money. The engine is not running yet: its service starts in [step 6](#6-deploy-the-engine-on-fargate), once its image is in ECR.
 
 **If `apply` fails,** Terraform stops and prints `Error:` with the resource and the AWS message. What it created before the error stays in the state: fix the cause and run `terraform apply` again (it only creates what is missing; a resource that failed halfway is replaced), or run `terraform destroy`.
 
@@ -553,7 +553,7 @@ Once the lock of the last uploaded version has passed, destroy everything and ty
 terraform destroy
 ```
 
-It ends with `Destroy complete! Resources: 227 destroyed` after steps 6 to 9 (219 measured on November 3, 2026 before the exchange-rates Lambda: the 185 of the first `apply`, the 5 of the engine and the 29 of the Lambdas and the reconciliation; the exchange-rates Lambda adds 5 to the first `apply` and 3 in step 9; each extra e-mail address is one more). The Glue job and its files go with it. The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
+It ends with `Destroy complete! Resources: 282 destroyed` after steps 6 to 9 with one budget e-mail (214 of the first `apply`, 20 of the engine, 44 of the Lambdas, the reconciliation and the analytics, 4 of the exchange-rates Lambda; each extra e-mail address is one more). Fewer if some steps were skipped: it destroys what the state has. The Glue job and its files go with it. The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
 
 **Check that nothing is left.** This must print nothing:
 

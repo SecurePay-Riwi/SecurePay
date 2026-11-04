@@ -42,7 +42,7 @@ description: Business and technical terms used across the project, in plain word
 | **Circuit breaker** | Code in the engine that stops calling the restricted list service for a while after several failures, instead of waiting on a dead service. |
 | **Fargate / ECS / ECR** | ECR stores Docker images, ECS keeps the containers running, Fargate runs them without servers. |
 | **Lambda** | Runs code only when something happens (a message, a request, a schedule). Pays per invocation and per millisecond. |
-| **EMR Serverless** | Runs Spark jobs without a cluster to manage; pays only while the job runs. |
+| **AWS Glue** | Runs Spark jobs without a cluster to manage; pays per second while the job runs. The project's two Spark jobs run on Glue 6.0 (EMR Serverless, the first choice, is not on AWS's free account plan). |
 | **Step Functions** | Orchestrates multi-step processes (order, waits, retries). Used only for reconciliation. |
 | **EventBridge Scheduler** | The alarm clock: wakes up scheduled processes. |
 | **Glue Data Catalog / Athena** | The catalog describes the tables stored in S3; Athena runs SQL over them. Power BI connects to Athena. |

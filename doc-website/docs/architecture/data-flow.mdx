@@ -72,9 +72,7 @@ Tables, keys and paths in detail: [Data model](../reference/data-model.mdx).
 | Daily reconciliation | 02:00, must finish before 07:00 | EventBridge → Step Functions (Lambda reads the four partner files, Spark reconciles, Lambda saves differences and notifies treasury) |
 | Exchange rates | Daily | EventBridge → Lambda → DynamoDB |
 | Alerts (escalate old cases, compliance summary) | Every 5 minutes | EventBridge → one Lambda |
-| Data Lake ETL | Daily | EventBridge → EMR Serverless |
-| Rule effectiveness | Weekly | EventBridge → EMR Serverless |
-| Shared device network | Weekly | EventBridge → EMR Serverless |
+| Data Lake ETL, rule effectiveness and shared device risk | Daily, after the reconciliation | The same Step Functions run: the export Lambda, then the AWS Glue job `-analytics` (every builder and the data quality checks), then the views in Athena (HU-66) |
 | Rule simulation | On demand | Rules API, in Python inside its Lambda (no Spark) |
 
 **The nightly reconciliation, step by step.**

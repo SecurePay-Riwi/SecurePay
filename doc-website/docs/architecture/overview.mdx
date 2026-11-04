@@ -14,7 +14,7 @@ Event-driven microservices, managed services first, in Ohio (`us-east-2`) across
 
 ## In one paragraph
 
-The wallet core sends each transaction over HTTPS to an **Application Load Balancer**, which spreads it across the **decision engine tasks on ECS Fargate** (FastAPI, 4 to 24 tasks). The engine reads and updates its state in **ElastiCache Serverless for Valkey** and answers in under 200 ms. It then publishes the decision to **SNS**, which copies it to **three SQS queues** (cases, history, analytics), each with its dead-letter queue and its **Lambda** consumer: cases writes to **RDS PostgreSQL** (Multi-AZ), history to **DynamoDB** and the cache, and analytics to the raw layer in **S3**. Batch jobs run on **EMR Serverless (PySpark)**, woken up by **EventBridge Scheduler**; the daily reconciliation is orchestrated by **Step Functions + Lambda**. The Data Lake has three layers (`raw`, `curated`, `analytics`), cataloged in **Glue Data Catalog**, queried with **Athena** and shown in **Power BI**. Analysts and the risk manager use **API Gateway + Lambda**; the evidence of closed cases goes to a separate S3 bucket with **Object Lock** and **Glacier Instant Retrieval**.
+The wallet core sends each transaction over HTTPS to an **Application Load Balancer**, which spreads it across the **decision engine tasks on ECS Fargate** (FastAPI, 4 to 24 tasks). The engine reads and updates its state in **ElastiCache Serverless for Valkey** and answers in under 200 ms. It then publishes the decision to **SNS**, which copies it to **three SQS queues** (cases, history, analytics), each with its dead-letter queue and its **Lambda** consumer: cases and history write to **RDS PostgreSQL** (Multi-AZ), and analytics to the raw layer in **S3**. Spark jobs run on **AWS Glue 6.0 (PySpark)**; the nightly reconciliation and the analytics after it are orchestrated by **Step Functions + Lambda**, started by **EventBridge Scheduler**. The Data Lake has three layers (`raw`, `curated`, `analytics`), cataloged in **Glue Data Catalog**, queried with **Athena** and shown in **Power BI**. Analysts and the risk manager use **API Gateway + Lambda**; the evidence of closed cases goes to a separate S3 bucket with **Object Lock** and **Glacier Instant Retrieval**.
 
 The step-by-step path of a transaction and everything that happens afterwards is in [Data flow](./data-flow.mdx).
 
@@ -57,8 +57,8 @@ Grouped by layer. Why each one was chosen, and what was discarded, is in [AWS in
 
 | Service | Role in PagoSeguro |
 | :--- | :--- |
-| **EMR Serverless** (PySpark) | The five Spark jobs: Data Lake ETL, reconciliation, rule effectiveness, shared device network and rule simulation. |
-| **Step Functions** | Orchestrates the nightly reconciliation: read statements, reconcile with Spark, save differences, with retries per step. |
+| **AWS Glue 6.0** (PySpark) | The two Spark jobs: the reconciliation match and the analytics ETL (Data Lake layers, rule effectiveness, shared device risk, data quality checks). Rule simulation runs in Python, without Spark ([ADR-05](./decisions.mdx#adr-05)). |
+| **Step Functions** | Orchestrates the nightly run: read statements, reconcile with Spark, save differences, then the analytics (export, Spark ETL, Athena views), with retries per step. |
 | **EventBridge Scheduler** | Starts every scheduled process: reconciliation at 02:00, daily loads and ETL, alerts every 5 minutes and the weekly jobs. |
 
 ### Analytics
