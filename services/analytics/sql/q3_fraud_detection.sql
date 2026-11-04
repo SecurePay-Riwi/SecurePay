@@ -1,6 +1,6 @@
 -- q3 (HU-46): fraud detected and missed, per pattern and label source,
--- for the latest catalog version measured of each source. Power BI page
--- HU-50.
+-- for the latest catalog version measured of each source, with how much
+-- money (USD) was detected and how much got through. Power BI page HU-50.
 CREATE OR REPLACE VIEW q3_fraud_detection AS
 SELECT
     p.pattern,
@@ -9,6 +9,8 @@ SELECT
     p.detected,
     p.missed,
     p.detection_rate,
+    p.detected_amount_usd,
+    p.missed_amount_usd,
     p.top_rule
 FROM pattern_coverage p
 JOIN (

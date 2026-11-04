@@ -295,6 +295,14 @@ Pages: `doc-website/docs/components/analytics.mdx` and
   column; `labels.kaggle_source()` uses the `kaggle_paysim_` /
   `kaggle_fraudtest_` pattern, else the seed's id
   (`uuid5(SEED_NAMESPACE, "hist:fraudtest:<row>")`).
+- **The six questions of the brief (contract v1.1).** q3 carries
+  `detected_amount_usd` and `missed_amount_usd` ("how much fraud"), q4 is
+  grouped by `analyst` (`resolved_by`, else `assigned_to`), and q5 adds one
+  `type = 'MATCHED'` row per run day and partner from
+  `fact_reconciliation_match` (`raw/reconciliation/fecha=<day>/matched.jsonl`,
+  written by `export.py` from the match output); its count column is
+  `records`. Athena workgroup: `securepay-<env>-powerbi`, results in
+  `athena-results/powerbi/` (the `powerbi` IAM user of `modules/iam`).
 - **Fixtures:** `services/analytics/tests/fixtures/` is one day
   (2026-10-05) built by `make_fixtures.py` with the engine's rules; do not
   edit them without Habith. Its `README.md` lists the day.

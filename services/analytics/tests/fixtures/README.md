@@ -21,7 +21,7 @@ PYTHONPATH=. uv run python services/analytics/tests/fixtures/make_fixtures.py
 | `raw/decisiones/fecha=2026-10-06/part-0001.jsonl` | 1 event of 2026-10-05 23:58 that arrived the next day (it belongs to the day) |
 | `raw/labels/fecha=2026-10-05/labels.jsonl` | The generator's format: 32 labeled transactions (19 fraud), 1 `kind: "security"` line and 1 repeated line with `"duplicate": true` |
 | `raw/cases/fecha=2026-10-05/cases.jsonl`, `case_events.jsonl` | 5 cases as exported at 2026-10-06 01:00 UTC, with their 16 events |
-| `raw/reconciliation/fecha=2026-10-05/differences.jsonl`, `runs.jsonl` | 6 differences of 3 runs (2026-09-25, 2026-10-01, 2026-10-05) and the 3 runs |
+| `raw/reconciliation/fecha=2026-10-05/differences.jsonl`, `runs.jsonl`, `matched.jsonl` | 6 differences of 3 runs (2026-09-25, 2026-10-01, 2026-10-05), the 3 runs, and what matched per run and partner (4, 3, 2 and 1: the run's 10) |
 | `reference.json` | 18 accounts (4 currencies), 2 merchants, 2 listed documents: `ReferenceData.from_fixtures()` |
 | `security_events.jsonl` | The device and password change of the account takeover |
 | `expected_views.json` | The rows of q1 to q6 |
