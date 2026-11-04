@@ -44,7 +44,7 @@ The general rule: **pay for capacity where volume is high and pay per use where 
 | Query and show | **Glue Data Catalog + Athena + Power BI** | SQL straight on S3, no data movement, no cluster running | Redshift (~$180/month minimum) |
 | Analyst and risk manager access | **API Gateway + Cognito** | Managed sign-in with groups per role | |
 | Secrets and administrative access | **Systems Manager**: Parameter Store and Session Manager | Free; passwords stored as `SecureString`, and shell access to the private network with no open ports or keys | Secrets Manager (its advantage is automatic rotation, which these secrets do not need) |
-| Logs, metrics, alarms and traces | **CloudWatch** and **X-Ray** | Managed, ~$14/month together | |
+| Logs, metrics and alarms | **CloudWatch** (X-Ray not built, [team decision](./team-decisions.mdx#x-ray-is-left-out)) | Managed, ~$14/month | X-Ray for traces |
 | Container images | **ECR** | One repository per component, image scanning on push | |
 | Infrastructure | **Terraform** and **GitHub Actions** | Create and destroy everything with one command; CI blocks the merge if anything fails | Creating resources by hand in the console |
 
@@ -183,7 +183,7 @@ Alarm 10 is an AWS Budgets alert; the others are CloudWatch alarms. The engine a
 
 **Logs and dashboard.** The engine writes one JSON line on the `securepay.decisions` logger for every HOLD, REJECT or default decision and for every decision slower than `SLOW_DECISION_MS` (150 ms); a fast APPROVE writes nothing, so the log stays small at 50 tx/s. CloudWatch metric filters turn those lines into the metrics `FallbackDecisions`, `HeldOrRejected` and `SlowDecisions` (namespace `SecurePay/securepay-<env>`), and two saved Logs Insights queries list them (`slow-decisions`, `default-decisions`). The dashboard `securepay-<env>` shows latency, requests and errors, decisions, healthy tasks, queues, the database, the Lambdas and the reconciliation; `terraform output dashboard_url` opens it. Logs are kept 14 days.
 
-**Not built: X-Ray.** Tracing a request across the engine, SNS and the consumers needs the X-Ray SDK in the engine and a sidecar on Fargate; with the decision log and the load balancer metrics the team can already tell a slow rule from a slow cache. It stays as a possible improvement.
+**Not built: X-Ray.** Tracing a request across the engine, SNS and the consumers needs the X-Ray SDK in the engine and a sidecar on Fargate; with the decision log and the load balancer metrics the team can already tell a slow rule from a slow cache. The team decided to leave it out on 2026-11-04 ([Team decisions](./team-decisions.mdx#x-ray-is-left-out)); it stays as a possible improvement.
 
 ## Estimated figures and how they were calculated {/* #estimates */}
 

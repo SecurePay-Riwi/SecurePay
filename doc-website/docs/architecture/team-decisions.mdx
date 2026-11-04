@@ -1,7 +1,7 @@
 ---
 sidebar_position: 8
 title: Team decisions
-description: Decisions taken by the team while building Sprint 1, and why.
+description: Decisions taken by the team while building, and why.
 ---
 
 # Team decisions
@@ -146,6 +146,16 @@ The assignment names a Kaggle credit card dataset as the card payment history. A
 | **Power BI uses a read-only IAM user** to query Athena. | Power BI Desktop runs outside AWS and needs its own credentials; read-only keeps the blast radius small. |
 | The statement reader, the restricted-list service and EMR Serverless (now the Glue jobs, ADR-05) **stay outside the VPC**. | None of them needs RDS or the cache, so they do not need the private network or the NAT. |
 | **LocalStack is the local environment**, not RabbitMQ or Airflow. | The same code runs locally and on AWS. |
+
+## X-Ray is left out
+
+**Decided by Habith on 2026-11-04** (Sprint 6, HU-59, MAG-341).
+
+| Decision | Why |
+| :--- | :--- |
+| **X-Ray is not built**; observability is CloudWatch: the alarms, the dashboard, the metric filters and the engine's decision log ([Alarms and thresholds](./infrastructure.mdx#alarms)). | The decision log (`elapsed_ms`, rules, `by_default`) and the load balancer's `TargetResponseTime` already tell a slow rule from a slow cache. Tracing the engine needs OpenTelemetry in the code and an ADOT sidecar in the Fargate task, which takes CPU from the 0.5 vCPU task and adds latency to the 200 ms the load test (HU-60) measures. |
+| The Lambdas and Step Functions are **not traced either**. | Without the engine the trace stops at the first hop; each Lambda and the nightly run already have their own errors, duration and state history in CloudWatch and Step Functions. |
+| The design keeps X-Ray as a **possible improvement**: the egress through the NAT and the IAM actions in [Security](./security.mdx) already allow it. | Adding it later is Terraform (`tracing_config`, `tracing_configuration`) plus the engine's instrumentation behind a variable that is off by default. |
 
 ## Partner statements
 

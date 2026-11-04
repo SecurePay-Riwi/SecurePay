@@ -74,7 +74,7 @@ Grouped by layer. Why each one was chosen, and what was discarded, is in [AWS in
 | Service | Role in PagoSeguro |
 | :--- | :--- |
 | **CloudWatch** | Logs, metrics and the [alarms](./infrastructure.mdx#alarms). |
-| **X-Ray** | Traces each transaction through the engine. |
+| **X-Ray** | Not built ([team decision](./team-decisions.mdx#x-ray-is-left-out)): the engine's decision log and CloudWatch cover it. |
 | **Systems Manager** | Parameter Store keeps the database passwords; Session Manager gives the team access to the private network. |
 | **ECR** | Registry of the container images. |
 | **Terraform and GitHub Actions** | Create the whole infrastructure and deploy each new version after the tests pass. |
