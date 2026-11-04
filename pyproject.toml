@@ -21,6 +21,9 @@ dev = [
     "pytest>=9.1.1",
     "ruff>=0.17.3",
 ]
+load = [
+    "locust>=2.32",
+]
 spark = [
     "pyspark>=4.1.1,<4.2",
 ]
