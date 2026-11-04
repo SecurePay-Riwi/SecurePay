@@ -153,20 +153,41 @@ locals {
     reconciliation = {
       service = "states.amazonaws.com"
       statements = [
-        { Sid = "InvokeSteps", Effect = "Allow", Action = "lambda:InvokeFunction", Resource = ["${local.arn.function}-statement-reader", "${local.arn.function}-difference-writer"] },
-        # The match runs on AWS Glue (EMR is not on AWS's free account plan).
-        { Sid = "RunSparkJob", Effect = "Allow", Action = ["glue:StartJobRun", "glue:GetJobRun", "glue:GetJobRuns", "glue:BatchStopJobRun"], Resource = "${local.arn.glue}:job/${local.p}-reconciliation-match" },
+        { Sid = "InvokeSteps", Effect = "Allow", Action = "lambda:InvokeFunction", Resource = ["${local.arn.function}-statement-reader", "${local.arn.function}-difference-writer", "${local.arn.function}-analytics-export"] },
+        # The match and the analytics ETL run on AWS Glue (EMR is not on AWS's free account plan).
+        { Sid = "RunSparkJobs", Effect = "Allow", Action = ["glue:StartJobRun", "glue:GetJobRun", "glue:GetJobRuns", "glue:BatchStopJobRun"], Resource = ["${local.arn.glue}:job/${local.p}-reconciliation-match", "${local.arn.glue}:job/${local.p}-analytics"] },
         # The last step e-mails treasury the day's result (audience = treasury).
         { Sid = "NotifyTreasury", Effect = "Allow", Action = "sns:Publish", Resource = "${local.arn.topic}-business-alerts" },
+        # A failed analytics step warns the team; the reconciliation still ends (HU-66).
+        { Sid = "WarnAnalyticsFailed", Effect = "Allow", Action = "sns:Publish", Resource = "${local.arn.topic}-ops-alarms" },
+        # RefreshViews: CREATE OR REPLACE VIEW q1..q6 in the Power BI workgroup.
+        { Sid = "CreateViews", Effect = "Allow", Action = ["athena:StartQueryExecution", "athena:GetQueryExecution", "athena:GetQueryResults", "athena:StopQueryExecution", "athena:GetWorkGroup"], Resource = "${local.arn.athena}-powerbi" },
+        { Sid = "ViewsInTheCatalog", Effect = "Allow", Action = ["glue:GetDatabase", "glue:GetTable", "glue:GetTables", "glue:CreateTable", "glue:UpdateTable"], Resource = ["${local.arn.glue}:catalog", "${local.arn.glue}:database/${local.glue_database}", "${local.arn.glue}:table/${local.glue_database}/*"] },
+        { Sid = "ViewQueryResults", Effect = "Allow", Action = ["s3:PutObject", "s3:GetObject", "s3:AbortMultipartUpload"], Resource = "${local.bucket.datalake}/athena-results/powerbi/*" },
+        { Sid = "ResultsBucket", Effect = "Allow", Action = ["s3:GetBucketLocation", "s3:ListBucket", "s3:ListBucketMultipartUploads"], Resource = local.bucket.datalake },
       ]
     }
 
-    # The reconciliation's Spark job on AWS Glue (HU-36).
+    # The PostgreSQL export of the cases and the reconciliation (HU-66, C6):
+    # reads its tables with its own user, counts what matched in the match
+    # output (matched.jsonl, contract v1.1) and writes the raw layer.
+    analytics-export = {
+      service = "lambda.amazonaws.com"
+      statements = [
+        { Sid = "DatabasePassword", Effect = "Allow", Action = "ssm:GetParameter", Resource = "${local.arn.parameter}/rds/analytics_export" },
+        { Sid = "FindMatchFiles", Effect = "Allow", Action = "s3:ListBucket", Resource = local.bucket.datalake, Condition = { StringLike = { "s3:prefix" = ["curated/conciliacion/*"] } } },
+        { Sid = "ReadMatchFiles", Effect = "Allow", Action = "s3:GetObject", Resource = "${local.bucket.datalake}/curated/conciliacion/*" },
+        { Sid = "WriteRawExport", Effect = "Allow", Action = "s3:PutObject", Resource = ["${local.bucket.datalake}/raw/cases/*", "${local.bucket.datalake}/raw/reconciliation/*"] },
+      ]
+    }
+
+    # The Spark jobs on AWS Glue: the reconciliation's match (HU-36) and the
+    # analytics ETL (HU-66), which writes curated/ and analytics/.
     glue-jobs = {
       service = "glue.amazonaws.com"
       statements = [
         { Sid = "ReadDataLake", Effect = "Allow", Action = ["s3:GetObject", "s3:ListBucket"], Resource = [local.bucket.datalake, "${local.bucket.datalake}/*"] },
-        { Sid = "WriteCurated", Effect = "Allow", Action = ["s3:PutObject", "s3:DeleteObject"], Resource = "${local.bucket.datalake}/curated/*" },
+        { Sid = "WriteCuratedAndAnalytics", Effect = "Allow", Action = ["s3:PutObject", "s3:DeleteObject"], Resource = ["${local.bucket.datalake}/curated/*", "${local.bucket.datalake}/analytics/*"] },
         { Sid = "ReadJobCode", Effect = "Allow", Action = "s3:GetObject", Resource = "${local.bucket.artifacts}/jobs/*" },
         { Sid = "JobLogs", Effect = "Allow", Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"], Resource = "${local.arn.log_group}/aws-glue/*" },
       ]
