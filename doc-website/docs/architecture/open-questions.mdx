@@ -27,15 +27,15 @@ ElastiCache Serverless for Valkey was chosen ([ADR-03](./decisions.mdx#adr-03)),
 | Restricted list cache (`{restricted}:docs`) | **~3.3 MB, measured** | 50 thousand documents in one set |
 | Active rules | A few KB | — |
 
-With the account history and the reference data of HU-67 the cache would be **~1 GB**. At $0.084 per GB-hour that is about $61 a month of memory, some $40 more than the ~$23 of the cost table (which assumes 300 MB); the cost table does not change until the load test confirms the history part. Ways to bring it down if needed: keep only the accounts with recent activity, or drop `user_id` from `acct:` (the engine does not read it today). To be confirmed with the load test. Also pending: the real latency of the serverless layer and the operations it consumes per transaction.
+With the account history and the reference data of HU-67 the cache would be **~1 GB**. At $0.084 per GB-hour that is about $61 a month of memory, some $40 more than the ~$23 of the cost table (which assumes 300 MB); the cost table does not change until the load test confirms the history part. Ways to bring it down if needed: keep only the accounts with recent activity, or drop `user_id` from `acct:` (the engine does not read it today). To be confirmed with the load test: [Load test the engine](../getting-started/load-test.mdx) records the cache's `BytesUsedForCache` and `ElastiCacheProcessingUnits` after the 300 tx/s step, which closes this question. Also pending: the real latency of the serverless layer and the operations it consumes per transaction.
 
 ## 🔵 Cases consumer: Lambda or Fargate
 
 All three queues are consumed by Lambda. If case processing turns out heavier, that consumer can move to Fargate (~$30/month per task). Decided by measuring, not estimating.
 
-## 🔵 Real duration of the five Spark jobs
+## 🔵 Real duration of the two Spark jobs
 
-Frequencies are defined; durations are not measured. That decides whether EMR Serverless stays at $7.50/month or drops to about $4.
+Both run every night on AWS Glue 6.0 with two G.1X workers ($0.308 per DPU-hour, billed per second, 1-minute minimum). The cost table assumes 10 minutes each, about $6.16 a month; the first real run of the nightly machine in dev gives the number (Glue → Job runs → Execution time).
 
 ## 🔵 EKS against Fargate for the decision engine
 

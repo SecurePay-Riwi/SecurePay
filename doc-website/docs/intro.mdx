@@ -68,7 +68,7 @@ It runs on AWS (Ohio, `us-east-2`, two Availability Zones), managed services fir
 | Language and APIs | Python 3.12 with **uv**, **FastAPI**, **httpx** |
 | Data | **PostgreSQL 16** (master data, rules, cases), **Valkey 8** (high-frequency state) |
 | Messaging | **Amazon SNS + SQS** with dead-letter queues |
-| Batch processing | **PySpark** on EMR Serverless (planned) |
+| Batch processing | **PySpark** on AWS Glue 6.0 (reconciliation match and analytics ETL) |
 | Local environment | **Docker Compose** and **LocalStack**, which emulates AWS on a laptop |
 | AWS | ALB, ECS Fargate, Lambda, ElastiCache Serverless, RDS, DynamoDB, S3, Step Functions, EventBridge Scheduler, Glue, Athena |
 | Infrastructure and CI/CD | **Terraform** (network, IAM, S3 and RDS so far) and **GitHub Actions** (Docker images validated on every pull request; tests in CI planned) |

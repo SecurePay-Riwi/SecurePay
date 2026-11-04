@@ -144,7 +144,7 @@ The assignment names a Kaggle credit card dataset as the card payment history. A
 | The **engine's security group has no access to RDS**. | The engine never reads PostgreSQL; the database is only read to load the cache. |
 | **Case evidence is written by the cases API** when a case closes, straight to the Object Lock bucket. | No queue in between: faster, and the evidence is protected from the first instant. |
 | **Power BI uses a read-only IAM user** to query Athena. | Power BI Desktop runs outside AWS and needs its own credentials; read-only keeps the blast radius small. |
-| The statement reader, the restricted-list service and EMR Serverless **stay outside the VPC**. | None of them needs RDS or the cache, so they do not need the private network or the NAT. |
+| The statement reader, the restricted-list service and EMR Serverless (now the Glue jobs, ADR-05) **stay outside the VPC**. | None of them needs RDS or the cache, so they do not need the private network or the NAT. |
 | **LocalStack is the local environment**, not RabbitMQ or Airflow. | The same code runs locally and on AWS. |
 
 ## Partner statements

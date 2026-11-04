@@ -1,0 +1,125 @@
+---
+sidebar_position: 1
+title: Runbook
+description: Bring dev up, run the demo, answer each alarm and take it down, with the exact commands (E-12, CT-05).
+---
+
+# Runbook
+
+What the team does in AWS, in order, with the commands. Each step links to the page that explains it. Commands are PowerShell, from `infra/terraform/envs/dev` unless the step says otherwise.
+
+| Who | What they need |
+| :--- | :--- |
+| Whoever runs it | The AWS profile of [Deploy to AWS](../getting-started/deploy-aws-terraform.mdx), steps 1 to 3, and the `terraform.tfvars` of that computer: the state lives there, so apply and destroy always run from the same one |
+| The team | The e-mails of `budget_emails`, `supervisor_emails`, `compliance_emails` and `treasury_emails`, each subscription confirmed |
+
+## 1. Bring dev up
+
+About 30 minutes, about USD 0.22 an hour from here on.
+
+1. Create the base (network, data, roles, queues, monitoring). Expected: `214 to add`, plus one per e-mail address.
+
+   ```powershell
+   terraform init
+   terraform apply
+   ```
+
+2. Push the images and set the tags ([step 6](../getting-started/deploy-aws-terraform.mdx#6-deploy-the-engine-on-fargate)). Set `engine_image_tag`, `admin_image_tag` and `lambda_image_tag` to the short commit, and `apis_image_tag` to the one of securepay-apis ([step 9](../getting-started/deploy-aws-terraform.mdx#9-load-the-daily-exchange-rates)). Then apply again. Expected: `68 to add`. `db-bootstrap` runs during this apply and creates the tables and the database users.
+
+   ```powershell
+   terraform apply
+   ```
+
+3. Seed RDS with the admin task. It runs about a minute and exports the restricted list too:
+
+   ```powershell
+   Invoke-Expression (terraform output -raw admin_run_task_command)
+   ```
+
+4. Load the exchange rates and the cache, in this order. Do not wait for 11:00 and 01:00 Bogotá:
+
+   ```powershell
+   aws lambda invoke --function-name securepay-dev-exchange-rates --payload "{}" --cli-binary-format raw-in-base64-out rates.json
+   aws lambda invoke --function-name securepay-dev-list-loader --payload "{}" --cli-binary-format raw-in-base64-out list-loader.json
+   Get-Content rates.json, list-loader.json
+   ```
+
+   `rates.json` has the day (`{"date": "..."}`) and `list-loader.json` the accounts, merchants and listed documents written. Without the rates the engine converts with the fixed rates of October 1 (alarm "fixed exchange rates"). Without the cache every decision is a default decision (alarm 2).
+
+5. Let GitHub deploy on merges. This is needed only the first time an environment is created, or after the role changed. Get the ARN:
+
+   ```powershell
+   aws iam get-role --role-name securepay-dev-deploy --query Role.Arn --output text
+   aws iam get-role --role-name securepay-dev-deploy-apis --query Role.Arn --output text
+   ```
+
+   Set them as the repository variable `AWS_DEPLOY_ROLE_ARN` of SecurePay and of securepay-apis (**Settings → Secrets and variables → Actions → Variables**). Then **Actions → Deploy → Run workflow** on `main` in SecurePay, so the engine and the Lambdas run what is in `main`. A later `terraform apply` puts the tags of `terraform.tfvars` back, so run Deploy again after it. See [Automatic deploys](../getting-started/deploy-aws-terraform.mdx#automatic-deploys-from-github-actions).
+
+6. Check it:
+
+   ```powershell
+   $ALB = terraform output -raw alb_dns_name
+   curl.exe -k "https://$ALB/health"
+   terraform output -raw dashboard_url
+   ```
+
+   `/health` answers `ok`. On the dashboard, every alarm must be "OK" or "Insufficient data".
+
+## 2. Run the demo
+
+| Part | Command or place | Expected |
+| :--- | :--- | :--- |
+| A decision | `curl.exe -k -X POST "https://$ALB/transactions" -H "Content-Type: application/json" --data-binary "@smoke-transaction.json"` | `APPROVE`, no `by_default` |
+| Restricted list, case and compliance | Same with `@restricted-transaction.json` ([step 7](../getting-started/deploy-aws-terraform.mdx#7-run-the-consumers-and-the-alerts-task-as-lambdas)) | `REJECT`; the case and its report in seconds; the compliance e-mail within 5 minutes |
+| Nightly reconciliation and analytics | Upload the fixture days and start `reconciliation-day.json` ([step 8](../getting-started/deploy-aws-terraform.mdx#8-run-the-nightly-reconciliation)) | `Succeeded` with every state green; the treasury e-mail; the views in the `securepay-dev-powerbi` workgroup |
+| Power BI | The `.pbix`, with the `powerbi` user's key (handed over privately, never in the repository) | The six pages refresh from Athena |
+| Load | [Load test the engine](../getting-started/load-test.mdx) | p99 in AWS ≤ 200 ms at 300 tx/s |
+| Provoked failure (CT-09) | [Step 10](../getting-started/deploy-aws-terraform.mdx#10-watch-the-platform-and-provoke-an-alarm-hu-59): `aws lambda invoke --function-name securepay-dev-analytics-export --payload '{\"day\": \"not-a-day\"}' --cli-binary-format raw-in-base64-out export-error.json` | Within 5 minutes, the alarm `securepay-dev-analytics-export-errors` e-mails `ops-alarms`; it goes back to OK on its own, nothing to revert |
+| Immutable evidence | [Step 11](../getting-started/deploy-aws-terraform.mdx#11-prove-that-evidence-cannot-be-deleted) | Deleting the locked version fails with `AccessDenied` |
+
+Test the provoked failure once before the demo. The e-mail takes 5 to 6 minutes, so start it before you present that part.
+
+## 3. When an alarm arrives
+
+Every alarm e-mails `securepay-dev-ops-alarms`, and its description says what to check. The numbers are the ones in [Alarms and thresholds](../architecture/infrastructure.mdx#alarms).
+
+| Alarm | First look | Then |
+| :--- | :--- | :--- |
+| 1. Engine latency (p99 > 180 ms) | Dashboard: engine tasks and their CPU; query `securepay-dev/slow-decisions` (which rule, `elapsed_ms`) | If CPU is high and tasks are at the maximum, raise `engine_max_tasks`. If the cache is slow, check its metrics. A single slow rule is a code fix |
+| 2. Default decisions > 1 % | Query `securepay-dev/default-decisions`; engine log for `CacheUnavailable` | Cache empty after a new apply: invoke `-list-loader`. Cache down: wait for AWS and watch it recover. Rules timing out: as alarm 1 |
+| 3. Messages in a DLQ | `aws logs tail /aws/lambda/<consumer> --since 1h`: the error of the failed messages | Fix the cause (a bad event, a missing grant), then redrive: **SQS → `<queue>-dlq` → Start DLQ redrive** |
+| 4. Oldest message > 5 minutes | The consumer's errors and throttles on the dashboard | If it fails, as alarm 3. If it is slow, raise `consumer_max_concurrency` (in `modules/lambdas`) while RDS connections allow it |
+| 5. Reconciliation failed or not `DONE` at 06:30 | **Step Functions → `securepay-dev-reconciliation`**: the red state and its cause | Fix it, then start the day by hand: `aws stepfunctions start-execution ... --input '{\"day\": \"YYYY-MM-DD\"}'`. The run repeats safely: differences are not duplicated |
+| "Analytics of `<day>` failed" | The e-mail has the cause. The day is reconciled and treasury was told | Fix it and run the Glue job `securepay-dev-analytics` again with `--day <day>`, or start the machine for that day |
+| 6. 5xx > 1 % | Engine log and the ECS service events | A bad deploy: the circuit breaker rolls back; if not, deploy the previous commit |
+| 7. Healthy tasks < 2 in a zone, or a task failing `/health` | **ECS → engine → Events** | Tasks that do not start: the image or its variables. One zone down: autoscaling adds tasks in the other one |
+| 8. Database CPU or connections | **RDS → Performance Insights** if enabled; the consumers' concurrency | Lower `consumer_max_concurrency` (in `modules/lambdas`); a slow query is a code fix |
+| 11. Unpublished events | Engine log lines `EVENTO_NO_PUBLICADO`, each with the whole event | Once SNS works, publish each event again to the decisions topic |
+| Lambda errors | `/aws/lambda/<function>` | A queue consumer retries by itself (alarm 3 if it keeps failing); a scheduled one runs again at its next time, or invoke it by hand |
+| Exchange rates stale or fixed rates | `/aws/lambda/securepay-dev-exchange-rates` | Invoke it by hand (section 1.4). If Frankfurter is down, the engine keeps using the last earlier rate |
+| Budget at 80 % or 100 % | **Billing → Cost Explorer**, by service | Destroy dev now (section 4) unless a demo is running |
+
+## 4. Take dev down
+
+1. Wait for the lock of the last evidence version (5 minutes in dev), then:
+
+   ```powershell
+   terraform destroy
+   ```
+
+   Expected: `Destroy complete!` with everything the state had (282 with every step). If only the evidence bucket fails, its lock has not passed yet: wait and run it again. If the EKS session of [Run the engine on Kubernetes](../getting-started/kubernetes.mdx) ran, delete that cluster first: it uses dev's subnets.
+
+2. Check that nothing is left charging. The first command must print nothing:
+
+   ```powershell
+   terraform state list
+   aws ec2 describe-nat-gateways --filter Name=state,Values=available --query "NatGateways[].NatGatewayId"
+   aws ec2 describe-addresses --query "Addresses[].PublicIp"
+   aws rds describe-db-instances --query "DBInstances[].DBInstanceIdentifier"
+   aws elasticache describe-serverless-caches --query "ServerlessCaches[].ServerlessCacheName"
+   aws eks list-clusters --query clusters
+   ```
+
+   Each must print `[]`. A NAT Gateway or database being deleted can still show for up to an hour, but it no longer costs anything. An Elastic IP left alone keeps charging: release it.
+
+3. The next day, check **Billing → Cost Explorer** grouped by service. Costs appear about 24 hours later.

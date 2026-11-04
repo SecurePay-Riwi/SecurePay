@@ -39,7 +39,7 @@ The general rule: **pay for capacity where volume is high and pay per use where 
 | Durable, infrequent data | **DynamoDB** | Device-account pairs with automatic 30-day expiry, and the daily rates | |
 | Data Lake and evidence | **S3** in three layers (raw, curated, analytics); the analytics queue sends batches of up to 1,000 decisions, one file each | Cheap storage; large batches avoid millions of small files (~$0.65 against ~$65/month) without Firehose, which is not on AWS's free plan | |
 | Immutable evidence for 10 years | **S3 Object Lock** in COMPLIANCE mode, Glacier Instant Retrieval class | Nobody can delete it, not even the account administrator; ~83% cheaper than S3 Standard | Locking in the application |
-| Batch jobs with Spark | **EMR Serverless** | Managed Spark, paid per minute of use | Spark on our own containers; Glue ETL (minimum charge per run) |
+| Batch jobs with Spark | **AWS Glue 6.0** | Managed Spark, paid per second of use (1-minute minimum); EMR Serverless was the first choice but is not on AWS's free account plan ([ADR-05](./decisions.mdx#adr-05)) | Spark on our own containers; EMR Serverless |
 | Orchestration and scheduling | **Step Functions** (reconciliation) and **EventBridge Scheduler** | Free at our volume, no servers | Airflow with Celery |
 | Query and show | **Glue Data Catalog + Athena + Power BI** | SQL straight on S3, no data movement, no cluster running | Redshift (~$180/month minimum) |
 | Analyst and risk manager access | **API Gateway + Cognito** | Managed sign-in with groups per role | |
@@ -86,7 +86,7 @@ This is the inventory of what Terraform must create, not of what exists today. D
 | Queue-to-Lambda mappings | | 3 | Batches of 10, failure reporting per message | Decided |
 | API Gateway (HTTP API) | `pagoseguro-prod-api` | 1 | Rules and cases routes with a Cognito JWT authorizer; list service routes (`GET /lista`, `GET /lista/{documento}`, `/health`) without an authorizer; request limit per route | Decided |
 | Cognito user pool | `pagoseguro-prod-usuarios` | 1 | Groups `analista` and `gerente`, one app client, MFA | Decided; implemented when AWS is set up |
-| EMR Serverless application | `pagoseguro-prod-spark` | 1 | Spark; stops on its own when idle; no VPC; runs the 5 jobs | Size per job expected (see [Estimated figures](#estimates)) |
+| Glue jobs | `securepay-<env>-reconciliation-match`, `securepay-<env>-analytics` | 2 | Spark 4.1.1, two G.1X workers each, no VPC, one code zip for both | Built (HU-36, HU-66) |
 | Step Functions state machine | `conciliacion` | 1 | Standard: reads statements (Lambda), reconciles (Spark, `.sync`), writes differences (Lambda); retries per step | Decided |
 
 **The 12 Lambdas.** In dev, Sprint 5 (HU-68) deploys the first four: the three queue consumers and `alertas`, with the names of [Terraform](./terraform.mdx#names-in-aws) (`securepay-dev-cases-consumer`, ...). The analytics consumer writes to `raw/decisiones/` directly, one file per batch of up to 1,000 decisions (no Firehose: it is not on AWS's free plan).
@@ -230,8 +230,8 @@ Some figures in the inventory cannot be known before building and measuring. Eac
 - ECS execution role and secrets: [Amazon ECS task execution IAM role](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html)
 - SQS batches for Lambda: [Configuring Amazon SQS event source mappings](https://docs.aws.amazon.com/lambda/latest/dg/services-sqs-configure.html)
 - EventBridge Scheduler: [Setting up Amazon EventBridge Scheduler](https://docs.aws.amazon.com/scheduler/latest/UserGuide/setting-up.html)
-- Step Functions with EMR Serverless: [IAM policies for EMR Serverless](https://docs.aws.amazon.com/step-functions/latest/dg/emr-serverless-iam.html)
-- EMR job role: [Job runtime roles for Amazon EMR Serverless](https://docs.aws.amazon.com/emr/latest/EMR-Serverless-UserGuide/security-iam-runtime-role.html)
+- Step Functions with Glue: [Run AWS Glue jobs with Step Functions](https://docs.aws.amazon.com/step-functions/latest/dg/connect-glue.html)
+- Glue job role: [Setting up IAM permissions for AWS Glue](https://docs.aws.amazon.com/glue/latest/dg/set-up-iam.html)
 - Object Lock: [Locking objects with Object Lock](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html)
 - Publishing to ECR: [IAM permissions for pushing an image](https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-push-iam.html)
 - GitHub Actions without keys: [Configuring OpenID Connect in Amazon Web Services](https://docs.github.com/actions/security-for-github-actions/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services)

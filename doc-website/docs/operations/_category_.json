@@ -1,0 +1,8 @@
+{
+  "label": "Operations",
+  "position": 2.5,
+  "link": {
+    "type": "generated-index",
+    "description": "Run the platform in AWS: bring it up, run the demo, answer each alarm, take it down."
+  }
+}
