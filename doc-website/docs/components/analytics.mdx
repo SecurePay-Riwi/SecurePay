@@ -65,6 +65,24 @@ Each builder is `build(spark, day, raw, output) -> {table: rows written}`, regis
 - `fact_difference` reads `raw/reconciliation/fecha=<day>/` and writes one partition per `run_day`, with `age_days` and `age_range` counted to the day built. `dim_partner` asks `partner_for()` about every type and channel, so it cannot disagree with the reconciliation.
 - `dim_device` counts the 30 days of `curated/decisiones` up to the day, the main account of each transaction, and the transactions with a case in `raw/cases/fecha=<day>/`.
 
+## Data quality (HU-66)
+
+`quality.py` checks every table of `shared/analytics.TABLES` for nulls, formats and ranges (MAG-294). The checks come from the column names and types, so a new table or column is checked without touching the file:
+
+| Check | Columns |
+| :--- | :--- |
+| Not null | The partition column (`day`, `run_day`, `as_of`), `transaction_id`, `case_id`, `difference_id`, `amount`, `amount_usd`, `rule`, `partner`, and the key (first column) of every `dim_*` table |
+| Not empty | Every `*_id` column that has a value |
+| Format | `currency` in COP/USD/EUR/JPY; `decision` and `final_decision` in APPROVE/HOLD/REJECT |
+| Range | `amount` and `amount_usd` greater than 0; `risk_score` and `score` from 0 to 100; every ratio (`decimal(9,4)`) from 0 to 1 |
+
+`check_table(spark, table, root, day)` runs a table's checks in one pass (the partition of `day` of a daily table, the whole table otherwise) and returns `{check: bad rows}`; `check_day()` runs every table and raises `QualityError` with every failure. CI runs them on the fixture day (`test_quality.py`); in AWS the analytics Glue job runs them after the builders, so a failure fails the job and the nightly state machine warns `ops-alarms`.
+
+```bash
+# After the ETL of the day (exit code 1 and the failures if a check fails):
+uv run python -m services.analytics.quality --day 2026-10-05 --output generated/analytics
+```
+
 ## The export (C6)
 
 `export.py` writes the current state of PostgreSQL to the raw layer, for the cases created and the differences and runs reconciled in the last `ANALYTICS_EXPORT_DAYS` days up to the day. It only reads the database, and it replaces the day's files, so it can run again.
@@ -182,6 +200,7 @@ The rules API runs the same simulation in `POST /rules/simulations`, one day at 
 | :--- | :--- | :--- |
 | `shared/tests/test_analytics_contract.py` | The paths, the tables and columns of C2, types, this model page | Nothing |
 | `services/analytics/tests/test_etl.py` | curated (window, repeated lines), every table and its schema, running a day again | Java |
+| `services/analytics/tests/test_quality.py` | The fixture day passes every check; a null id, an empty id, an unknown currency or decision, a zero amount, a score or ratio out of range each fail their check; optional columns may be null | Java |
 | `services/analytics/tests/test_views.py` | Each view and its control query against the answer key (one case per view) | Java |
 | `services/analytics/tests/test_metrics.py` | The metrics' definitions by hand, both versions against the answer key, the command's replay, a Kaggle replay through the ETL to `q2` and `q3` | Java (the last test) |
 | `services/analytics/tests/test_simulate.py` | The day's history, the candidate, the D2 demo, a catalog against itself | PostgreSQL (one test) |

@@ -135,8 +135,11 @@ jobs:
         run: docker build --provenance=false -t securepay-engine:ci .
 
   # The pipeline of the nightly reconciliation (Step Functions + Glue) is
-  # Terraform: this job is the CI's "DAG validation" (CT-04). No AWS
-  # credentials: init without backend only downloads the providers.
+  # Terraform: this job and the tests job are the CI's "DAG validation"
+  # (CT-04, HU-66). The tests job renders the state machine template and
+  # checks its states (services/reconciliation/tests/test_state_machine.py),
+  # runs the Spark jobs on the fixture days and the data quality checks.
+  # No AWS credentials: init without backend only downloads the providers.
   terraform:
     runs-on: ubuntu-latest
     timeout-minutes: 10
