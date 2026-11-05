@@ -1,0 +1,121 @@
+---
+sidebar_position: 2
+title: Performance report
+description: Measured optimizations of the Spark match and of the decision engine, before and after, with timings, shuffle and execution plans (E-13).
+---
+
+# Performance report
+
+This page is deliverable E-13 and the evidence for topic 15 of the brief ("Spark ETL + performance"). It covers two measured optimizations, each with the same input before and after:
+
+- **The nightly match** (Spark, HU-37) is 2.6 times faster and reads half the data, with identical output.
+- **The decision engine** went from a p50 of 121 ms with 27 % default decisions to 11 ms with 0 %, on the case that broke the first load test.
+
+## The Spark match
+
+### How it was measured
+
+`services/reconciliation/benchmark.py` scales the fixture day (2026-10-05, every status and defect) to 20,000 copies. Each copy gives every transaction a new id, in the decisions and in the partner records alike, so the expected answer is 20,000 times the fixture's.
+
+The scaled day has:
+
+- 340,000 decision events in three days of `raw/decisiones` (397 MB of JSON);
+- 220,000 partner records;
+- 260,000 output rows, 160,000 of them MATCHED.
+
+Each variant runs three times in a new local session (`local[*]`, 4 cores, 15 GB). The script warms the session up first, and the median counts. Stages, tasks, shuffle and input come from Spark's REST API (`/api/v1/applications/<app>/stages`), and the plan from `explain("formatted")`.
+
+```bash
+uv run python -m services.reconciliation.benchmark --copies 20000 --out benchmark/
+```
+
+It writes `benchmark/report.json` and one `plan.txt` per variant. "Before" is commit `dcf4fb4` (`main` on November 5, 2026); "after" is the change of this page.
+
+### Result
+
+| Run | Median time | Three runs (s) | Stages | Tasks | Input read | Shuffle written / read |
+| :--- | ---: | :--- | ---: | ---: | ---: | ---: |
+| Before (code of `dcf4fb4`, Spark defaults) | **20.16 s** | 17.13, 20.16, 22.50 | 10 | 422 | 829.8 MB | 60.5 / 107.6 MB |
+| One full outer join, Spark defaults | 12.48 s | 11.21, 12.48, 17.85 | 8 | 418 | 433.0 MB | 41.5 / 68.9 MB |
+| **After** (one join + `SESSION_SETTINGS`) | **7.66 s** | 7.46, 7.66, 8.46 | 8 | 36 | 432.0 MB | 40.5 / 67.1 MB |
+
+The output of the three runs is the same file: the sorted rows have the same SHA-256. `test_match.py` and `test_reconciliation_e2e.py` also check it against the fixture's answer key, in Spark and in the plain-Python reference.
+
+### What changed and why
+
+**1. One full outer join instead of a left join plus a left anti join** (`match.spark_match()`). The match needs every partner record (with or without our side) and every approved transaction of ours that no record has.
+
+- **Before**, two joins built those, and their results were put together with a `Union`. The plan scanned the JSON four times: the decisions twice and the records twice. It also had two sort-merge joins and two window sorts.
+- **Now**, one `full` join on `reference` gives both. A row without a record is ONLY_PAGOSEGURO when its partner day is the run's. Each side is read, deduplicated and shuffled once:
+  - the input read drops from 830 MB to 432 MB, which is the data on disk plus the window's look-back;
+  - the shuffle read drops by 37 %;
+  - the time drops by 38 %.
+
+**2. Shuffle partitions sized to the data** (`match.SESSION_SETTINGS`: `spark.sql.shuffle.partitions = 8`). Spark's default is 200. Adaptive execution would normally merge small partitions, but `reconcile()` caches the result (it writes it and then counts it), and Spark does not change the partitions of a cached plan. So every shuffle ran 200 tasks of a few kilobytes each. With 8, the job runs 36 tasks instead of 418 and takes another 39 % less time.
+
+A partner day is a few hundred MB at most (1.8 million transactions a day, of which only the partner channels count), so 8 partitions are still several MB each, on Glue too (2 G.1X workers).
+
+**Considered and left out.** A broadcast join does not apply: in a full outer join Spark cannot broadcast either side. Caching the input would hold 400 MB of JSON in memory for one pass over it.
+
+### The plans
+
+Before: four scans, two joins and a union.
+
+```text
+AdaptiveSparkPlan
++- Sort
+   +- Exchange
+      +- Union
+         :- Project
+         :  +- SortMergeJoin LeftOuter
+         :     :- Window (records: first line per reference)
+         :     :  +- Exchange
+         :     :     +- Scan text (records.jsonl)
+         :     +- SortAggregate (decisions: dedup by transaction id)
+         :        +- Exchange
+         :           +- Scan text (decisiones, 3 days)
+         +- Project
+            +- SortMergeJoin LeftAnti
+               :- SortAggregate
+               :  +- Exchange
+               :     +- Scan text (decisiones, 3 days, again)
+               +- Window
+                  +- Exchange
+                     +- Scan text (records.jsonl, again)
+```
+
+After: two scans and one join.
+
+```text
+AdaptiveSparkPlan
++- Sort
+   +- Exchange
+      +- Project
+         +- Filter (a record, or our side of the run's partner day)
+            +- SortMergeJoin FullOuter
+               :- Window (records: first line per reference)
+               :  +- Exchange
+               :     +- Scan text (records.jsonl)
+               +- SortAggregate (decisions: dedup by transaction id)
+                  +- Exchange
+                     +- Scan text (decisiones, 3 days)
+```
+
+(The `Project` and `Sort` nodes inside each branch are left out; the full plans are the `plan.txt` files of the benchmark.)
+
+**In AWS.** The Glue job `securepay-dev-reconciliation-match` runs the same code with the same settings. Its time per day is on the Glue console (**Glue → ETL jobs → Runs**) and on the dashboard. The fixture day took a few seconds of Spark inside a run of 7 min 33 s, almost all of it Glue starting its workers (test of November 5, 2026). At the fixture's size the start-up dominates; the gain above shows on full days.
+
+**The analytics ETL** (`services/analytics/spark.py`) has used `spark.sql.shuffle.partitions = 4` since sprint 6's step 0, and its builders cache only what they read twice (`curated_decision`, the labels). It had the same 200-partition cost from the start and needed no change.
+
+## The decision engine
+
+The first load test in AWS (November 5, 2026) failed at 150 tx/s: 73 % default decisions and a p99 of 3 to 6 s ([Load test](../getting-started/load-test.mdx#result)). The cause was reproduced locally: one core, 150 tx/s, about 600 outgoing movements per account. Each change was measured on that same case:
+
+| Step | p50 per decision | Default decisions |
+| :--- | ---: | ---: |
+| Before (pure-Python Valkey reply parser, whole day of `out:{account}`) | 121 ms (the 120 ms timeout) | 27 % |
+| Valkey's C reply parser (`valkey[libvalkey]`) | 65 ms | 6 % |
+| Plus the newest 100 movements only (`HISTORY_OUT_LIMIT`) | **11 ms** | **0 %** |
+| Plus 9,820 accounts instead of 98 | 15 ms | 0 % |
+
+The profile before the change put about 70 % of the time in parsing Valkey's replies in Python. Each decision read and parsed the account's whole day, about 600 members. The limit is a team decision ([Team decisions](../architecture/team-decisions.mdx)). The repeated load test in AWS, run from the EC2 machine inside the VPC, fills in the table of [Load test](../getting-started/load-test.mdx#result).
