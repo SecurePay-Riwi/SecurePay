@@ -22,6 +22,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from mangum import Mangum
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
@@ -102,3 +103,10 @@ app.include_router(routes_reports.router)
 app.include_router(routes_accounts.router)
 app.include_router(routes_compliance.router)
 app.include_router(routes_reconciliation.router)
+
+
+# AWS Lambda: API Gateway (HTTP API) invokes this function and Mangum turns
+# its event into an ASGI request for the same app. No lifespan: in AWS the
+# tables are db-bootstrap's (CREATE_SCHEMA=false), so there is nothing to
+# start.
+handler = Mangum(app, lifespan="off")

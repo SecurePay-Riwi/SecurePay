@@ -346,6 +346,65 @@ def test_analytics_export_writes_the_raw_layer(admin, as_user, monkeypatch, tmp_
     assert (tmp_path / "raw" / "cases" / "fecha=2026-10-05" / "cases.jsonl").exists()
 
 
+def test_rules_api_changes_the_catalog_with_its_user(admin, as_user, monkeypatch):
+    from services.rules_api import store as rules_store
+
+    monkeypatch.setattr(rules_store, "SessionLocal", as_user("rules_api"))
+
+    def disable(session, rules):
+        rule = rules["velocity"].model_copy(update={"enabled": False})
+        rules_store.save(session, rule, "ana")
+        return {"operation": "disable", "code": "velocity"}, [rule]
+
+    snapshot, _ = rules_store.write("ana", disable)
+
+    # db-bootstrap stored version 1 with the code defaults.
+    assert snapshot.version == 2
+    assert rules_store.latest().version == 2
+    assert not next(r for r in snapshot.rules if r.code == "velocity").enabled
+
+
+def test_cases_api_assigns_and_resolves_with_its_user(admin, as_user, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from services.cases_api import deps
+    from services.cases_api.main import app
+
+    now = datetime.now(UTC)
+    _alerts_work(admin, now)
+    with admin() as session:
+        case_id = session.scalar(
+            select(Case.id).where(Case.status == CaseStatus.OPEN.value)
+        )
+    monkeypatch.setattr(evidence, "archive", lambda session, case: None)
+    monkeypatch.setattr(deps, "SessionLocal", as_user("cases_api"))
+    ana = {"X-User": "ana"}
+
+    with TestClient(app) as client:
+        assigned = client.put(
+            f"/cases/{case_id}/assignee", json={"assignee": "ana"}, headers=ana
+        )
+        resolved = client.post(
+            f"/cases/{case_id}/resolution",
+            json={"outcome": "LEGITIMATE", "note": "Confirmed by phone."},
+            headers=ana,
+        )
+        reads = [
+            client.get("/cases"),
+            client.get(f"/cases/{case_id}"),
+            client.get("/compliance/restricted-list-reports"),
+            client.get("/reconciliation/differences"),
+            client.get("/reconciliation/differences/aging"),
+            client.get(f"/reports/suspicious?from={now.date()}&to={now.date()}"),
+        ]
+
+    assert (assigned.status_code, resolved.status_code) == (200, 200), (
+        assigned.text,
+        resolved.text,
+    )
+    assert [r.status_code for r in reads] == [200] * len(reads)
+
+
 # --- and nothing more ---------------------------------------------------------
 
 
@@ -377,6 +436,14 @@ def test_no_user_can_drop_change_or_create_tables(admin, as_user, user):
         ("analytics_export", "SELECT count(*) FROM usuarios"),
         ("analytics_export", "SELECT count(*) FROM account_transactions"),
         ("analytics_export", "UPDATE cases SET status = 'RESOLVED'"),
+        ("rules_api", "DELETE FROM rules"),
+        ("rules_api", "SELECT count(*) FROM cases"),
+        ("rules_api", "INSERT INTO listas_restrictivas (documento) VALUES ('1')"),
+        ("cases_api", "DELETE FROM cases"),
+        ("cases_api", "INSERT INTO cases (transaction_id) VALUES (gen_random_uuid())"),
+        ("cases_api", "SELECT count(*) FROM usuarios"),
+        ("cases_api", "UPDATE compliance_reports SET notified_at = now()"),
+        ("cases_api", "DELETE FROM account_transactions"),
         ("analytics_export", "DELETE FROM reconciliation_differences"),
         (
             "analytics_export",
@@ -389,7 +456,7 @@ def test_each_user_is_denied_what_it_does_not_need(admin, as_user, user, stateme
 
 
 def test_the_append_only_events_stay_append_only(admin, as_user):
-    for user in ("cases_consumer", "alerts"):
+    for user in ("cases_consumer", "alerts", "cases_api"):
         assert _denied(as_user(user), "UPDATE case_events SET actor = 'x'")
 
 
@@ -429,8 +496,11 @@ def test_create_schema_does_nothing_in_aws(monkeypatch):
     from shared import reconciliation
 
     monkeypatch.setattr(config, "CREATE_SCHEMA", False)
+    from services.rules_api import store as rules_store
+
     case_tables.create_schema(None)
     reconciliation.create_schema(None)
+    rules_store.create_schema(None)
 
 
 def test_every_table_in_the_grants_exists(admin):

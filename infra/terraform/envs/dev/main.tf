@@ -228,6 +228,24 @@ module "lambdas" {
   exchange_rates_table = module.storage.exchange_rates_table
 }
 
+# The rules and cases APIs for people (infrastructure.mdx): API Gateway
+# (HTTP API) with a Cognito sign-in in front of their Lambdas. Created with
+# the Lambdas (lambda_image_tag).
+module "api" {
+  source = "../../modules/api"
+
+  name_prefix = local.name_prefix
+  enabled     = var.lambda_image_tag != null
+  rules_function = var.lambda_image_tag == null ? null : {
+    name = module.lambdas.function_names["rules-api"]
+    arn  = module.lambdas.function_arns["rules-api"]
+  }
+  cases_function = var.lambda_image_tag == null ? null : {
+    name = module.lambdas.function_names["cases-api"]
+    arn  = module.lambdas.function_arns["cases-api"]
+  }
+}
+
 # The nightly reconciliation (HU-36): Step Functions at 02:00 Bogota, the
 # match on AWS Glue (EMR is not on AWS's free account plan), the 06:30
 # check and the failure alarm. Created with the Lambdas (lambda_image_tag).

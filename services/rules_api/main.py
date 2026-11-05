@@ -15,6 +15,7 @@ from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from mangum import Mangum
 from pydantic import ValidationError
 from sqlalchemy.exc import OperationalError
 
@@ -358,3 +359,21 @@ def enable_rule(code: str, x_user: str = Header("anonymous")):
 @app.post("/rules/{code}/disable", response_model=RuleChange, **docs.DISABLE)
 def disable_rule(code: str, x_user: str = Header("anonymous")):
     return _toggle(code, False, x_user)
+
+
+# --- AWS Lambda ------------------------------------------------------------
+# API Gateway (HTTP API) invokes this function; Mangum turns its event into
+# an ASGI request for the same app. Lambda has no lifespan, so the cold
+# start does what lifespan() does locally, once per execution environment.
+
+_lambda_app = Mangum(app, lifespan="off")
+_lambda_ready = False
+
+
+def handler(event, context):
+    global _lambda_ready
+    if not _lambda_ready:
+        store.create_schema()  # nothing in AWS: db-bootstrap made the tables
+        _publish(store.latest(), force=True)
+        _lambda_ready = True
+    return _lambda_app(event, context)

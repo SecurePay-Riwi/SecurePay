@@ -501,7 +501,7 @@ This is how they are written in Terraform. `<cuenta>` and the identifiers are pa
 ```
 
 
-**Analysts and the manager.** They are application users, not AWS identities: they sign in to a Cognito user pool with two groups (`analista` and `gerente`) that the API checks in the token. Decided on October 14; it is implemented when AWS is set up, and locally it is simulated with a fixed header. Their actions on cases are recorded in the `caso_evento` table (see [Data model](../reference/data-model.mdx)).
+**Analysts and the manager.** They are application users, not AWS identities: they sign in to a Cognito user pool with two groups (`analista` and `gerente`) in the token. Decided on October 14 and built in dev (`modules/api`): API Gateway checks the Cognito token on every rules and cases route and sets `X-User` to the token's e-mail, so the author of a change or the analyst of a case is the person who signed in, never a header the client sends. The APIs do not check the groups yet: every user of the pool can call every route. Locally there is no Cognito and `X-User` is a plain header. Their actions on cases are recorded in the `caso_evento` table (see [Data model](../reference/data-model.mdx)).
 
 ## Encryption and secrets {/* #encryption */}
 

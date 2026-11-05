@@ -120,3 +120,18 @@ output "alarm_names" {
   description = "The alarms of modules/monitoring (the DLQ, reconciliation and alerts alarms live with their resources)."
   value       = module.monitoring.alarm_names
 }
+
+output "api_url" {
+  description = "Base URL of the rules and cases APIs, with a Cognito token (null until lambda_image_tag is set)."
+  value       = module.api.url
+}
+
+output "user_pool_id" {
+  description = "Cognito user pool where the analysts are created (null until lambda_image_tag is set)."
+  value       = module.api.user_pool_id
+}
+
+output "user_pool_client_id" {
+  description = "Cognito app client to sign in with (null until lambda_image_tag is set)."
+  value       = module.api.client_id
+}

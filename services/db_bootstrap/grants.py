@@ -1,8 +1,8 @@
 """What each component's database user may do, read from its queries.
 
-Only the components deployed in AWS have a user here. The cases API, the
-rules API and the rules cache refresh get theirs in the pull request that
-deploys them (their passwords already exist in Parameter Store).
+Only the components deployed in AWS have a user here. The rules cache
+refresh is not built: the rules API publishes the catalog itself, so
+rules_reader has a password in Parameter Store and no user.
 
 INSERT ... RETURNING and an ORM insert (which returns the new id) also
 need SELECT; SELECT ... FOR UPDATE needs UPDATE; DELETE with a WHERE needs
@@ -51,6 +51,28 @@ TABLES: dict[str, dict[str, tuple[str, ...]]] = {
         "reconciliation_differences": READ,
         "reconciliation_runs": READ,
     },
+    # services/rules_api/store.py: the catalog (rules is the current state,
+    # rule_catalog_versions is append-only by trigger). The simulation
+    # (simulation.py) reads the reference data like the cache loader.
+    "rules_api": {
+        "rules": ("SELECT", "INSERT", "UPDATE"),
+        "rule_catalog_versions": ("SELECT", "INSERT"),
+        "cuentas": READ,
+        "usuarios": READ,
+        "comercios": READ,
+        "listas_restrictivas": READ,
+    },
+    # services/cases_api: assign and resolve lock the case (FOR UPDATE) and
+    # write its event; evidence.archive() sets evidence_key; treasury
+    # resolves differences; the rest is read only.
+    "cases_api": {
+        "cases": ("SELECT", "UPDATE"),
+        "case_events": ("SELECT", "INSERT"),
+        "compliance_reports": READ,
+        "account_transactions": READ,
+        "reconciliation_differences": ("SELECT", "UPDATE"),
+        "reconciliation_runs": READ,
+    },
     # services/cache_loader/loader.py: copies the reference data to the cache.
     "list_loader": {
         "cuentas": READ,
@@ -64,6 +86,7 @@ TABLES: dict[str, dict[str, tuple[str, ...]]] = {
 SEQUENCES: dict[str, list[tuple[str, str]]] = {
     "cases_consumer": [("case_events", "id")],
     "alerts": [("case_events", "id")],
+    "cases_api": [("case_events", "id")],
 }
 
 USERS = sorted(TABLES)
