@@ -195,3 +195,35 @@ def test_the_demo_day_starts_the_state_machine_without_waiting(monkeypatch, caps
     args = start[0][0]
     assert args[args.index("--input") + 1] == '{"day": "2026-10-05"}'
     assert "arn:execution" in capsys.readouterr().out
+
+
+def test_the_build_folder_may_come_from_the_environment(monkeypatch):
+    commands = Commands(
+        {
+            "aws ecr describe-images": {"returncode": 254},
+            "aws ecr get-login-password": {"stdout": "secret\n"},
+        }
+    )
+    monkeypatch.setattr(subprocess, "run", commands)
+    folder = "C:\\Users\\Jorge\\Proyecto PagoSeguro\\securepay-apis"
+    monkeypatch.setenv("DEV_UP_CONTEXT", folder)
+
+    dev_up.main(
+        ["push", "--repository", REPO, "--tag", "abc1234", "--region", "us-east-2"]
+    )
+
+    assert commands.ran("docker build")[0][0][-1] == folder
+
+
+def test_terraform_runs_the_script_without_quotes_or_paths():
+    """On Windows Terraform escapes the quotes of a local-exec command, so a
+    quoted path with spaces broke (first real apply, 2026-11-05)."""
+    up = (SCRIPT.parents[1] / "envs" / "dev" / "up.tf").read_text()
+    commands = [
+        line.split("=", 1)[1] for line in up.splitlines()
+        if line.strip().startswith(("command", "dev_up "))
+    ]  # fmt: skip
+    assert commands
+    for command in commands:
+        assert '\\"' not in command, command
+    assert up.count("working_dir = local.scripts_dir") == 3
