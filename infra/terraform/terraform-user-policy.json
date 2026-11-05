@@ -35,6 +35,12 @@
       ]
     },
     {
+      "Sid": "ListMfaDevicesOnDestroy",
+      "Effect": "Allow",
+      "Action": "iam:ListVirtualMFADevices",
+      "Resource": "*"
+    },
+    {
       "Sid": "AttachOnlyTheseManagedPolicies",
       "Effect": "Allow",
       "Action": [
