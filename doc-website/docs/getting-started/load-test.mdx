@@ -31,6 +31,15 @@ Locust's numbers say what a client sees, and they are the ones to look at for er
 
 1. Dev must be up with the engine on Fargate, the database seeded and the cache loaded: [Deploy to AWS](./deploy-aws-terraform.mdx), steps 4 to 7. In particular, run `-list-loader` once. Otherwise every decision is a default decision and the test measures the wrong thing. Confirm the `ops-alarms` subscription to see which alarms fire.
 
+   Dev runs 2 to 4 engine tasks by default (`engine_min_tasks`, `engine_max_tasks`). The test sizes the service as the design does, 4 to 24, so set it in `terraform.tfvars` and apply before the test:
+
+   ```hcl
+   engine_min_tasks = 4
+   engine_max_tasks = 24
+   ```
+
+   Remove the two lines afterwards, or destroy dev: 4 tasks idle cost twice what 2 do.
+
 2. Install Locust (it is in the `load` dependency group, outside the default ones):
 
    ```powershell

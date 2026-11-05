@@ -485,6 +485,8 @@ If any of the three fails, the day is still reconciled: the execution sends `Ana
 
 3. Start the day again (step 5 above) and wait for `Succeeded`. In the graph, `ExportAnalytics`, `BuildAnalytics` and `RefreshViews` are green; `WarnAnalyticsFailed` is not run. The job's output log ends with `"quality": {"day": "2026-10-05", "tables": 13, "failures": {}}`.
 
+   The treasury e-mail of this run says `Differences of the day: 19 (new: 13)`, not 6: the analytics fixtures add 13 approved transactions of the same day with no partner record, so the match finds 13 more `MISSING_IN_PARTNER`. That is why the reconciliation runs first with its own fixtures only (step 4 of the section above): its 6 differences are the answer key. Locally, the two decision sets together give the same 19.
+
 4. Query a view (or open **Athena → Query editor**, workgroup `securepay-dev-powerbi`, database `securepay_dev_analytics`):
 
    ```powershell
@@ -498,6 +500,45 @@ If any of the three fails, the day is still reconciled: the execution sends `Ana
    Every decision of the day comes back with its count. Locally, `uv run python -m services.analytics --day 2026-10-05 --raw <a folder with both fixture sets>` gives the same numbers.
 
 **Cost.** One more Glue run of a few minutes (about two cents), and Athena charges USD 5 per TB scanned with a 10 MB minimum per query: the fixture day costs less than a cent. `CREATE VIEW` scans nothing.
+
+### Power BI over Athena
+
+The `.pbix` reads the views through the Athena ODBC driver 2.x, with the key of the `securepay-dev-powerbi` IAM user. Create that key by hand (**IAM → Users → securepay-dev-powerbi → Security credentials → Create access key**) and hand it over privately: never in the repository, a chat or a screenshot. This is how it was connected on Windows on November 5, 2026:
+
+1. Install the [Amazon Athena ODBC driver 2.x](https://docs.aws.amazon.com/athena/latest/ug/odbc-v2-driver.html) (64-bit).
+
+2. Keep the key in an AWS CLI profile, so it lives in `~\.aws\credentials` and not in the DSN (Windows does not save `UID`/`PWD` in a user DSN). Give it the key, region `us-east-2` and format `json`:
+
+   ```powershell
+   aws configure --profile securepay-powerbi
+   ```
+
+   ```powershell
+   aws sts get-caller-identity --profile securepay-powerbi
+   ```
+
+   It must answer `user/securepay-dev-powerbi`.
+
+3. Create the DSN with PowerShell. The ODBC Data Source Administrator window may close when you save, so `Add-OdbcDsn` is more reliable. In `infra/terraform/envs/dev`:
+
+   ```powershell
+   $bucket = (terraform output -json bucket_names | ConvertFrom-Json).datalake
+   Add-OdbcDsn -Name "securepay-athena" -DriverName "Amazon Athena ODBC (x64)" -DsnType "User" -Platform "64-bit" -SetPropertyValue @(
+     "AwsRegion=us-east-2",
+     "Catalog=AwsDataCatalog",
+     "Schema=securepay_dev_analytics",
+     "Workgroup=securepay-dev-powerbi",
+     "OutputLocation=s3://$bucket/athena-results/powerbi/",
+     "AuthenticationType=Default Credentials",
+     "AwsProfile=securepay-powerbi"
+   )
+   ```
+
+   If it says the driver is not found, `Get-OdbcDriver | Select-Object Name` gives its exact name.
+
+4. In Power BI: **Get data → ODBC**, DSN `securepay-athena`, and **Use Data Source Configuration** for the credentials (if an old attempt is saved, clear it first in **File → Options → Data source settings**). The navigator shows 19 objects: the 13 tables and the views q1..q6.
+
+5. After the session, delete the key in IAM and the `securepay-powerbi` section of `~\.aws\credentials`. The user has `force_destroy`, so `terraform destroy` removes it even if the key is left.
 
 ## 9. Load the daily exchange rates
 
@@ -570,7 +611,7 @@ The first `apply` already created the monitoring of `modules/monitoring`: the da
 2. See the decision log. Send `restricted-transaction.json` again (step 7.3), then **CloudWatch → Logs Insights → Queries → `securepay-dev/default-decisions`** or `slow-decisions` → Run. The engine writes one JSON line per HOLD, REJECT or default decision and per decision slower than `SLOW_DECISION_MS` (150 ms); a fast APPROVE writes nothing:
 
    ```json
-   {"event": "decision", "transaction_id": "7a2d3b5f-...", "decision": "REJECT", "rules_triggered": ["restricted_list"], "risk_score": 100, "by_default": false, "rules_version": "0", "elapsed_ms": 12.4}
+   {"event": "decision", "transaction_id": "7a2d3b5f-...", "decision": "REJECT", "rules_triggered": ["restricted_list"], "risk_score": 0, "by_default": false, "rules_version": "0", "elapsed_ms": 12.4}
    ```
 
 3. **Provoke a failure (CT-09).** Invoke the analytics export with a day that is not a date. It raises, Lambda counts one error, and within 5 minutes the alarm `securepay-dev-analytics-export-errors` goes to "In alarm" and e-mails `-ops-alarms`:
