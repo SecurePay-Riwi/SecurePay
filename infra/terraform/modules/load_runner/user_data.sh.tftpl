@@ -1,0 +1,40 @@
+#!/bin/bash
+# The load test client (modules/load_runner): clones SecurePay, installs
+# Locust with uv and leaves the command securepay-load. Its log:
+# /var/log/cloud-init-output.log; /opt/securepay/.ready once it is done.
+set -euxo pipefail
+export HOME=/root
+
+dnf install -y git
+curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh
+
+git clone --depth 1 --branch "${git_ref}" "${repository}" /opt/securepay
+cd /opt/securepay
+/usr/local/bin/uv sync --only-group load
+
+cat > /usr/local/bin/securepay-load <<'SCRIPT'
+#!/bin/bash
+# securepay-load [seconds per step] [tx/s of each step ...]
+# Default: 300 seconds each of 50, 150 and 300 tx/s (load-test.mdx).
+set -uo pipefail
+export HOME=/root
+seconds="$${1:-300}"
+shift || true
+steps="$${*:-50 150 300}"
+run="$(date -u +%Y%m%dT%H%M%SZ)"
+out="/opt/securepay/load-results/$run"
+mkdir -p "$out"
+ulimit -n 65536
+cd /opt/securepay
+LOAD_STEPS="$${steps// /,}" LOAD_STEP_SECONDS="$seconds" \
+  /usr/local/bin/uv run --only-group load locust -f infra/load/locustfile.py \
+  --headless --processes -1 --host "https://${host}" --csv "$out/run" \
+  > "$out/locust.log" 2>&1
+status=$?
+aws s3 cp --recursive --only-show-errors "$out" "s3://${bucket}/load-tests/$run/"
+grep -E "decisions|Aggregated|CPU" "$out/locust.log" | tail -n 30
+echo "Locust exit code $status; files: s3://${bucket}/load-tests/$run/"
+exit $status
+SCRIPT
+chmod +x /usr/local/bin/securepay-load
+touch /opt/securepay/.ready

@@ -318,3 +318,18 @@ module "monitoring" {
   db_instance_identifier       = "${local.name_prefix}-db"
   slow_decision_ms             = local.slow_decision_ms
 }
+
+# The load test's client inside the VPC (HU-60): one EC2 machine with
+# Locust, run through Systems Manager. Only for the load test session
+# (load_runner = true), and only with the engine deployed.
+module "load_runner" {
+  source = "../../modules/load_runner"
+
+  name_prefix    = local.name_prefix
+  enabled        = var.load_runner && local.image_tags.engine != null
+  vpc_id         = module.network.vpc_id
+  subnet_id      = module.network.app_subnet_ids[0]
+  target_host    = module.ecs.alb_dns_name
+  results_bucket = module.storage.bucket_names["artifacts"]
+  git_ref        = var.load_runner_git_ref
+}
