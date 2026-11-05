@@ -122,6 +122,7 @@ module "cache" {
   data_subnet_ids         = module.network.data_subnet_ids
   security_group_id       = module.security_groups.ids["cache"]
   snapshot_retention_days = 0
+  max_ecpu_per_second     = var.cache_max_ecpu_per_second
 }
 
 module "ecs" {
