@@ -8,6 +8,7 @@ The other default decisions of D2 (data missing in the cache, cache
 down, restricted list not loaded) are in test_reference_data.py.
 """
 
+import json
 import threading
 import time
 from datetime import UTC, datetime
@@ -37,7 +38,7 @@ def _payload(amount: str, currency_code: str = "USD") -> TransactionRequest:
 
 
 def _rules_answer(decision: str, delay_s: float = 0):
-    def fake_decide(payload, snapshot):
+    def fake_decide(payload, snapshot, stages=None):
         time.sleep(delay_s)
         return {
             "transaction_id": str(payload.id),
@@ -58,7 +59,7 @@ def slow_rules(monkeypatch):
     late = threading.Event()
     slow = _rules_answer("REJECT", delay_s=ds.TIMEOUT_MS / 1000 * 3)
 
-    def decide(payload, snapshot):
+    def decide(payload, snapshot, stages=None):
         result = slow(payload, snapshot)
         late.set()
         return result
@@ -173,7 +174,7 @@ def test_a_decision_still_waiting_for_a_worker_is_cancelled(monkeypatch):
     release = threading.Event()
     ran = []
 
-    def decide(payload, snapshot):
+    def decide(payload, snapshot, stages=None):
         ran.append(payload.id)
         release.wait(5)
         return _rules_answer("APPROVE")(payload, snapshot)
@@ -190,3 +191,42 @@ def test_a_decision_still_waiting_for_a_worker_is_cancelled(monkeypatch):
             future.result()
     ds._workers.submit(lambda: None).result()
     assert queued.id not in ran
+
+
+def test_a_late_decision_says_where_its_time_went(slow_rules, caplog):
+    # HU-60: one late_decision line per timeout, once the late evaluation
+    # ends, so a load test tells a worker queue from a slow cache.
+    caplog.set_level("INFO", logger="securepay.decisions")
+
+    result, _ = ds.process_transaction(_payload("30.00"))
+    assert slow_rules.wait(2)
+    time.sleep(0.05)
+
+    assert result["by_default"] is True
+    lines = [
+        json.loads(r.getMessage())
+        for r in caplog.records
+        if r.name == "securepay.decisions" and "late_decision" in r.getMessage()
+    ]
+    assert len(lines) == 1
+    assert lines[0]["total_ms"] >= ds.TIMEOUT_MS * 3
+
+
+def test_the_late_line_has_every_stage_it_reached():
+    stages = {"submitted": 1.0, "started": 1.002, "lookup": 1.0035, "history": 1.2}
+
+    line = ds.late_decision_line("t1", stages, 1.25)
+
+    assert line == {
+        "event": "late_decision",
+        "transaction_id": "t1",
+        "queue_ms": 2.0,
+        "lookup_ms": 1.5,
+        "history_ms": 196.5,
+        "total_ms": 250.0,
+    }
+    assert ds.late_decision_line("t2", {"submitted": 1.0}, 1.2) == {
+        "event": "late_decision",
+        "transaction_id": "t2",
+        "total_ms": 200.0,
+    }

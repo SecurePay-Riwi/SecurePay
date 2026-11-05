@@ -184,7 +184,15 @@ def _write_history(payload, main_account, documents, check_list):
     return outgoing, written[-1], on_list
 
 
-def _decide(payload: TransactionRequest, snapshot: CatalogSnapshot) -> dict:
+def _mark(stages: dict | None, name: str) -> None:
+    """Time of one stage of _decide(), for late_decision_line()."""
+    if stages is not None:
+        stages[name] = time.perf_counter()
+
+
+def _decide(
+    payload: TransactionRequest, snapshot: CatalogSnapshot, stages: dict | None = None
+) -> dict:
     """Apply the catalog's rules and return the decision, without
     storing it.
 
@@ -193,6 +201,7 @@ def _decide(payload: TransactionRequest, snapshot: CatalogSnapshot) -> dict:
     gets RN-01's default decision (D2); CacheUnavailable goes up to
     _decide_in_time(), which answers the same way.
     """
+    _mark(stages, "started")
     # Both accounts and the merchant in one round trip to the cache.
     accounts, merchant_found = reference_data.lookup(
         (payload.source_account_id, payload.destination_account_id),
@@ -220,11 +229,13 @@ def _decide(payload: TransactionRequest, snapshot: CatalogSnapshot) -> dict:
     # The loader already keeps only the digits.
     documents = {normalize_document(account.document) for account in accounts.values()}
 
+    _mark(stages, "lookup")
     restricted = snapshot.get(RESTRICTED_RULE)
     check_list = bool(restricted and restricted.enabled)
     outgoing, device_accounts, on_list = _write_history(
         payload, main_account, documents, check_list
     )
+    _mark(stages, "history")
 
     rate = currency.rate_for(
         payload.currency, currency.utc_day(payload.transaction_date)
@@ -247,6 +258,7 @@ def _decide(payload: TransactionRequest, snapshot: CatalogSnapshot) -> dict:
 
     triggered = evaluate_rules(ctx, snapshot)
     decision, reason = choose_decision(triggered)
+    _mark(stages, "rules")
 
     return {
         "transaction_id": str(payload.id),
@@ -345,12 +357,19 @@ def _decide_in_time(payload: TransactionRequest) -> dict:
     every new one would time out too (load test of 2026-11-05).
     """
     snapshot = catalog.current()
-    future = _workers.submit(_decide, payload, snapshot)
+    stages = {"submitted": time.perf_counter()}
+    future = _workers.submit(_decide, payload, snapshot, stages)
 
     try:
         return future.result(timeout=TIMEOUT_MS / 1000)
     except DecisionTimeout:
-        future.cancel()
+        if not future.cancel():
+            # Started: say where its time went once it ends (HU-60).
+            future.add_done_callback(
+                lambda _f: _log_late(str(payload.id), stages, time.perf_counter())
+            )
+        else:
+            _log_late(str(payload.id), stages, time.perf_counter())
         log.warning("Transaction %s: rules timed out, default decision", payload.id)
         return default_decision(payload, snapshot)
     except CacheUnavailable as exc:
@@ -413,6 +432,42 @@ def decision_line(result: dict, elapsed_ms: float) -> dict | None:
         "rules_version": result.get("rules_version"),
         "elapsed_ms": round(elapsed_ms, 1),
     }
+
+
+# Stages of _decide() in order, and the field of each in the late line;
+# each one's time runs from the previous.
+STAGES = {
+    "started": "queue_ms",
+    "lookup": "lookup_ms",
+    "history": "history_ms",
+    "rules": "rules_ms",
+}
+
+
+def late_decision_line(transaction_id: str, stages: dict, ended: float) -> dict:
+    """Where the time of a decision that timed out went, in ms: waiting
+    for a worker (queue_ms), the accounts' round trip (lookup_ms), the
+    history's (history_ms) and the rules (rules_ms). A stage it never
+    reached is missing; total_ms is until it ended or was cancelled.
+    One line per default decision by timeout, so the load test can tell
+    a queue from a slow cache (HU-60, load test of 2026-11-05)."""
+    line = {"event": "late_decision", "transaction_id": transaction_id}
+    previous = stages["submitted"]
+    for stage, field in STAGES.items():
+        if stage not in stages:
+            break
+        line[field] = round((stages[stage] - previous) * 1000, 1)
+        previous = stages[stage]
+    line["total_ms"] = round((ended - stages["submitted"]) * 1000, 1)
+    return line
+
+
+def _log_late(transaction_id: str, stages: dict, ended: float) -> None:
+    try:
+        line = late_decision_line(transaction_id, dict(stages), ended)
+        decisions_log.info(json.dumps(line))
+    except Exception:  # a log line never breaks a decision
+        log.exception("Transaction %s: late decision line failed", transaction_id)
 
 
 def log_decision(result: dict, elapsed_ms: float) -> None:
