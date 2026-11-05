@@ -25,9 +25,9 @@ variable "max_data_storage_gb" {
 }
 
 variable "max_ecpu_per_second" {
-  description = "Most ElastiCache Processing Units per second."
+  description = "Most ElastiCache Processing Units per second. Only a limit: AWS bills the ECPUs used. A decision costs about 33 ECPUs (load test of 2026-11-05), so 300 tx/s need about 10,000."
   type        = number
-  default     = 5000
+  default     = 20000
 }
 
 variable "snapshot_retention_days" {

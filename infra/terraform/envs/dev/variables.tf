@@ -178,3 +178,9 @@ variable "load_runner_git_ref" {
   type        = string
   default     = "main"
 }
+
+variable "cache_max_ecpu_per_second" {
+  description = "Most ECPUs per second of the cache. The load test at 300 tx/s needs about 10,000; with 5,000 the cache throttled at 150 tx/s and every decision timed out. AWS bills only what is used."
+  type        = number
+  default     = 20000
+}
