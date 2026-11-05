@@ -165,3 +165,28 @@ def test_default_decision_uses_the_rate_of_the_day():
     assert result["decision"] == "HOLD"
     assert result["amount_usd"] == "100.00"
     assert (result["usd_rate"], result["rate_date"]) == ("1000", day.isoformat())
+
+
+def test_a_decision_still_waiting_for_a_worker_is_cancelled(monkeypatch):
+    # Every worker busy: the next decision waits in the queue, times out,
+    # and must not run later on a worker that new decisions need.
+    release = threading.Event()
+    ran = []
+
+    def decide(payload, snapshot):
+        ran.append(payload.id)
+        release.wait(5)
+        return _rules_answer("APPROVE")(payload, snapshot)
+
+    monkeypatch.setattr(ds, "_decide", decide)
+    busy = [ds._workers.submit(release.wait, 5) for _ in range(ds.WORKERS)]
+    try:
+        queued = _payload("30.00")
+        result = ds._decide_in_time(queued)
+        assert result["by_default"] is True
+    finally:
+        release.set()
+        for future in busy:
+            future.result()
+    ds._workers.submit(lambda: None).result()
+    assert queued.id not in ran
