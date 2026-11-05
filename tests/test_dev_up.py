@@ -227,3 +227,16 @@ def test_terraform_runs_the_script_without_quotes_or_paths():
     for command in commands:
         assert '\\"' not in command, command
     assert up.count("working_dir = local.scripts_dir") == 3
+
+
+def test_the_engine_image_never_takes_the_terraform_state():
+    # The engine is built from this repository's root while the apply holds
+    # the state, which also has the database and Cognito passwords.
+    ignored = (Path(__file__).parents[1] / ".dockerignore").read_text().splitlines()
+    for pattern in (
+        "infra/terraform/",
+        "**/*.tfstate",
+        "**/*.tfstate.*",
+        "**/*.tfvars",
+    ):
+        assert pattern in ignored
