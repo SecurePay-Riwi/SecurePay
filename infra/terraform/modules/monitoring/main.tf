@@ -119,7 +119,6 @@ resource "aws_cloudwatch_metric_alarm" "engine" {
   threshold           = each.value.threshold
   treat_missing_data  = "notBreaching"
   alarm_actions       = local.alarm
-  ok_actions          = local.alarm
 
   depends_on = [aws_cloudwatch_log_metric_filter.engine]
 }
@@ -146,7 +145,6 @@ resource "aws_cloudwatch_metric_alarm" "engine_share" {
   evaluation_periods  = 1
   treat_missing_data  = "notBreaching"
   alarm_actions       = local.alarm
-  ok_actions          = local.alarm
 
   metric_query {
     id          = "share"
@@ -203,19 +201,20 @@ resource "aws_cloudwatch_metric_alarm" "healthy_per_zone" {
   for_each = var.engine_deployed ? toset(var.availability_zones) : toset([])
 
   alarm_name          = "${local.p}-engine-healthy-${each.key}"
-  alarm_description   = "Alarm 7: fewer than ${var.min_healthy_tasks_per_zone} healthy engine tasks in ${each.key} for 3 minutes; if the other zone fails now the engine cannot take the load. Check the ECS service (desired count, events, autoscaling)."
+  alarm_description   = "Alarm 7: fewer than ${var.min_healthy_tasks_per_zone} healthy engine tasks in ${each.key} for 5 minutes; if the other zone fails now the engine cannot take the load. Check the ECS service (desired count, events, autoscaling)."
   namespace           = "AWS/ApplicationELB"
   metric_name         = "HealthyHostCount"
   dimensions          = merge(local.tg, { AvailabilityZone = each.key })
   statistic           = "Minimum"
   period              = 60
-  evaluation_periods  = 3
-  datapoints_to_alarm = 3
+  evaluation_periods  = 5
+  datapoints_to_alarm = 5
   comparison_operator = "LessThanThreshold"
   threshold           = var.min_healthy_tasks_per_zone
-  treat_missing_data  = "breaching"
-  alarm_actions       = local.alarm
-  ok_actions          = local.alarm
+  # Missing while the first tasks register: no alarm during an apply.
+  # A zone without healthy tasks reports 0, which still breaches.
+  treat_missing_data = "missing"
+  alarm_actions      = local.alarm
 }
 
 # --- queues, database, Lambdas ------------------------------------------------
@@ -236,7 +235,6 @@ resource "aws_cloudwatch_metric_alarm" "queue_age" {
   threshold           = 300
   treat_missing_data  = "notBreaching"
   alarm_actions       = local.alarm
-  ok_actions          = local.alarm
 }
 
 # Alarm 8: the db.t3.micro running out.
@@ -271,7 +269,6 @@ resource "aws_cloudwatch_metric_alarm" "database" {
   threshold           = each.value.threshold
   treat_missing_data  = "notBreaching"
   alarm_actions       = local.alarm
-  ok_actions          = local.alarm
 }
 
 resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
@@ -305,7 +302,6 @@ resource "aws_cloudwatch_metric_alarm" "exchange_rates_stale" {
   datapoints_to_alarm = var.exchange_rate_max_age_days
   treat_missing_data  = "missing"
   alarm_actions       = local.alarm
-  ok_actions          = local.alarm
 
   metric_query {
     id          = "succeeded"

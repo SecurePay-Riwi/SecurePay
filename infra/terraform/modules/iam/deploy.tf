@@ -155,6 +155,10 @@ resource "aws_iam_role_policy" "source_deploy" {
 # every 90 days; Terraform never stores it.
 resource "aws_iam_user" "powerbi" {
   name = "${local.p}-powerbi"
+
+  # The access key is made by hand in the console (never in Terraform):
+  # destroy deletes it with the user instead of failing with DeleteConflict.
+  force_destroy = true
 }
 
 resource "aws_iam_user_policy" "powerbi" {

@@ -33,3 +33,10 @@ budget_emails = ["you@example.com"]
 # Exchange-rates Lambda (deploy-aws-terraform.mdx). It runs the securepay-apis
 # image that its Deploy workflow pushed to securepay-dev-apis.
 # apis_image_tag = "<short commit of securepay-apis>"
+
+# One apply (envs/dev/up.tf): by default terraform apply builds and pushes
+# the images of SecurePay, securepay-seed and securepay-apis (cloned side by
+# side; Docker Desktop running, uv, the AWS CLI), seeds RDS and loads the
+# cache and the exchange rates. A *_image_tag above always wins.
+# build_images       = false   # push the images yourself and set the tags
+# load_data_on_apply = false   # seed and load the cache and the rates by hand
