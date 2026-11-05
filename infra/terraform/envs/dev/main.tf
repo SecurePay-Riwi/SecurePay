@@ -244,6 +244,7 @@ module "api" {
     name = module.lambdas.function_names["cases-api"]
     arn  = module.lambdas.function_arns["cases-api"]
   }
+  users = var.api_users
 }
 
 # The nightly reconciliation (HU-36): Step Functions at 02:00 Bogota, the

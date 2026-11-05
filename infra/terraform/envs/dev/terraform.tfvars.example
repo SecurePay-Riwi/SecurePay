@@ -40,3 +40,5 @@ budget_emails = ["you@example.com"]
 # cache and the exchange rates. A *_image_tag above always wins.
 # build_images       = false   # push the images yourself and set the tags
 # load_data_on_apply = false   # seed and load the cache and the rates by hand
+# load_demo_day      = false   # do not upload and reconcile the fixture day 2026-10-05
+# api_users          = {}      # create the Cognito users by hand

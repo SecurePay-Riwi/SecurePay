@@ -152,6 +152,21 @@ variable "load_data_on_apply" {
   default     = true
 }
 
+variable "api_users" {
+  description = "Cognito users the apply creates for the demo, e-mail => group (analista or gerente). Their passwords: terraform output -json api_user_passwords. {} to create them by hand."
+  type        = map(string)
+  default = {
+    "analista@example.com" = "analista"
+    "gerente@example.com"  = "gerente"
+  }
+}
+
+variable "load_demo_day" {
+  description = "During the apply, upload the fixture day 2026-10-05 (partner files, decisions, labels) to the Data Lake and start the reconciliation for it, so the demo has a reconciled day and the views have data."
+  type        = bool
+  default     = true
+}
+
 variable "load_runner" {
   description = "Create the EC2 machine that runs the load test from inside the VPC (HU-60, load-test.mdx). About USD 0.10 an hour: only for that session."
   type        = bool

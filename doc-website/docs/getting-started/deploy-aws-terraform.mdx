@@ -12,6 +12,17 @@ A full session lasts about 40 minutes and costs less than USD 0.30 (the two NAT 
 
 The commands are for PowerShell on Windows. Run them one at a time.
 
+## The short path
+
+Once the tools and the IAM user exist (steps 1 to 3), a whole session is one command up and one down:
+
+1. In `infra\terraform\envs\dev`, with Docker Desktop running and `securepay-seed` and `securepay-apis` cloned and up to date beside SecurePay: `terraform init -upgrade` and `terraform apply` ([step 4](#4-create-the-environment)). It builds and pushes the images, seeds RDS, loads the cache and the exchange rates, creates two Cognito users and uploads and reconciles the demo day.
+2. Click **Confirm subscription** in each SNS e-mail. AWS requires one click per subscription; nothing can do it for you.
+3. Use it: the engine ([step 6](#6-deploy-the-engine-on-fargate)), the APIs with the users of `terraform output -json api_user_passwords` ([the APIs](#the-rules-and-cases-apis)), the reconciliation e-mail and the views ([step 8](#8-run-the-nightly-reconciliation)), Power BI ([its key is created by hand](#power-bi-over-athena), so it never lands in the state) and the load test ([Load test](./load-test.mdx)).
+4. `terraform destroy` ([step 12](#12-destroy-it)).
+
+Steps 6 to 9 below also say how to do each part by hand (`build_images = false`, `load_data_on_apply = false`, `load_demo_day = false`, `api_users = {}`) and what each one checks.
+
 ## 1. Install the AWS CLI and Terraform
 
 ```powershell
@@ -73,6 +84,8 @@ The user must end with exactly these two: `PowerUserAccess` and `securepay-terra
 3. After `db-bootstrap`, it seeds RDS with the admin task and loads the cache (`list-loader`).
 4. It loads today's exchange rates (`exchange-rates`).
 5. It writes the fixed rates of 2026-10-01, the day of the test transactions, so the fixed-rates alarm stays quiet.
+6. It creates the Cognito users of `api_users` (by default `analista@example.com` and `gerente@example.com`, one per group) with a generated password: `terraform output -json api_user_passwords`.
+7. With `load_demo_day` (default `true`), it uploads the fixture day 2026-10-05 to the Data Lake (the reconciliation's partner files and decisions, the analytics' decisions and labels) and starts the nightly state machine for that day. The apply does not wait for that run: it ends `Succeeded` 5 to 10 minutes later and e-mails treasury `Differences of the day: 19 (new: 19)` (see [step 8](#8-run-the-nightly-reconciliation)).
 
 This needs, on the computer that applies:
 
@@ -105,7 +118,7 @@ cd infra\terraform\envs\dev
    terraform init
    ```
 
-3. See what will be created. With one `apply` (the default), it must say about `Plan: 318 to add`. That number is counted from the code; the first such `plan` will confirm it:
+3. See what will be created. With one `apply` (the default), it must say about `Plan: 337 to add`. That number is counted from the code; the first such `plan` will confirm it:
    - 214 of the base;
    - 21 of the engine;
    - 72 of the Lambdas and the APIs;
@@ -124,7 +137,7 @@ cd infra\terraform\envs\dev
    terraform apply
    ```
 
-   It ends with `Apply complete! Resources: 214 added` (about 318 with one `apply`, which also prints each `docker build` and the seed's `exit code 0`). AWS e-mails each address in `supervisor_emails`, `compliance_emails` and `budget_emails` a link "AWS Notification - Subscription Confirmation": **click Confirm subscription in each one.** `apply` does not wait for it, but until you click, SNS sends nothing to that address. Every new environment creates new subscriptions, so this happens after every `apply` from scratch. From this moment it costs money. With one `apply`, go on with the checks of step 5 and then send the transactions of steps 6.6 and 7.3. With `build_images = false`, the engine is not running yet: its service starts in [step 6](#6-deploy-the-engine-on-fargate), once its image is in ECR.
+   It ends with `Apply complete! Resources: 214 added` (about 337 with one `apply`, which also prints each `docker build` and the seed's `exit code 0`). AWS e-mails each address in `supervisor_emails`, `compliance_emails` and `budget_emails` a link "AWS Notification - Subscription Confirmation": **click Confirm subscription in each one.** `apply` does not wait for it, but until you click, SNS sends nothing to that address. Every new environment creates new subscriptions, so this happens after every `apply` from scratch. From this moment it costs money. With one `apply`, go on with the checks of step 5 and then send the transactions of steps 6.6 and 7.3. With `build_images = false`, the engine is not running yet: its service starts in [step 6](#6-deploy-the-engine-on-fargate), once its image is in ECR.
 
 **If `apply` fails,** Terraform stops and prints `Error:` with the resource and the AWS message. What it created before the error stays in the state: fix the cause and run `terraform apply` again (it only creates what is missing; a resource that failed halfway is replaced), or run `terraform destroy`.
 
@@ -335,21 +348,30 @@ Remove `case_due_minutes = 2` from `terraform.tfvars` after the test: the defaul
 
 The same apply creates `securepay-dev-rules-api` and `securepay-dev-cases-api`, the HTTP API `securepay-dev-api` in front of them and the Cognito user pool the analysts sign in to (module `api`, [Terraform](../architecture/terraform.mdx#what-it-creates)). The paths are the ones of the local APIs; every route but `GET /health` needs a Cognito token, and the user's e-mail becomes `X-User`.
 
-1. Create an analyst (an administrator does it; nobody can sign up) and give them a permanent password. Use a real address you can read and a password of at least 12 characters with upper case, lower case and numbers:
+1. The apply already created the users of `api_users` (by default `analista@example.com` in `analista` and `gerente@example.com` in `gerente`, nobody can sign up) with a permanent password. Read them:
 
    ```powershell
    $pool = terraform output -raw user_pool_id
    $client = terraform output -raw user_pool_client_id
    $api = terraform output -raw api_url
-   aws cognito-idp admin-create-user --user-pool-id $pool --username ana@example.com --message-action SUPPRESS
-   aws cognito-idp admin-set-user-password --user-pool-id $pool --username ana@example.com --password "<password>" --permanent
-   aws cognito-idp admin-add-user-to-group --user-pool-id $pool --username ana@example.com --group-name analista
+   $passwords = terraform output -json api_user_passwords | ConvertFrom-Json
+   $password = $passwords.'analista@example.com'
    ```
+
+   With `api_users = {}`, create one by hand instead (an administrator does it; a password of at least 12 characters with upper case, lower case and numbers):
+
+   ```powershell
+   aws cognito-idp admin-create-user --user-pool-id $pool --username analista@example.com --message-action SUPPRESS
+   aws cognito-idp admin-set-user-password --user-pool-id $pool --username analista@example.com --password "<password>" --permanent
+   aws cognito-idp admin-add-user-to-group --user-pool-id $pool --username analista@example.com --group-name analista
+   ```
+
+   The passwords are in the Terraform state, which never leaves the computer that applies. That is fine for dev's demo users; prod would create real users by hand.
 
 2. Sign in. The ID token lasts 60 minutes:
 
    ```powershell
-   $token = aws cognito-idp initiate-auth --client-id $client --auth-flow USER_PASSWORD_AUTH --auth-parameters USERNAME=ana@example.com,PASSWORD="<password>" --query AuthenticationResult.IdToken --output text
+   $token = aws cognito-idp initiate-auth --client-id $client --auth-flow USER_PASSWORD_AUTH --auth-parameters USERNAME=analista@example.com,PASSWORD="$password" --query AuthenticationResult.IdToken --output text
    $auth = @{ Authorization = $token }
    ```
 
@@ -411,7 +433,7 @@ The match runs on AWS Glue, not EMR Serverless: on AWS's free account plan EMR i
 
    With `lambda_image_tag` already set (step 7), it adds the two Lambdas and their log groups, the two job files, the Glue job, the state machine, the two schedules, the alarm and the treasury subscription. It also updates the role policies and the alerts function. Confirm the treasury subscription from its e-mail.
 
-4. Upload the test day: the reconciliation fixtures, 2026-10-05, with every case and defect:
+4. Upload the test day: the reconciliation fixtures, 2026-10-05, with every case and defect. With `load_demo_day` (the default) the apply already uploaded it together with the analytics fixtures and started the run: skip to step 6, and expect `Differences of the day: 19 (new: 19)` instead of 6 (the 13 extra are explained below). For the answer key alone, set `load_demo_day = false` and upload by hand:
 
    ```powershell
    $LAKE = (terraform output -json bucket_names | ConvertFrom-Json).datalake
@@ -677,7 +699,7 @@ Once the lock of the last uploaded version has passed, destroy everything and ty
 terraform destroy
 ```
 
-It ends with `Destroy complete! Resources: 318 destroyed` after one `apply` with one budget e-mail. That is 214 of the base, 21 of the engine, 72 of the Lambdas, the rules and cases APIs, the reconciliation and the analytics, 4 of the exchange-rates Lambda, and 7 of `up.tf`; each extra e-mail address is one more. Step by step, without `up.tf`, it is 311. The `powerbi` user goes with its access key (`force_destroy`), so there is no need to delete the key first. A Terraform user made before November 5, 2026 needs the whole [`terraform-user-policy.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/terraform-user-policy.json) pasted again in its inline policy: it now allows `iam:DeleteAccessKey` on the `securepay-*` users, and the instance profile and `AmazonSSMManagedInstanceCore` of the load test machine ([Load test](./load-test.mdx#from-inside-the-vpc-ec2)). Fewer if some steps were skipped: it destroys what the state has. The Glue job and its files go with it. The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
+It ends with `Destroy complete! Resources: 337 destroyed` after one `apply` with one budget e-mail. That is 214 of the base, 21 of the engine, 72 of the Lambdas, the rules and cases APIs, the reconciliation and the analytics, 4 of the exchange-rates Lambda, 7 of `up.tf`, 6 of the two Cognito users and 13 of the demo day (12 files and its run); each extra e-mail address is one more. Step by step, without the 7 of `up.tf`, it is 330. The `powerbi` user goes with its access key (`force_destroy`), so there is no need to delete the key first. A Terraform user made before November 5, 2026 needs the whole [`terraform-user-policy.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/terraform-user-policy.json) pasted again in its inline policy: it now allows `iam:DeleteAccessKey` on the `securepay-*` users, and the instance profile and `AmazonSSMManagedInstanceCore` of the load test machine ([Load test](./load-test.mdx#from-inside-the-vpc-ec2)). Fewer if some steps were skipped: it destroys what the state has. The Glue job and its files go with it. The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
 
 **Check that nothing is left.** This must print nothing:
 

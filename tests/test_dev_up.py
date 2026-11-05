@@ -179,3 +179,19 @@ def test_the_seed_waits_for_its_task_to_stop(monkeypatch, capsys):
 def test_a_failed_seed_fails_the_apply(monkeypatch):
     with pytest.raises(SystemExit, match="exit code 1.*/ecs/securepay-dev-admin"):
         _run_seed(monkeypatch, _task("STOPPED", 1))
+
+
+def test_the_demo_day_starts_the_state_machine_without_waiting(monkeypatch, capsys):
+    commands = Commands({"aws stepfunctions": {"stdout": "arn:execution"}})
+    monkeypatch.setattr(subprocess, "run", commands)
+
+    dev_up.main(
+        ["start-day", "--state-machine", "arn:sm", "--day", "2026-10-05",
+         "--region", "us-east-2"]
+    )  # fmt: skip
+
+    start = commands.ran("aws stepfunctions --region us-east-2 start-execution")
+    assert len(commands.calls) == 1 and start
+    args = start[0][0]
+    assert args[args.index("--input") + 1] == '{"day": "2026-10-05"}'
+    assert "arn:execution" in capsys.readouterr().out
