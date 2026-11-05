@@ -46,5 +46,5 @@ variable "create_github_oidc_provider" {
 variable "database_users" {
   description = "Database users that db-bootstrap creates; it reads each one's password. Must match USERS in services/db_bootstrap/grants.py (a test checks it)."
   type        = list(string)
-  default     = ["alerts", "analytics_export", "cases_consumer", "history_consumer", "list_loader", "reconciliation"]
+  default     = ["alerts", "analytics_export", "cases_api", "cases_consumer", "history_consumer", "list_loader", "reconciliation", "rules_api"]
 }

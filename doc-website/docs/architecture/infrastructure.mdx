@@ -84,8 +84,8 @@ This is the inventory of what Terraform must create, not of what exists today. D
 | ECR repositories | `motor`, `generador`, `admin` | 3 | Image scanning on push; lifecycle rule that keeps the last 10 | Decided |
 | Lambda functions | see the next table | 12 | Python 3.12, 512 MB and 30 s by default | 512 MB expected (see [Estimated figures](#estimates)) |
 | Queue-to-Lambda mappings | | 3 | Batches of 10, failure reporting per message | Decided |
-| API Gateway (HTTP API) | `pagoseguro-prod-api` | 1 | Rules and cases routes with a Cognito JWT authorizer; list service routes (`GET /lista`, `GET /lista/{documento}`, `/health`) without an authorizer; request limit per route | Decided |
-| Cognito user pool | `pagoseguro-prod-usuarios` | 1 | Groups `analista` and `gerente`, one app client, MFA | Decided; implemented when AWS is set up |
+| API Gateway (HTTP API) | `pagoseguro-prod-api` | 1 | Rules and cases routes with a Cognito JWT authorizer; list service routes (`GET /lista`, `GET /lista/{documento}`, `/health`) without an authorizer; request limit per route | Built in dev as `securepay-<env>-api` (rules and cases routes, `GET /health` without an authorizer, one request limit for the stage); the list service is not behind it |
+| Cognito user pool | `pagoseguro-prod-usuarios` | 1 | Groups `analista` and `gerente`, one app client, MFA | Built in dev as `securepay-<env>-users`, MFA off (`mfa` variable of `modules/api`) |
 | Glue jobs | `securepay-<env>-reconciliation-match`, `securepay-<env>-analytics` | 2 | Spark 4.1.1, two G.1X workers each, no VPC, one code zip for both | Built (HU-36, HU-66) |
 | Step Functions state machine | `conciliacion` | 1 | Standard: reads statements (Lambda), reconciles (Spark, `.sync`), writes differences (Lambda); retries per step | Decided |
 
@@ -99,7 +99,7 @@ This is the inventory of what Terraform must create, not of what exists today. D
 | `api-reglas` | API Gateway | Yes | 512 MB, 30 s | 7 |
 | `api-casos` | API Gateway | Yes | 512 MB, 30 s | 8 |
 | `servicio-listas` | API Gateway | No | 512 MB, 30 s (the simulated latency reaches 3 s) | 13 |
-| `actualiza-reglas-cache` | Topic `regla-cambiada` | Yes | 512 MB, 30 s | 9 |
+| `actualiza-reglas-cache` | Topic `regla-cambiada` | Yes | 512 MB, 30 s | 9 (not built: the rules API publishes the catalog to Valkey itself, team decision 2026-11-05) |
 | `alertas` | Scheduler, every 5 min | Yes | 512 MB, 60 s | 10 |
 | `tasas` | Scheduler, daily | No | 512 MB, 30 s | 11 |
 | `carga-lista` | Scheduler, daily | Yes | 512 MB, 60 s (the full list weighs ~4 MB) | 12 |
@@ -125,7 +125,7 @@ This is the inventory of what Terraform must create, not of what exists today. D
 
 | Resource | Name | Qty. | Configuration | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| SNS topics | `decisiones`, `regla-cambiada`, `alertas-negocio`, `alarmas-operativas` | 4 | `alertas-negocio` with a filter by recipient (compliance, supervisor, treasury) | Decided |
+| SNS topics | `decisiones`, `regla-cambiada` (not built), `alertas-negocio`, `alarmas-operativas` | 4 | `alertas-negocio` with a filter by recipient (compliance, supervisor, treasury) | Decided |
 | SQS queues | `casos`, `historial`, `analitica` and their `-dlq` | 6 | Raw message delivery from SNS; DLQ after 5 attempts with 14-day retention | Decided |
 | EventBridge Scheduler schedules | | 7 | Reconciliation (02:00), ETL (daily), exchange rates (daily), list load (daily), alerts (every 5 min), rule effectiveness and device network (weekly) | Decided |
 

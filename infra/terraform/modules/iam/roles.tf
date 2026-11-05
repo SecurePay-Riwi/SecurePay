@@ -60,7 +60,10 @@ locals {
       service = "lambda.amazonaws.com"
       statements = [
         { Sid = "DatabasePassword", Effect = "Allow", Action = "ssm:GetParameter", Resource = "${local.arn.parameter}/rds/rules_api" },
-        { Sid = "AnnounceRuleChange", Effect = "Allow", Action = "sns:Publish", Resource = "${local.arn.topic}-rule-changed" },
+        # It publishes each catalog version to the cache itself, as it does
+        # locally; the SNS topic and the rules-cache-refresh Lambda of the
+        # first design were not built.
+        { Sid = "CacheWithIam", Effect = "Allow", Action = "elasticache:Connect", Resource = [local.arn.cache, "${local.arn.cache_user}-rules-api"] },
         # The simulation (HU-24) replays raw/decisiones with the generator's
         # labels in Python inside this Lambda: it lists the files, then reads them.
         { Sid = "FindSimulationFiles", Effect = "Allow", Action = "s3:ListBucket", Resource = local.bucket.datalake, Condition = { StringLike = { "s3:prefix" = ["raw/decisiones/*", "raw/labels/*"] } } },

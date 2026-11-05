@@ -22,7 +22,7 @@ locals {
     DATABASE_NAME = var.database.name
     CREATE_SCHEMA = "false"
   }
-  database_user = { for user in ["cases_consumer", "history_consumer", "alerts", "reconciliation", "list_loader", "analytics_export"] : user => merge(local.database_common, {
+  database_user = { for user in ["cases_consumer", "history_consumer", "alerts", "reconciliation", "list_loader", "analytics_export", "rules_api", "cases_api"] : user => merge(local.database_common, {
     DATABASE_USER               = user
     DATABASE_PASSWORD_PARAMETER = "${var.database.parameter_path}/${user}"
   }) }
@@ -95,6 +95,29 @@ locals {
       environment = merge(local.database_user["list_loader"], {
         VALKEY_URL     = var.cache_url
         VALKEY_CLUSTER = "true"
+      })
+    }
+    # The analysts' APIs behind API Gateway (modules/api). Mangum turns the
+    # HTTP API event into a request for the same FastAPI app as locally.
+    # The rules API publishes each catalog version to the cache itself.
+    rules-api = {
+      command = "services.rules_api.main.handler"
+      in_vpc  = true
+      queue   = null
+      environment = merge(local.database_user["rules_api"], {
+        VALKEY_URL     = var.cache_url
+        VALKEY_CLUSTER = "true"
+        # The simulation (HU-24) replays raw/decisiones and raw/labels.
+        ANALYTICS_DATA_DIR = "s3://${var.datalake_bucket}"
+      })
+    }
+    cases-api = {
+      command = "services.cases_api.main.handler"
+      in_vpc  = true
+      queue   = null
+      environment = merge(local.database_user["cases_api"], {
+        EVIDENCE_BUCKET         = var.evidence_bucket
+        EVIDENCE_RETENTION_DAYS = var.evidence_retention_days
       })
     }
     # Tables, component users and grants with the master user (MAG-361).

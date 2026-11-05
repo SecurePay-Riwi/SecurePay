@@ -16,7 +16,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from services.rules_api.models import IMMUTABLE_HISTORY, Base, CatalogVersion, Rule
-from shared import db
+from shared import config, db
 from shared.rule_catalog import DEFAULT_RULES, CatalogSnapshot, RuleEntry
 
 # Any constant works; it only has to be the same for every writer.
@@ -31,27 +31,42 @@ class NoChange(Exception):
     """The write would leave the catalog as it is: no new version."""
 
 
-def create_schema() -> None:
+def create_schema(session: Session | None = None, force: bool = False) -> None:
     """Create the tables and the append-only trigger if they are missing,
-    and store version 1 with the code defaults when there is none."""
-    with SessionLocal() as session, session.begin():
-        # Under the lock, so two replicas starting together do not race.
-        _lock(session)
-        Base.metadata.create_all(session.connection())
-        for statement in IMMUTABLE_HISTORY:
-            session.execute(statement)
+    and store version 1 with the code defaults when there is none.
 
-        if session.scalar(select(func.count()).select_from(CatalogVersion)) == 0:
-            now = datetime.now(UTC)
-            for rule in DEFAULT_RULES:
-                session.add(_to_row(rule, "code", now))
-            session.flush()
-            _insert_version(
-                session,
-                "code",
-                now,
-                {"operation": "seed", "code": None, "before": None, "after": None},
-            )
+    Does nothing when CREATE_SCHEMA is false (AWS), unless force=True:
+    there db-bootstrap calls it with the master user, the tables' owner,
+    and the API's own user only reads and writes rows (MAG-361). With a
+    session it commits that session; without one it opens its own."""
+    if not (config.CREATE_SCHEMA or force):
+        return
+    if session is None:
+        with SessionLocal() as own:
+            _create_schema(own)
+    else:
+        _create_schema(session)
+
+
+def _create_schema(session: Session) -> None:
+    # Under the lock, so two replicas starting together do not race.
+    _lock(session)
+    Base.metadata.create_all(session.connection())
+    for statement in IMMUTABLE_HISTORY:
+        session.execute(statement)
+
+    if session.scalar(select(func.count()).select_from(CatalogVersion)) == 0:
+        now = datetime.now(UTC)
+        for rule in DEFAULT_RULES:
+            session.add(_to_row(rule, "code", now))
+        session.flush()
+        _insert_version(
+            session,
+            "code",
+            now,
+            {"operation": "seed", "code": None, "before": None, "after": None},
+        )
+    session.commit()
 
 
 def latest() -> CatalogSnapshot:

@@ -24,7 +24,7 @@ About 30 minutes, about USD 0.22 an hour from here on.
    terraform apply
    ```
 
-2. Push the images and set the tags ([step 6](../getting-started/deploy-aws-terraform.mdx#6-deploy-the-engine-on-fargate)). Set `engine_image_tag`, `admin_image_tag` and `lambda_image_tag` to the short commit, and `apis_image_tag` to the one of securepay-apis ([step 9](../getting-started/deploy-aws-terraform.mdx#9-load-the-daily-exchange-rates)). Then apply again. Expected: `69 to add`. `db-bootstrap` runs during this apply and creates the tables and the database users.
+2. Push the images and set the tags ([step 6](../getting-started/deploy-aws-terraform.mdx#6-deploy-the-engine-on-fargate)). Set `engine_image_tag`, `admin_image_tag` and `lambda_image_tag` to the short commit, and `apis_image_tag` to the one of securepay-apis ([step 9](../getting-started/deploy-aws-terraform.mdx#9-load-the-daily-exchange-rates)). Then apply again. Expected: `97 to add`. `db-bootstrap` runs during this apply and creates the tables and the database users.
 
    ```powershell
    terraform apply
@@ -107,7 +107,7 @@ Every alarm e-mails `securepay-dev-ops-alarms`, and its description says what to
    terraform destroy
    ```
 
-   Expected: `Destroy complete!` with everything the state had (283 with every step). If only the evidence bucket fails, its lock has not passed yet: wait and run it again. If the EKS session of [Run the engine on Kubernetes](../getting-started/kubernetes.mdx) ran, delete that cluster first: it uses dev's subnets.
+   Expected: `Destroy complete!` with everything the state had (311 with every step). If only the evidence bucket fails, its lock has not passed yet: wait and run it again. If the EKS session of [Run the engine on Kubernetes](../getting-started/kubernetes.mdx) ran, delete that cluster first: it uses dev's subnets.
 
 2. Check that nothing is left charging. The first command must print nothing:
 

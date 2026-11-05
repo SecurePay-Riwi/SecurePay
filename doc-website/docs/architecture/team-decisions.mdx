@@ -157,6 +157,17 @@ The assignment names a Kaggle credit card dataset as the card payment history. A
 | The catalog caps velocity's `limit` at 99 and splitting's `min_transactions` at 100, and the engine refuses to start with a lower `HISTORY_OUT_LIMIT`. | The rules can never ask for more movements than they get. |
 | An account with more than 100 outgoing movements in a day is judged on its newest 100. | Velocity (more than 5 in 10 minutes) already holds such an account; a normal account has a few movements a day and never reaches the limit. |
 
+## The rules and cases APIs run as Lambdas behind API Gateway
+
+**Agreed with Habith on 2026-11-05** (Sprint 6, HU-61, MAG-308), when the gap review showed that both APIs only had IAM roles in AWS.
+
+| Decision | Why |
+| :--- | :--- |
+| The rules API and the cases API run as Lambdas (`securepay-<env>-rules-api`, `-cases-api`) with the engine image and Mangum, behind one API Gateway HTTP API with a Cognito JWT authorizer (`modules/api`). | It is the design of [Infrastructure](infrastructure.mdx) and [Security](security.mdx); an analyst's few requests a day cost nothing on Lambda, where an always-on Fargate service would. |
+| API Gateway sets `X-User` from the token's e-mail. | The author of a rule change and the analyst of a case are the person who signed in, not a header anyone can type. |
+| The rules API publishes the catalog to Valkey itself, as locally; the `regla-cambiada` topic and the `actualiza-reglas-cache` Lambda are not built. | One writer and one step less: the engine already reads `{rules}:version` every second. |
+| The APIs do not check the Cognito groups yet, and MFA is off in dev. | Two analysts' worth of demo users; the groups exist so that a check can be added without changing the pool. |
+
 ## X-Ray is left out
 
 **Decided by Habith on 2026-11-04** (Sprint 6, HU-59, MAG-341).

@@ -4,7 +4,8 @@ Terraform invokes this Lambda on every apply that creates the database or
 changes a password (aws_lambda_invocation). With the master user it:
 
 1. creates every table: the seed's (shared/models.py), the case tables
-   with their append-only trigger and the reconciliation tables. The seed
+   with their append-only trigger, the reconciliation tables and the rules
+   API's (with catalog version 1 and its append-only trigger). The seed
    finds them already there and only inserts; its reset uses TRUNCATE, so
    the grants below survive every reseed;
 2. creates or updates the user of each component with its password from
@@ -66,6 +67,12 @@ def create_tables(session: Session) -> None:
     session.commit()
     cases.create_schema(session, force=True)
     reconciliation.create_schema(session, force=True)
+    # The rules API's tables and catalog version 1. Its models live in the
+    # API (services/rules_api/models.py); this Lambda owns every table in
+    # AWS, so it is the one place outside the API that imports them.
+    from services.rules_api import store as rules_store
+
+    rules_store.create_schema(session, force=True)
 
 
 def set_user(cursor, user: str, password: str, schema: str) -> None:

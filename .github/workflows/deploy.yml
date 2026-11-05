@@ -33,7 +33,7 @@ concurrency:
 env:
   AWS_REGION: us-east-2
   NAME_PREFIX: securepay-dev
-  LAMBDAS: cases-consumer history-consumer analytics-consumer alerts statement-reader difference-writer list-loader analytics-export
+  LAMBDAS: cases-consumer history-consumer analytics-consumer alerts statement-reader difference-writer list-loader analytics-export rules-api cases-api
 
 jobs:
   deploy:
