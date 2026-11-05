@@ -286,9 +286,12 @@ def _decide_in_time(payload: TransactionRequest) -> dict:
     The catalog is read once, before starting: the rules and the default
     decision use the same version.
 
-    A Python thread cannot be stopped, so the late evaluation finishes in
-    the background and its result is dropped: the stored and published
-    decision is the default one.
+    A Python thread cannot be stopped, so a late evaluation that already
+    started finishes in the background and its result is dropped: the
+    stored and published decision is the default one. One that is still
+    waiting for a worker is cancelled: under overload the queue would
+    otherwise keep every worker busy with decisions nobody waits for, and
+    every new one would time out too (load test of 2026-11-05).
     """
     snapshot = catalog.current()
     future = _workers.submit(_decide, payload, snapshot)
@@ -296,6 +299,7 @@ def _decide_in_time(payload: TransactionRequest) -> dict:
     try:
         return future.result(timeout=TIMEOUT_MS / 1000)
     except DecisionTimeout:
+        future.cancel()
         log.warning("Transaction %s: rules timed out, default decision", payload.id)
         return default_decision(payload, snapshot)
     except CacheUnavailable as exc:
