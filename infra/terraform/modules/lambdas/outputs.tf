@@ -12,3 +12,8 @@ output "exchange_rates_function_name" {
   description = "Name of the exchange-rates Lambda (null until apis_image_tag is set)."
   value       = one(aws_lambda_function.exchange_rates[*].function_name)
 }
+
+output "db_bootstrap_result" {
+  description = "What db-bootstrap did (users and counts, no secret); the seed waits for it."
+  value       = one(aws_lambda_invocation.db_bootstrap[*].result)
+}

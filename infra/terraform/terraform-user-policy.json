@@ -48,6 +48,7 @@
         "iam:ListAttachedUserPolicies",
         "iam:ListGroupsForUser",
         "iam:ListAccessKeys",
+        "iam:DeleteAccessKey",
         "iam:ListMFADevices",
         "iam:ListSigningCertificates",
         "iam:ListSSHPublicKeys",

@@ -17,7 +17,7 @@ What the team does in AWS, in order, with the commands. Each step links to the p
 
 About 30 minutes, about USD 0.22 an hour from here on.
 
-1. Create the base (network, data, roles, queues, monitoring). Expected: `214 to add`, plus one per e-mail address.
+1. Create everything with one `apply` (Docker Desktop running, uv, securepay-seed and securepay-apis cloned beside SecurePay): it also builds and pushes the images, seeds RDS and loads the cache and the exchange rates. Expected: about `318 to add`, plus one per e-mail address. Without Docker: `build_images = false` and the steps below, starting from `214 to add`.
 
    ```powershell
    terraform init
@@ -107,7 +107,7 @@ Every alarm e-mails `securepay-dev-ops-alarms`, and its description says what to
    terraform destroy
    ```
 
-   Expected: `Destroy complete!` with everything the state had (311 with every step). If only the evidence bucket fails, its lock has not passed yet: wait and run it again. If the EKS session of [Run the engine on Kubernetes](../getting-started/kubernetes.mdx) ran, delete that cluster first: it uses dev's subnets.
+   Expected: `Destroy complete!` with everything the state had (318 after one `apply`, 311 step by step). If only the evidence bucket fails, its lock has not passed yet: wait and run it again. If the EKS session of [Run the engine on Kubernetes](../getting-started/kubernetes.mdx) ran, delete that cluster first: it uses dev's subnets.
 
 2. Check that nothing is left charging. The first command must print nothing:
 

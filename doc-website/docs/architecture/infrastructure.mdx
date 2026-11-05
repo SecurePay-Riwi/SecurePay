@@ -170,7 +170,7 @@ Each threshold comes from a requirement, not from intuition. Built (HU-59): ever
 | 4 | Age of the oldest message | > 5 minutes in any queue | A consumer fell behind | Check the consumer | `modules/monitoring` (`<queue>-oldest-message`) |
 | 5 | Reconciliation not finished | Not finished at 06:30 | The deadline is 07:00; half an hour to react | Manual intervention | `modules/reconciliation` (06:30 check and failed executions) |
 | 6 | Load balancer errors | 5xx > 1% in 5 minutes | The engine is failing, not just slow | Check the tasks | `modules/monitoring` (`-engine-errors-5xx`) |
-| 7 | Healthy engine tasks | < 2 in any zone, or a task failing `/health` for 3 minutes | Below that, losing a zone is no longer tolerable | Check the scaling | `modules/monitoring` (`-engine-healthy-<zone>`, `-engine-unhealthy`) |
+| 7 | Healthy engine tasks | < 2 in any zone for 5 minutes, or a task failing `/health` for 3 minutes | Below that, losing a zone is no longer tolerable | Check the scaling | `modules/monitoring` (`-engine-healthy-<zone>`, `-engine-unhealthy`) |
 | 8 | Database | CPU > 80% for 15 minutes, or connections > 80% of the maximum | `db.t3.micro` running out | Check queries and connections | `modules/monitoring` (`-db-cpu`, `-db-connections`) |
 | 9 | Cache refreshed by expiry | — | Not needed: the engine reads `{rules}:version` every second, so no rule change event can be lost | — | — |
 | 10 | Budget | 80% and 100% of the $200 credit | Spending control on the team's credit | Review and, if needed, destroy the development environment | `envs/dev` (AWS Budgets) |
@@ -180,6 +180,8 @@ Each threshold comes from a requirement, not from intuition. Built (HU-59): ever
 | 14 | Fixed exchange rates | ≥ 1 log line "using the fixed" in the engine | The table has no rate for the day or any day before it | Invoke the exchange-rates Lambda | `modules/monitoring` (`-engine-fixed-rates`) |
 
 Alarm 10 is an AWS Budgets alert; the others are CloudWatch alarms. The engine alarms (1, 2, 6, 7, 11, 14) exist only once the engine is deployed (`engine_image_tag`). The easiest one to show live is number 3: a message the consumer cannot process is sent on purpose, it lands in the dead-letter queue and the alarm sends the email (step by step in [Deploy to AWS](../getting-started/deploy-aws-terraform.mdx)).
+
+**E-mails only when an alarm fires.** No alarm of `modules/monitoring` e-mails on its way back to OK. Every new alarm goes from no data to OK as soon as it is created, so an `apply` used to send about ten OK e-mails that said nothing. Healthy tasks per zone also waits 5 minutes and ignores missing data, so the first tasks can register without an alarm. The console shows when an alarm is OK again.
 
 **Logs and dashboard.** The engine writes one JSON line on the `securepay.decisions` logger for every HOLD, REJECT or default decision and for every decision slower than `SLOW_DECISION_MS` (150 ms); a fast APPROVE writes nothing, so the log stays small at 50 tx/s. CloudWatch metric filters turn those lines into the metrics `FallbackDecisions`, `HeldOrRejected` and `SlowDecisions` (namespace `SecurePay/securepay-<env>`), and two saved Logs Insights queries list them (`slow-decisions`, `default-decisions`). The dashboard `securepay-<env>` shows latency, requests and errors, decisions, healthy tasks, queues, the database, the Lambdas and the reconciliation; `terraform output dashboard_url` opens it. Logs are kept 14 days.
 

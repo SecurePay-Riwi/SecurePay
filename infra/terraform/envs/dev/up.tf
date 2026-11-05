@@ -1,0 +1,128 @@
+# One `terraform apply` brings dev up (MAG-308). On the computer that
+# applies it (Docker running, the AWS CLI signed in, uv), the apply:
+#
+#   1. tags each image with its repository's short commit (data "external");
+#   2. builds and pushes the engine, the seed and securepay-apis to ECR
+#      when that tag is not there yet (terraform_data.image);
+#   3. after db-bootstrap, seeds RDS with the admin task (terraform_data.seed),
+#      loads the cache (list-loader) and today's exchange rates, and writes
+#      the fixed rates of 2026-10-01, the day of the test transactions.
+#
+# Set build_images = false to push the images yourself and give their tags
+# in engine_image_tag, admin_image_tag, lambda_image_tag and apis_image_tag
+# (deploy-aws-terraform.mdx, "Without Docker on this computer"). A tag given
+# in a variable always wins over the built one.
+
+locals {
+  repo_root = abspath("${path.root}/../../../..")
+  dev_up    = "uv run --no-project python \"${abspath("${path.root}/../../scripts/dev_up.py")}\""
+
+  # {engine, admin, apis}: the commit of each clone, "" when the clone is
+  # not beside SecurePay (that image is not built).
+  built_tags = var.build_images ? data.external.image_tags[0].result : {}
+
+  given_tags = {
+    engine = var.engine_image_tag
+    admin  = var.admin_image_tag
+    apis   = var.apis_image_tag
+  }
+  chosen_tags = { for name, tag in local.given_tags : name => coalesce(tag, lookup(local.built_tags, name, ""), "-") }
+  image_tags  = { for name, tag in local.chosen_tags : name => tag == "-" ? null : tag }
+
+  # Built here: the images whose tag no variable gives.
+  build = { for name, tag in local.built_tags : name => tag if tag != "" && local.given_tags[name] == null }
+
+  # The Lambdas run the engine's image. Without build_images they still
+  # wait for lambda_image_tag, as in the step-by-step deploy.
+  lambda_image_tag = var.lambda_image_tag != null ? var.lambda_image_tag : (var.build_images ? local.image_tags.engine : null)
+
+  build_contexts = {
+    engine = local.repo_root
+    admin  = "${dirname(local.repo_root)}/securepay-seed"
+    apis   = "${dirname(local.repo_root)}/securepay-apis"
+  }
+
+  # The repository URL reaches ECS and the Lambdas through the push, so
+  # nothing uses an image before it is in ECR.
+  repository_urls = {
+    for name in ["engine", "admin", "apis"] :
+    name => try(terraform_data.image[name].output.url, module.ecr.repository_urls[name])
+  }
+
+  load_data = var.load_data_on_apply && local.image_tags.admin != null && local.lambda_image_tag != null
+}
+
+data "external" "image_tags" {
+  count = var.build_images ? 1 : 0
+
+  program = ["uv", "run", "--no-project", "python", "${path.root}/../../scripts/dev_up.py", "tags"]
+  query   = { securepay = local.repo_root }
+}
+
+resource "terraform_data" "image" {
+  for_each = local.build
+
+  triggers_replace = each.value
+  input            = { url = module.ecr.repository_urls[each.key], tag = each.value }
+
+  provisioner "local-exec" {
+    command = "${local.dev_up} push --repository ${self.input.url} --tag ${self.input.tag} --context \"${local.build_contexts[each.key]}\" --region ${var.region}"
+  }
+}
+
+# The seed (SEED_RESET: it empties the seed tables first), again whenever
+# the seed image or the database changes. db-bootstrap goes first: the
+# seed only truncates, so its grants stay.
+resource "terraform_data" "seed" {
+  count = local.load_data ? 1 : 0
+
+  triggers_replace = [module.ecs.admin_task_revision, module.database.instance_resource_id]
+  input            = module.lambdas.db_bootstrap_result
+
+  provisioner "local-exec" {
+    command = "${local.dev_up} run-task --cluster ${module.ecs.cluster_name} --task-definition ${module.ecs.admin_task_family}:${module.ecs.admin_task_revision} --subnets ${join(",", module.network.app_subnet_ids)} --security-group ${module.security_groups.ids["admin"]} --region ${var.region}"
+  }
+
+  # The NAT routes too, or the task cannot pull its image.
+  depends_on = [module.network]
+}
+
+# Accounts, merchants and the restricted list into the cache now, instead
+# of at 01:00 Bogota; again after a new seed or a new cache.
+resource "aws_lambda_invocation" "list_loader" {
+  count = local.load_data ? 1 : 0
+
+  function_name = module.lambdas.function_names["list-loader"]
+  input         = jsonencode({ seed = terraform_data.seed[0].id, cache = module.cache.address })
+}
+
+# Today's exchange rates now, instead of at 11:00 Bogota.
+resource "aws_lambda_invocation" "exchange_rates" {
+  count = var.load_data_on_apply && local.image_tags.apis != null ? 1 : 0
+
+  function_name = module.lambdas.exchange_rates_function_name
+  input         = jsonencode({})
+}
+
+# The day of smoke-transaction.json and restricted-transaction.json: the
+# fixed rates of currency.RATES_PER_USD, so their decisions convert with a
+# rate of their own day instead of raising the fixed-rates alarm. No
+# expires_at: the TTL never removes it.
+resource "aws_dynamodb_table_item" "test_day_rates" {
+  count = var.load_data_on_apply ? 1 : 0
+
+  table_name = module.storage.exchange_rates_table
+  hash_key   = "base"
+  range_key  = "rate_date"
+  item = jsonencode({
+    base      = { S = "USD" }
+    rate_date = { S = "2026-10-01" }
+    rates = { M = {
+      USD = { N = "1" }
+      COP = { N = "3317.65" }
+      EUR = { N = "0.88284" }
+      JPY = { N = "157.76" }
+    } }
+    source = { S = "fixed rates of 2026-10-01 (currency.RATES_PER_USD), written by Terraform" }
+  })
+}

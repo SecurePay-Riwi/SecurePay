@@ -139,3 +139,15 @@ variable "case_due_minutes" {
   type        = number
   default     = 240
 }
+
+variable "build_images" {
+  description = "Build and push the engine, seed and securepay-apis images during the apply (needs Docker, the AWS CLI and uv on this computer, and the clones side by side). false: push them yourself and set the *_image_tag variables."
+  type        = bool
+  default     = true
+}
+
+variable "load_data_on_apply" {
+  description = "During the apply, seed RDS, load the cache and today's exchange rates, and write the fixed rates of 2026-10-01. false: run those steps by hand."
+  type        = bool
+  default     = true
+}

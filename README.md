@@ -708,11 +708,11 @@ Necesitas Terraform 1.9 o más reciente, la CLI de AWS y un usuario IAM (nunca r
 
     cp terraform.tfvars.example terraform.tfvars   # tu nombre y tu correo
     terraform init
-    terraform plan       # la primera vez: 181 to add (con un correo de presupuesto y los dos de prueba)
+    terraform plan       # con Docker Desktop abierto y uv: unos 318 to add (todo el ambiente)
     terraform apply
     terraform destroy    # siempre al terminar de probar: los NAT y RDS cobran aunque no haya tráfico
 
-Para levantar el motor: subir las imágenes a ECR con el commit corto como tag, poner `engine_image_tag` y `admin_image_tag` en `terraform.tfvars`, `terraform apply` otra vez, sembrar con la tarea admin y probar con `curl.exe -k` contra el balanceador. Los comandos exactos están en la sección 6 de `deploy-aws-terraform.mdx`.
+Un solo `terraform apply` construye y sube las imágenes del motor, del seed y de securepay-apis (clonados al lado), siembra RDS, carga la cache y las tasas de cambio (`envs/dev/up.tf`). Necesita Docker Desktop abierto, uv y la CLI de AWS. Sin Docker: `build_images = false` en `terraform.tfvars` y los pasos 6, 7 y 9 de `deploy-aws-terraform.mdx` a mano.
 
 **Consumers and alerts task as Lambdas (HU-68, Sprint 5).** Terraform also creates the decisions topic, the `cases`, `history` and `analytics` queues with their DLQs, the `business-alerts` topic (one e-mail per audience: `supervisor_emails`, `compliance_emails`) and the `ops-alarms` topic. With `lambda_image_tag` (the engine's image, built with `docker build --provenance=false`) it adds the Lambdas `securepay-dev-cases-consumer`, `-history-consumer`, `-analytics-consumer` and `-alerts` (every 5 minutes). The analytics consumer gets batches of up to 1,000 decisions or 60 seconds (one S3 file each, no Firehose: it is not on AWS's free plan), so a decision can take up to a minute to appear in `raw/decisiones/`. Confirm the subscription e-mail AWS sends to each address after `apply`. The test (a restricted list withdrawal with `restricted-transaction.json` and `case_due_minutes = 2`) is section 7 of `deploy-aws-terraform.mdx`. Locally nothing changes: `python -m services.consumers` and `python -m services.alerts` run the same handlers.
 

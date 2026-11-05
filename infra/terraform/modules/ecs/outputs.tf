@@ -41,3 +41,12 @@ output "target_group_arn_suffix" {
 output "engine_log_group_name" {
   value = aws_cloudwatch_log_group.this["engine"].name
 }
+
+# The seed that terraform apply runs (envs/dev, dev_up.py run-task).
+output "admin_task_family" {
+  value = one(aws_ecs_task_definition.admin[*].family)
+}
+
+output "admin_task_revision" {
+  value = one(aws_ecs_task_definition.admin[*].revision)
+}

@@ -138,8 +138,8 @@ module "ecs" {
   container_insights       = false
   log_retention_days       = 14
 
-  engine_repository_url     = module.ecr.repository_urls["engine"]
-  engine_image_tag          = var.engine_image_tag
+  engine_repository_url     = local.repository_urls["engine"]
+  engine_image_tag          = local.image_tags.engine
   engine_port               = var.engine_port
   engine_min_tasks          = var.engine_min_tasks
   engine_max_tasks          = var.engine_max_tasks
@@ -158,8 +158,8 @@ module "ecs" {
     SLOW_DECISION_MS = tostring(local.slow_decision_ms)
   }
 
-  admin_repository_url     = module.ecr.repository_urls["admin"]
-  admin_image_tag          = var.admin_image_tag
+  admin_repository_url     = local.repository_urls["admin"]
+  admin_image_tag          = local.image_tags.admin
   admin_execution_role_arn = module.iam.role_arns["admin-execution"]
   admin_task_role_arn      = module.iam.role_arns["admin"]
 
@@ -195,8 +195,8 @@ module "lambdas" {
   source = "../../modules/lambdas"
 
   name_prefix              = local.name_prefix
-  repository_url           = module.ecr.repository_urls["engine"]
-  image_tag                = var.lambda_image_tag
+  repository_url           = local.repository_urls["engine"]
+  image_tag                = local.lambda_image_tag
   role_arns                = module.iam.role_arns
   app_subnet_ids           = module.network.app_subnet_ids
   lambda_security_group_id = module.security_groups.ids["lambda"]
@@ -223,8 +223,8 @@ module "lambdas" {
   case_due_minutes          = var.case_due_minutes
   log_retention_days        = 14
 
-  apis_repository_url  = module.ecr.repository_urls["apis"]
-  apis_image_tag       = var.apis_image_tag
+  apis_repository_url  = local.repository_urls["apis"]
+  apis_image_tag       = local.image_tags.apis
   exchange_rates_table = module.storage.exchange_rates_table
 }
 
@@ -235,12 +235,12 @@ module "api" {
   source = "../../modules/api"
 
   name_prefix = local.name_prefix
-  enabled     = var.lambda_image_tag != null
-  rules_function = var.lambda_image_tag == null ? null : {
+  enabled     = local.lambda_image_tag != null
+  rules_function = local.lambda_image_tag == null ? null : {
     name = module.lambdas.function_names["rules-api"]
     arn  = module.lambdas.function_arns["rules-api"]
   }
-  cases_function = var.lambda_image_tag == null ? null : {
+  cases_function = local.lambda_image_tag == null ? null : {
     name = module.lambdas.function_names["cases-api"]
     arn  = module.lambdas.function_arns["cases-api"]
   }
@@ -253,7 +253,7 @@ module "reconciliation" {
   source = "../../modules/reconciliation"
 
   name_prefix = local.name_prefix
-  enabled     = var.lambda_image_tag != null
+  enabled     = local.lambda_image_tag != null
 
   statement_reader_arn   = lookup(module.lambdas.function_arns, "statement-reader", "")
   difference_writer_arn  = lookup(module.lambdas.function_arns, "difference-writer", "")
@@ -286,7 +286,7 @@ module "analytics" {
   source = "../../modules/analytics"
 
   name_prefix       = local.name_prefix
-  enabled           = var.lambda_image_tag != null
+  enabled           = local.lambda_image_tag != null
   glue_job_role_arn = module.iam.role_arns["glue-jobs"]
   datalake_bucket   = module.storage.bucket_names["datalake"]
   artifacts_bucket  = module.storage.bucket_names["artifacts"]
@@ -303,7 +303,7 @@ module "monitoring" {
   name_prefix          = local.name_prefix
   ops_alarms_topic_arn = module.messaging.ops_alarms_topic_arn
 
-  engine_deployed         = var.engine_image_tag != null
+  engine_deployed         = local.image_tags.engine != null
   alb_arn_suffix          = module.ecs.alb_arn_suffix
   target_group_arn_suffix = module.ecs.target_group_arn_suffix
   engine_log_group_name   = module.ecs.engine_log_group_name
@@ -312,7 +312,7 @@ module "monitoring" {
 
   queues                       = [for name in ["cases", "history", "analytics"] : "${local.name_prefix}-${name}"]
   lambda_function_names        = module.lambdas.function_names
-  exchange_rates_deployed      = var.apis_image_tag != null
+  exchange_rates_deployed      = local.image_tags.apis != null
   exchange_rates_function_name = module.lambdas.exchange_rates_function_name
   state_machine_arn            = module.reconciliation.state_machine_arn
   db_instance_identifier       = "${local.name_prefix}-db"
