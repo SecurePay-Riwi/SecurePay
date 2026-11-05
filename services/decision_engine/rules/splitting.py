@@ -37,6 +37,9 @@ if history.OUT_HOURS < 24:
     raise ValueError(
         "HISTORY_OUT_HOURS must cover the longest splitting window (24 h)."
     )
+# And as many movements as the highest min_transactions it accepts (le=100).
+if history.OUT_LIMIT < 100:
+    raise ValueError("HISTORY_OUT_LIMIT must be at least 100 (splitting le=100).")
 
 
 def below_limit(

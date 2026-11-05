@@ -36,10 +36,15 @@ from dataclasses import dataclass
 from shared.cache import get_cache
 
 OUT_HOURS = int(os.getenv("HISTORY_OUT_HOURS", "24"))
+# The rules read at most the newest OUT_LIMIT outgoing movements. An
+# account with more in 24 h is already held by velocity; without a limit
+# one busy account makes every decision on it read and parse its whole
+# day (load test of 2026-11-05: p50 120 ms and 27 % default decisions).
+OUT_LIMIT = int(os.getenv("HISTORY_OUT_LIMIT", "100"))
 IN_MINUTES = int(os.getenv("HISTORY_IN_MINUTES", "60"))
 DEVICE_DAYS = int(os.getenv("HISTORY_DEVICE_DAYS", "30"))
 
-if OUT_HOURS <= 0 or IN_MINUTES <= 0 or DEVICE_DAYS <= 0:
+if OUT_HOURS <= 0 or IN_MINUTES <= 0 or DEVICE_DAYS <= 0 or OUT_LIMIT <= 0:
     raise ValueError("History retention must be positive.")
 
 OUT_MS = OUT_HOURS * 3600 * 1000
@@ -52,7 +57,8 @@ DEVICE_MS = DEVICE_DAYS * 24 * 3600 * 1000
 # different nodes.
 # KEYS[1] = out:{account} or in:{account}
 # ARGV = member, event time (ms), retention (ms), retention (s),
-#        return the history (1) or not (0)
+#        return the history (1) or not (0), first index to return
+#        (0 = all of them, -N = the newest N)
 _RECORD = """
 redis.call('ZADD', KEYS[1], ARGV[2], ARGV[1])
 local last = redis.call('ZRANGE', KEYS[1], -1, -1, 'WITHSCORES')
@@ -60,7 +66,7 @@ local cutoff = tonumber(last[2]) - tonumber(ARGV[3])
 redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', string.format('(%.0f', cutoff))
 redis.call('EXPIRE', KEYS[1], ARGV[4])
 if ARGV[5] == '1' then
-  return redis.call('ZRANGE', KEYS[1], 0, -1, 'WITHSCORES')
+  return redis.call('ZRANGE', KEYS[1], ARGV[6], -1, 'WITHSCORES')
 end
 return {}
 """
@@ -72,7 +78,7 @@ class ValkeyHistory:
     def __init__(self):
         self._script = None
 
-    def record(self, key, member, t_ms, retention_ms, return_history) -> list:
+    def record(self, key, member, t_ms, retention_ms, return_history, limit=0) -> list:
         """_RECORD in one call. Valkey's reply: member, score, member..."""
         if self._script is None:
             self._script = get_cache().register_script(_RECORD)
@@ -84,6 +90,7 @@ class ValkeyHistory:
                 retention_ms,
                 retention_ms // 1000,
                 1 if return_history else 0,
+                -limit,
             ],
         )
 
@@ -101,7 +108,7 @@ class InMemoryHistory:
     def __init__(self):
         self._sets: dict[str, dict[str, int]] = {}
 
-    def record(self, key, member, t_ms, retention_ms, return_history) -> list:
+    def record(self, key, member, t_ms, retention_ms, return_history, limit=0) -> list:
         members = self._sets.setdefault(key, {})
         members[member] = t_ms
         cutoff = max(members.values()) - retention_ms
@@ -109,7 +116,8 @@ class InMemoryHistory:
             del members[m]
         if not return_history:
             return []
-        return [item for m, t in self._sorted(key) for item in (m, t)]
+        kept = self._sorted(key)[-limit:] if limit else self._sorted(key)
+        return [item for m, t in kept for item in (m, t)]
 
     def read(self, key) -> list[tuple[str, float]]:
         return self._sorted(key)
@@ -180,12 +188,15 @@ def to_ms(date) -> int:
     return int(date.timestamp() * 1000)
 
 
-def record(key, member, date, retention_ms, return_history):
+def record(key, member, date, retention_ms, return_history, limit=0):
     """Add one member to a sorted set of the history and trim what is
     older than the retention, counted from the newest event. Returns the
-    retained history when asked. Every history key is written through
-    here, in backend()."""
-    return backend().record(key, member, to_ms(date), retention_ms, return_history)
+    retained history when asked, only its newest `limit` members when
+    `limit` is set. Every history key is written through here, in
+    backend()."""
+    return backend().record(
+        key, member, to_ms(date), retention_ms, return_history, limit
+    )
 
 
 def read(key) -> list[tuple[str, float]]:
@@ -200,10 +211,17 @@ def _pairs(raw):
 
 
 def record_outgoing(account_id, tx_id, tx_type, amount, date) -> list[Outgoing]:
-    """Store what leaves the account and return all its retained outgoing
-    movements, in real chronological order."""
+    """Store what leaves the account and return its newest OUT_LIMIT
+    retained outgoing movements, in real chronological order."""
     member = f"{tx_id}|{tx_type}|{amount}"
-    raw = record(outgoing_key(account_id), member, date, OUT_MS, return_history=True)
+    raw = record(
+        outgoing_key(account_id),
+        member,
+        date,
+        OUT_MS,
+        return_history=True,
+        limit=OUT_LIMIT,
+    )
 
     result = []
     for m, t in _pairs(raw):

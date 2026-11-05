@@ -113,3 +113,28 @@ resource "aws_appautoscaling_policy" "engine_cpu" {
     }
   }
 }
+
+# The engine waits on Valkey more than it computes, so it can be full
+# with its CPU low (load test of 2026-11-05: 38 % CPU, decisions queued).
+# A second policy on requests per task scales it before that; the
+# service follows whichever policy asks for more tasks.
+resource "aws_appautoscaling_policy" "engine_requests" {
+  count = local.deploy_engine ? 1 : 0
+
+  name               = "${var.name_prefix}-engine-requests"
+  policy_type        = "TargetTrackingScaling"
+  service_namespace  = aws_appautoscaling_target.engine[0].service_namespace
+  scalable_dimension = aws_appautoscaling_target.engine[0].scalable_dimension
+  resource_id        = aws_appautoscaling_target.engine[0].resource_id
+
+  target_tracking_scaling_policy_configuration {
+    target_value       = var.engine_requests_per_task
+    scale_out_cooldown = 60
+    scale_in_cooldown  = 300
+
+    predefined_metric_specification {
+      predefined_metric_type = "ALBRequestCountPerTarget"
+      resource_label         = "${aws_lb.this.arn_suffix}/${aws_lb_target_group.engine.arn_suffix}"
+    }
+  }
+}

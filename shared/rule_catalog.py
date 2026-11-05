@@ -38,7 +38,9 @@ class RestrictedListParams(_Params):
 
 class VelocityParams(_Params):
     window_minutes: int = Field(10, gt=0, le=1440)  # out:{account} keeps 24 h
-    limit: int = Field(5, gt=0)  # fires when count > limit
+    # fires when count > limit; the engine reads at most 100 outgoing
+    # movements (HISTORY_OUT_LIMIT), so the count can reach 100
+    limit: int = Field(5, gt=0, le=99)
 
 
 class MuleParams(_Params):
@@ -54,7 +56,8 @@ class SharedDeviceParams(_Params):
 
 class SplittingParams(_Params):
     window_hours: int = Field(24, gt=0, le=24)  # out:{account} keeps 24 h
-    min_transactions: int = Field(3, gt=1)
+    # at most the 100 outgoing movements the engine reads (HISTORY_OUT_LIMIT)
+    min_transactions: int = Field(3, gt=1, le=100)
     daily_limit_usd: Decimal = Field(Decimal("10000"), gt=0)
 
 

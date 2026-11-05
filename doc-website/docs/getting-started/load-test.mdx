@@ -14,7 +14,7 @@ The files are in `infra/load/`:
 | :--- | :--- |
 | `locustfile.py` | [Locust](https://locust.io/): each simulated core sends one transaction per second, so users = tx/s. The shape holds each step of `LOAD_STEPS` for `LOAD_STEP_SECONDS` and stops. At the end it prints how the engine answered (`APPROVE`, `HOLD`, `REJECT`, `default`) |
 | `transactions.py` | The requests: P2P 60 %, QR 25 %, RECARGA 10 %, RETIRO 5 %, between the seed's active accounts, each in the payer's currency, with a new id each |
-| `accounts.json` | The seed's 98 active accounts with their currency, and its 20 active merchants. AWS dev uses the same seed mode (`SEED_MODE=dev`), so these ids exist there. `python -m infra.load.accounts` writes it again if the seed changes |
+| `accounts.json` | The seed's 9,820 active accounts with their currency (one per line), and its 20 active merchants. AWS dev is seeded with the same volume (`SEED_MODE=dev`, `SEED_USERS=10000` in `envs/dev`), so these ids exist there. To write it again, seed locally with `SEED_USERS=10000` and run `python -m infra.load.accounts` |
 
 `services/decision_engine/tests/test_load_transactions.py` checks that every generated transaction is a request the engine accepts.
 
@@ -74,8 +74,8 @@ Locust's numbers say what a client sees, and they are the ones to look at for er
 
 ## Expected and how to read it
 
-- **Autoscaling** starts at 4 tasks and adds tasks at 60 % CPU, up to 24. The estimate is about 25 tx/s per task (0.5 vCPU). 50 tx/s should hold on the 4 tasks, and 300 tx/s should reach about 12 tasks. If p99 goes above 180 ms while tasks are still being added, the scaling is too slow for the ramp: lower the CPU target or raise the minimum. Record the time from the start of the 300 step to the last new task.
-- **HOLD is frequent, and that is expected.** 98 accounts carry the whole load, so each one sends several transfers a minute, and velocity (more than 5 in 10 minutes) holds them. A HOLD is a full decision with every rule run, so it is measured the same as an APPROVE. `REJECT` comes from the accounts whose owner is on the restricted list.
+- **Autoscaling** starts at 4 tasks and adds tasks at 60 % CPU or at 1,800 requests per task per minute (30 tx/s, `engine_requests_per_task`), whichever asks for more, up to 24. The estimate is about 25 tx/s per task (0.5 vCPU). 50 tx/s should hold on the 4 tasks, and 300 tx/s should reach about 12 tasks. If p99 goes above 180 ms while tasks are still being added, the scaling is too slow for the ramp: lower the CPU target or raise the minimum. Record the time from the start of the 300 step to the last new task.
+- **HOLD is rare.** 9,820 accounts share the load, so an account sends a few transactions in the whole test and velocity (more than 5 in 10 minutes) seldom fires. A HOLD is a full decision with every rule run, so it is measured the same as an APPROVE. `REJECT` comes from the accounts whose owner is on the restricted list.
 - **Default decisions above 1 %** (alarm 2) mean the rules or the cache did not answer in `DECISION_TIMEOUT_MS`. That is a failure of the test even if the latency looks good.
 - After the test, the engine's history in Valkey keeps these accounts' activity for 24 hours (`out:{account}`), and the cases consumer has opened cases for the restricted accounts. Dev is disposable; do not run this against data that matters.
 
@@ -96,3 +96,16 @@ With the numbers:
 - confirm or revise [ADR-07](../architecture/decisions.mdx#adr-07) (the maximum of 24 tasks).
 
 **Tested locally** (November 4, 2026), against one engine process (`uvicorn`, no workers) with local Valkey: 25 tx/s for a minute, 0 failures, p99 150 ms. That only proves the script. It says nothing about Fargate.
+
+**First run in AWS** (November 5, 2026), with 4 to 24 tasks and the 98 accounts of the seed of then: it failed. 50 tx/s held. At 150 tx/s the load balancer's p99 rose to 3 s and then to 6 s, the engine never passed about 80 tx/s, and 73 % of the decisions were default decisions (17,600 of 24,000 per worker; 4 `HTTP 502` in 71,879 requests). The service stayed at 4 tasks: its CPU never passed 38 %, under the 60 % target. The engine's log said why: `elapsed_ms` p50 was exactly 120 ms (`DECISION_TIMEOUT_MS`), so most rules ran out of time.
+
+The cause was the test, and a weakness it uncovered. 98 accounts took about 700 transactions each in 15 minutes, `out:{account}` keeps 24 hours, and every decision read and parsed the account's whole day from Valkey. Reproduced locally (one core, 150 tx/s, about 600 movements per account): p50 121 ms and 27 % default decisions; about 70 % of the time went to reading Valkey's reply in Python. The changes:
+
+| Change | Where | Local result (same case) |
+| :--- | :--- | :--- |
+| Valkey's C reply parser | `valkey[libvalkey]` in `pyproject.toml` | p50 65 ms, 6 % default decisions |
+| The rules read at most the newest 100 outgoing movements (team decision, November 5, 2026) | `HISTORY_OUT_LIMIT` in `history.py`; the catalog caps velocity's `limit` at 99 and splitting's `min_transactions` at 100 | p50 11 ms, 0 % default decisions |
+| 9,820 accounts instead of 98 | `SEED_USERS=10000` in `envs/dev`, `accounts.json` | 15 ms with 9,820 accounts |
+| Scaling on requests per task, not only CPU | `aws_appautoscaling_policy.engine_requests` | Checked in AWS in the next run |
+
+The table above is filled in with the next run.

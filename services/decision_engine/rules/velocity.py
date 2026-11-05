@@ -18,6 +18,9 @@ TYPE = "velocity"
 # (VelocityParams.window_minutes, le=1440).
 if history.OUT_HOURS < 24:
     raise ValueError("HISTORY_OUT_HOURS must cover the longest velocity window (24 h).")
+# And as many movements as the highest limit it accepts (le=99) plus one.
+if history.OUT_LIMIT < 100:
+    raise ValueError("HISTORY_OUT_LIMIT must be at least 100 (velocity limit le=99).")
 
 # Only transfers between accounts count: a QR payment goes to a merchant
 # and a withdrawal goes out as cash (logbook 3.7).

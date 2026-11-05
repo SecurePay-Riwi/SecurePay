@@ -58,6 +58,7 @@ See [Seed](../components/seed.mdx).
 | `VALKEY_CLUSTER` | `false` | `true` uses the cluster client. ElastiCache Serverless only accepts the cluster protocol, so Terraform sets it in AWS; local Valkey is a single node. |
 | `IDEMPOTENCY_TTL_SECONDS` | `3600` | How long a decision is returned to resends. |
 | `HISTORY_OUT_HOURS` | `24` | Outgoing history kept per account (`out:{account}`). At least 24: the longest velocity and splitting windows the catalog accepts. |
+| `HISTORY_OUT_LIMIT` | `100` | Newest outgoing movements the rules read. At least 100: the highest velocity `limit` (99) and splitting `min_transactions` (100) the catalog accepts. |
 | `HISTORY_IN_MINUTES` | `60` | Incoming history kept per account (`in:{account}`), for the mule rule. At least 60, the longest mule window the catalog accepts. |
 | `HISTORY_DEVICE_DAYS` | `30` | How long an account stays on a device's history (`dev:{device}`), for the shared device rule. At least 30, the longest window the catalog accepts. |
 | `HISTORY_SECURITY_MINUTES` | `60` | Security events kept per account (`sec:{account}`), for the account takeover rule (1 hour). |

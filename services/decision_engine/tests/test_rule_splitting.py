@@ -13,8 +13,10 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from sqlalchemy import func
 
+from services.decision_engine import history
 from services.decision_engine.currency import RATES_PER_USD, to_usd
 from services.decision_engine.history import Outgoing, to_ms
 from services.decision_engine.main import app
@@ -25,7 +27,7 @@ from shared.cache import get_cache
 from shared.config import MONEDA_DECIMALES
 from shared.db import get_session
 from shared.models import Cuenta, ListaRestrictiva, Usuario
-from shared.rule_catalog import default_catalog
+from shared.rule_catalog import SplittingParams, VelocityParams, default_catalog
 
 BASE = datetime(2026, 10, 13, 12, 0, tzinfo=UTC)
 
@@ -210,3 +212,12 @@ def test_three_withdrawals_over_the_limit_are_held_with_a_case(
     assert last["risk_score"] == 40
     assert last["decision_reason"].startswith("Splitting: 3 transactions in 24 hours")
     assert eventos_publicados[-1]["decision"]["opens_case"] is True
+
+
+def test_the_catalog_never_asks_for_more_than_the_history_returns():
+    # The engine reads at most HISTORY_OUT_LIMIT (100) outgoing movements.
+    with pytest.raises(ValidationError):
+        SplittingParams(min_transactions=101)
+    with pytest.raises(ValidationError):
+        VelocityParams(limit=100)
+    assert history.OUT_LIMIT >= 100

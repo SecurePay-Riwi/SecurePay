@@ -101,6 +101,12 @@ variable "engine_cpu_target" {
   default     = 60
 }
 
+variable "engine_requests_per_task" {
+  description = "Requests per minute per task the service scales to keep (1800 = 30 tx/s)."
+  type        = number
+  default     = 1800
+}
+
 variable "engine_execution_role_arn" {
   type = string
 }

@@ -274,7 +274,7 @@ Tests: `services/cache_loader/tests/test_loader.py` (in a scratch Valkey databas
 
 | Key | What goes in | Member | Kept | Read by |
 | :--- | :--- | :--- | :--- | :--- |
-| `out:{account}` | What leaves the account: `P2P`, `QR`, `RETIRO` | `id\|type\|amount` | 24 h (`HISTORY_OUT_HOURS`) | Velocity (10 min), splitting (24 h) |
+| `out:{account}` | What leaves the account: `P2P`, `QR`, `RETIRO` | `id\|type\|amount` | 24 h (`HISTORY_OUT_HOURS`); the rules read the newest 100 (`HISTORY_OUT_LIMIT`) | Velocity (10 min), splitting (24 h) |
 | `in:{account}` | `P2P` transfers that arrive, with the sender and the amount | `id\|sender_account\|amount` | 60 min (`HISTORY_IN_MINUTES`) | Mule account (30 min) |
 | `dev:{device}` | The accounts that used the device; the score is the last time each one was seen | `account_id` | 30 days (`HISTORY_DEVICE_DAYS`) | Shared device (30 days) |
 
@@ -311,6 +311,7 @@ The window and the limit are the catalog's `window_minutes` and `limit` (held wh
 | Variable | Default | Meaning |
 | :--- | ---: | :--- |
 | `HISTORY_OUT_HOURS` | 24 | Outgoing history kept per account. An event later than this is evaluated with incomplete history. At least 24. |
+| `HISTORY_OUT_LIMIT` | 100 | Newest outgoing movements the rules read, of the ones kept. An account with more in 24 h is already held by velocity; without a limit one busy account slows every decision on it ([load test](../getting-started/load-test.mdx#result)). At least 100: the catalog accepts velocity `limit` up to 99 and splitting `min_transactions` up to 100. |
 | `HISTORY_IN_MINUTES` | 60 | Incoming history kept per account. At least 60, the longest mule window. |
 | `HISTORY_SECURITY_MINUTES` | 60 | Security events kept per account (`sec:{account}`), for the account takeover rule (1 hour). |
 

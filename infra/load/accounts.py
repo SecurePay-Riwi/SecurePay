@@ -4,9 +4,10 @@
 
 reads the seed's PostgreSQL (DATABASE_URL) and writes accounts.json next
 to this file: the active accounts with their currency and the active
-merchants. The seed is deterministic and AWS dev is seeded in the same
-mode (SEED_MODE=dev, 100 users), so the file works against dev's engine
-too; run it again only if the seed changes.
+merchants. The seed is deterministic and AWS dev is seeded with the same
+volume (SEED_MODE=dev, SEED_USERS=10000 in envs/dev), so the file works
+against dev's engine too; seed with SEED_USERS=10000 before running it,
+and run it again only if the seed changes. One account per line.
 """
 
 import json
@@ -35,7 +36,15 @@ def read(session) -> dict:
 def main() -> None:
     with SessionLocal() as session:
         data = read(session)
-    OUTPUT.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    lines = [json.dumps(a) for a in data["accounts"]]
+    OUTPUT.write_text(
+        '{"accounts": [\n'
+        + ",\n".join(lines)
+        + '\n],\n"merchants": '
+        + json.dumps(data["merchants"])
+        + "}\n",
+        encoding="utf-8",
+    )
     print(f"{len(data['accounts'])} accounts, {len(data['merchants'])} merchants")
 
 
