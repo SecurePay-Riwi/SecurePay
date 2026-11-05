@@ -263,10 +263,10 @@ def test_cache_down_gets_the_default_decision_in_time(monkeypatch):
     # D2: the reference data cannot be read, RN-01 decides in < 200 ms.
     from services.decision_engine import reference_data
 
-    def down(_account_id):
+    def down(*_args):
         raise reference_data.CacheUnavailable("simulated")
 
-    monkeypatch.setattr(reference_data, "get_account", down)
+    monkeypatch.setattr(reference_data, "lookup", down)
     payload = _payload_normal()
 
     start = perf_counter()
@@ -667,20 +667,22 @@ def test_restricted_list_precheck_covers_all_parties_before_velocity(monkeypatch
     events = []
     queried_documents = []
 
-    def on_restricted_list(documents):
+    real_queue = reference_data.queue_restricted
+
+    def queue_restricted(pipe, documents):
         queried_documents.extend(documents)
         events.append("restricted_list_read")
-        return destination_document in documents
+        return real_queue(pipe, documents)
 
+    def lookup(account_ids, _merchant_id=None):
+        return {i: accounts[str(i)] for i in account_ids if i is not None}, None
+
+    monkeypatch.setattr(reference_data, "lookup", lookup)
+    monkeypatch.setattr(reference_data, "queue_restricted", queue_restricted)
     monkeypatch.setattr(
-        reference_data, "get_account", lambda account_id: accounts[str(account_id)]
-    )
-    monkeypatch.setattr(reference_data, "on_restricted_list", on_restricted_list)
-    monkeypatch.setattr(
-        decision_service.history, "record_outgoing", lambda *args, **kwargs: []
-    )
-    monkeypatch.setattr(
-        decision_service.history, "record_incoming", lambda *args, **kwargs: None
+        reference_data,
+        "restricted_answer",
+        lambda _replies: destination_document in queried_documents,
     )
 
     def count_velocity(*_args, **_kwargs):

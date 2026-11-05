@@ -9,7 +9,7 @@ description: Measured optimizations of the Spark match and of the decision engin
 This page is deliverable E-13 and the evidence for topic 15 of the brief ("Spark ETL + performance"). It covers two measured optimizations, each with the same input before and after:
 
 - **The nightly match** (Spark, HU-37) is 2.6 times faster and reads half the data, with identical output.
-- **The decision engine** went from a p50 of 121 ms with 27 % default decisions to 11 ms with 0 %, on the case that broke the first load test.
+- **The decision engine** went from a p50 of 121 ms with 27 % default decisions to 11 ms with 0 %, on the case that broke the first load test, and then from 8.4 to 4 round trips to Valkey per decision (p50 16.8 → 9.5 ms with AWS-like network latency).
 
 ## The Spark match
 
@@ -119,3 +119,16 @@ The first load test in AWS (November 5, 2026) failed at 150 tx/s: 73 % default d
 | Plus 9,820 accounts instead of 98 | 15 ms | 0 % |
 
 The profile before the change put about 70 % of the time in parsing Valkey's replies in Python. Each decision read and parsed the account's whole day, about 600 members. The limit is a team decision ([Team decisions](../architecture/team-decisions.mdx)). The repeated load test in AWS, run from the EC2 machine inside the VPC, fills in the table of [Load test](../getting-started/load-test.mdx#result).
+
+### Fewer round trips to Valkey
+
+The second, third and fourth load tests in AWS (November 5, 2026) passed at 50 and 150 tx/s, but with 10 tasks the p99 at 300 tx/s was 246 ms (1.79 % default decisions). With 20 tasks it was 129 ms, so the limit was the capacity of each task, not the cache (no throttled commands, CPU at 31 %). A decision waited on Valkey 8.4 times, one command after another, about 1.7 ms each inside the VPC.
+
+The reads and writes that do not depend on each other now share a pipeline: the two accounts and the merchant in one, the history scripts and the restricted list in another. With the idempotency reservation and the saved decision, a decision makes 4 round trips. Measured locally on one core limited to half a CPU (like a 0.5 vCPU task), through a proxy that adds the network delay of AWS (1.7 ms per round trip), with an open-loop generator at 90 tx/s for 30 s:
+
+| | Round trips per decision | p50 | p95 | p99 |
+| :--- | ---: | ---: | ---: | ---: |
+| One command at a time | 8.4 | 16.8 ms | 20.9 ms | 24.6 ms |
+| Two pipelines | **4.0** | **9.5 ms** | **12.6 ms** | **16.4 ms** |
+
+Both runs had 0 % default decisions. The engine's tests also pass against a local three-node Valkey cluster (`VALKEY_CLUSTER=true`), the protocol ElastiCache Serverless speaks (except `test_reference_data.py`'s reads, which use database 15 of a single node). The fifth load test in AWS, with 10 tasks, fills in the table of [Load test](../getting-started/load-test.mdx#result).

@@ -82,11 +82,12 @@ def _read(command, *args):
         raise CacheUnavailable(str(exc)) from exc
 
 
-def get_account(account_id) -> Account | None:
-    """The account, or None if the cache does not have it."""
-    if (source := _source.get()) is not None:
-        return source.get_account(account_id)
-    data = _read(get_cache().hgetall, account_key(account_id))
+def uses_cache() -> bool:
+    """True unless use_source() put another source in this context."""
+    return _source.get() is None
+
+
+def _account(account_id, data: dict) -> Account | None:
     if not data:
         return None
     return Account(
@@ -96,6 +97,41 @@ def get_account(account_id) -> Account | None:
         document=data["document"],
         status=data["status"],
     )
+
+
+def get_account(account_id) -> Account | None:
+    """The account, or None if the cache does not have it."""
+    if (source := _source.get()) is not None:
+        return source.get_account(account_id)
+    return _account(account_id, _read(get_cache().hgetall, account_key(account_id)))
+
+
+def lookup(account_ids, merchant_id=None) -> tuple[dict, bool | None]:
+    """Every account (None for one the cache does not have) and whether
+    the merchant exists (None without a merchant), in one round trip to
+    Valkey: the same answers as get_account() and merchant_exists(), which
+    cost one round trip each (load test of 2026-11-05)."""
+    ids = [account_id for account_id in account_ids if account_id is not None]
+    if (source := _source.get()) is not None:
+        accounts = {account_id: source.get_account(account_id) for account_id in ids}
+        if merchant_id is None:
+            return accounts, None
+        return accounts, source.merchant_exists(merchant_id)
+
+    pipe = get_cache().pipeline(transaction=False)
+    for account_id in ids:
+        pipe.hgetall(account_key(account_id))
+    if merchant_id is not None:
+        pipe.exists(merchant_key(merchant_id))
+    replies = _read(pipe.execute)
+
+    accounts = {
+        account_id: _account(account_id, data)
+        for account_id, data in zip(ids, replies, strict=False)
+    }
+    if merchant_id is None:
+        return accounts, None
+    return accounts, bool(replies[len(ids)])
 
 
 def merchant_exists(merchant_id) -> bool:
@@ -113,10 +149,33 @@ def on_restricted_list(documents: set[str]) -> bool | None:
     """
     if (source := _source.get()) is not None:
         return source.on_restricted_list(documents)
+    pipe = get_cache().pipeline(transaction=False)
+    queue_restricted(pipe, documents)
+    return restricted_answer(_read(pipe.execute))
+
+
+def queue_restricted(pipe, documents: set[str]) -> int:
+    """Queue on a pipeline the commands on_restricted_list() needs, so
+    they can share a round trip with other commands. Returns how many
+    replies they take; restricted_answer() reads them."""
     if documents:
-        hits = _read(get_cache().smismember, RESTRICTED_DOCS, sorted(documents))
-        if any(hits):
-            return True
-    if not _read(get_cache().exists, RESTRICTED_LOADED_AT):
+        pipe.smismember(RESTRICTED_DOCS, sorted(documents))
+        pipe.exists(RESTRICTED_LOADED_AT)
+        return 2
+    pipe.exists(RESTRICTED_LOADED_AT)
+    return 1
+
+
+def restricted_answer(replies: list) -> bool | None:
+    """on_restricted_list() from the replies of queue_restricted(). A
+    pipeline run with raise_on_error=False returns an error in place of
+    its reply: that is CacheUnavailable too."""
+    for reply in replies:
+        if isinstance(reply, Exception):
+            raise CacheUnavailable(str(reply)) from reply
+    *hits, loaded = replies
+    if hits and any(hits[0]):
+        return True
+    if not loaded:
         return None
     return False

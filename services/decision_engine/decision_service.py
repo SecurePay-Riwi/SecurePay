@@ -6,6 +6,8 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as DecisionTimeout
 from datetime import UTC, datetime
 
+import valkey
+
 from services.decision_engine import (
     catalog,
     currency,
@@ -22,6 +24,7 @@ from services.decision_engine.schemas import (
     TransactionRequest,
     TransactionType,
 )
+from shared.cache import get_cache
 from shared.events import evento_decision
 from shared.refdata import digits
 from shared.rule_catalog import CatalogSnapshot, DefaultTimeoutParams
@@ -112,6 +115,75 @@ def evaluate_rules(ctx: RuleContext, snapshot: CatalogSnapshot) -> list[Triggere
     return triggered
 
 
+# on_restricted_list was not read with the history: RuleContext reads it
+# when a rule asks.
+_NOT_READ = object()
+
+
+def _write_history(payload, main_account, documents, check_list):
+    """Write the account history and, when the restricted list rule is
+    enabled, read the list, in one round trip to the cache.
+
+    The history is written before deciding, whatever the decision and
+    whichever rules are enabled, because the attempt counts too (see
+    history.py). Returns the source account's outgoing history, the
+    accounts of the device and the restricted list's answer (_NOT_READ
+    when it was not read here).
+
+    Each Valkey round trip took about 1.7 ms in AWS, and a decision made
+    8 of them; ten tasks did not hold 300 tx/s (load test of 2026-11-05).
+    """
+    records = []
+    if payload.type in OUTGOING_TYPES:
+        records.append(
+            history.outgoing_record(
+                payload.source_account_id,
+                payload.id,
+                payload.type.value,
+                payload.amount,
+                payload.transaction_date,
+            )
+        )
+    if payload.type == TransactionType.P2P:
+        records.append(
+            history.incoming_record(
+                payload.destination_account_id,
+                payload.id,
+                payload.source_account_id,
+                payload.amount,
+                payload.transaction_date,
+            )
+        )
+    records.append(
+        history.device_record(
+            payload.device_id, main_account.id, payload.transaction_date
+        )
+    )
+
+    if history.uses_valkey() and reference_data.uses_cache():
+        pipe = get_cache().pipeline(transaction=False)
+        history.queue(pipe, records)
+        if check_list:
+            reference_data.queue_restricted(pipe, documents)
+        try:
+            replies = pipe.execute(raise_on_error=False)
+            written = history.finish(records, replies[: len(records)])
+        except valkey.exceptions.ValkeyError as exc:
+            raise CacheUnavailable(str(exc)) from exc
+        on_list = (
+            reference_data.restricted_answer(replies[len(records) :])
+            if check_list
+            else _NOT_READ
+        )
+    else:
+        # A replay (services/analytics/): another backend or source.
+        written = history.run(records)
+        on_list = _NOT_READ
+
+    outgoing = written[0] if payload.type in OUTGOING_TYPES else []
+    return outgoing, written[-1], on_list
+
+
 def _decide(payload: TransactionRequest, snapshot: CatalogSnapshot) -> dict:
     """Apply the catalog's rules and return the decision, without
     storing it.
@@ -121,20 +193,18 @@ def _decide(payload: TransactionRequest, snapshot: CatalogSnapshot) -> dict:
     gets RN-01's default decision (D2); CacheUnavailable goes up to
     _decide_in_time(), which answers the same way.
     """
-    accounts = {}
-    for account_id in (payload.source_account_id, payload.destination_account_id):
-        if account_id is None:
-            continue
-        account = reference_data.get_account(account_id)
+    # Both accounts and the merchant in one round trip to the cache.
+    accounts, merchant_found = reference_data.lookup(
+        (payload.source_account_id, payload.destination_account_id),
+        payload.merchant_id,
+    )
+    for account_id, account in accounts.items():
         if account is None:
             return default_decision(
                 payload, snapshot, f"account {account_id} is not in the cache"
             )
-        accounts[account_id] = account
 
-    if payload.merchant_id is not None and not reference_data.merchant_exists(
-        payload.merchant_id
-    ):
+    if merchant_found is False:
         return default_decision(
             payload, snapshot, f"merchant {payload.merchant_id} is not in the cache"
         )
@@ -150,30 +220,10 @@ def _decide(payload: TransactionRequest, snapshot: CatalogSnapshot) -> dict:
     # The loader already keeps only the digits.
     documents = {normalize_document(account.document) for account in accounts.values()}
 
-    # Account history: written before deciding, whatever the decision
-    # and whichever rules are enabled, because the attempt counts too
-    # (see history.py).
-    outgoing = []
-    if payload.type in OUTGOING_TYPES:
-        outgoing = history.record_outgoing(
-            payload.source_account_id,
-            payload.id,
-            payload.type.value,
-            payload.amount,
-            payload.transaction_date,
-        )
-    if payload.type == TransactionType.P2P:
-        history.record_incoming(
-            payload.destination_account_id,
-            payload.id,
-            payload.source_account_id,
-            payload.amount,
-            payload.transaction_date,
-        )
-    device_accounts = history.record_device(
-        payload.device_id,
-        main_account.id,
-        payload.transaction_date,
+    restricted = snapshot.get(RESTRICTED_RULE)
+    check_list = bool(restricted and restricted.enabled)
+    outgoing, device_accounts, on_list = _write_history(
+        payload, main_account, documents, check_list
     )
 
     rate = currency.rate_for(
@@ -189,9 +239,10 @@ def _decide(payload: TransactionRequest, snapshot: CatalogSnapshot) -> dict:
         documents=documents,
         device_accounts=device_accounts,
     )
+    if on_list is not _NOT_READ:
+        ctx.on_restricted_list = on_list
 
-    restricted = snapshot.get(RESTRICTED_RULE)
-    if restricted and restricted.enabled and ctx.on_restricted_list is None:
+    if check_list and ctx.on_restricted_list is None:
         return restricted_list_not_loaded(payload, snapshot)
 
     triggered = evaluate_rules(ctx, snapshot)
