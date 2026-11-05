@@ -8,6 +8,7 @@ Terraform calls this file, never a person:
               already there (ECR tags are immutable)
     run-task  runs a Fargate task and fails if its container fails (the
               seed)
+    start-day starts the nightly state machine for the demo day
 
 Only the standard library and the docker and aws commands: it runs with
 `uv run --no-project python`, outside the project's environment, on
@@ -141,6 +142,17 @@ def run_task(
     print(f"{task_definition} ended with exit code 0")
 
 
+def start_day(state_machine: str, day: str, region: str) -> None:
+    """Starts the nightly state machine for one day and returns: the run
+    takes several minutes and the apply does not wait for it."""
+    execution = _run(
+        "aws", "stepfunctions", "--region", region, "start-execution",
+        "--state-machine-arn", state_machine, "--input", json.dumps({"day": day}),
+        "--query", "executionArn", "--output", "text",
+    )  # fmt: skip
+    print(f"started {execution}; follow it in Step Functions")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
@@ -160,11 +172,18 @@ def main(argv: list[str] | None = None) -> None:
     t.add_argument("--region", required=True)
     t.add_argument("--timeout-minutes", type=int, default=20)
 
+    d = commands.add_parser("start-day")
+    d.add_argument("--state-machine", required=True)
+    d.add_argument("--day", required=True)
+    d.add_argument("--region", required=True)
+
     args = parser.parse_args(argv)
     if args.command == "tags":
         print(json.dumps(tags(json.load(sys.stdin))))
     elif args.command == "push":
         push(args.repository, args.tag, args.context, args.region)
+    elif args.command == "start-day":
+        start_day(args.state_machine, args.day, args.region)
     else:
         run_task(
             args.cluster,

@@ -51,8 +51,8 @@ resource "aws_cognito_user_pool" "this" {
     require_symbols   = false
   }
 
-  # Users are created by an administrator (deploy-aws-terraform.mdx), never
-  # by signing up.
+  # Users are created by an administrator (var.users, or by hand as in
+  # deploy-aws-terraform.mdx), never by signing up.
   admin_create_user_config {
     allow_admin_create_user_only = true
   }
@@ -93,6 +93,41 @@ resource "aws_cognito_user_pool_client" "this" {
     access_token  = "minutes"
     refresh_token = "days"
   }
+}
+
+# The demo's users (var.users), so nobody creates them by hand after each
+# apply. The e-mail is not sent (SUPPRESS) and the password is permanent:
+# `terraform output -json api_user_passwords` gives them.
+resource "random_password" "user" {
+  for_each = var.enabled ? var.users : {}
+
+  length      = 16
+  special     = false
+  min_lower   = 1
+  min_upper   = 1
+  min_numeric = 1
+}
+
+resource "aws_cognito_user" "this" {
+  for_each = var.enabled ? var.users : {}
+
+  user_pool_id   = aws_cognito_user_pool.this[0].id
+  username       = each.key
+  password       = random_password.user[each.key].result
+  message_action = "SUPPRESS"
+
+  attributes = {
+    email          = each.key
+    email_verified = true
+  }
+}
+
+resource "aws_cognito_user_in_group" "this" {
+  for_each = var.enabled ? var.users : {}
+
+  user_pool_id = aws_cognito_user_pool.this[0].id
+  group_name   = aws_cognito_user_group.this[each.value].name
+  username     = aws_cognito_user.this[each.key].username
 }
 
 # --- HTTP API -----------------------------------------------------------------

@@ -41,3 +41,14 @@ variable "log_retention_days" {
   type    = number
   default = 14
 }
+
+variable "users" {
+  description = "Cognito users to create, e-mail => group (analista or gerente). Each gets a generated permanent password (output user_passwords). Dev only: the passwords are in the state."
+  type        = map(string)
+  default     = {}
+
+  validation {
+    condition     = alltrue([for group in values(var.users) : contains(["analista", "gerente"], group)])
+    error_message = "Each user's group must be analista or gerente."
+  }
+}

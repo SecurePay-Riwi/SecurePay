@@ -145,3 +145,9 @@ output "load_test_command" {
   description = "Starts the full load test on the machine through Systems Manager and prints its command id (null unless load_runner = true)."
   value       = module.load_runner.load_test_command
 }
+
+output "api_user_passwords" {
+  description = "E-mail => password of the Cognito users of api_users: terraform output -json api_user_passwords."
+  value       = module.api.user_passwords
+  sensitive   = true
+}

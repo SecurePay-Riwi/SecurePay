@@ -708,7 +708,7 @@ Necesitas Terraform 1.9 o más reciente, la CLI de AWS y un usuario IAM (nunca r
 
     cp terraform.tfvars.example terraform.tfvars   # tu nombre y tu correo
     terraform init
-    terraform plan       # con Docker Desktop abierto y uv: unos 318 to add (todo el ambiente)
+    terraform plan       # con Docker Desktop abierto y uv: unos 337 to add (todo el ambiente)
     terraform apply
     terraform destroy    # siempre al terminar de probar: los NAT y RDS cobran aunque no haya tráfico
 

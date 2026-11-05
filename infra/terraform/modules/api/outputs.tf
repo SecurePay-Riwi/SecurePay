@@ -12,3 +12,9 @@ output "client_id" {
   description = "Cognito app client to sign in with (null until the Lambdas exist)."
   value       = one(aws_cognito_user_pool_client.this[*].id)
 }
+
+output "user_passwords" {
+  description = "E-mail => password of each user of var.users."
+  value       = { for email, password in random_password.user : email => password.result }
+  sensitive   = true
+}

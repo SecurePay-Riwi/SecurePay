@@ -126,3 +126,44 @@ resource "aws_dynamodb_table_item" "test_day_rates" {
     source = { S = "fixed rates of 2026-10-01 (currency.RATES_PER_USD), written by Terraform" }
   })
 }
+
+# The demo day (load_demo_day): the fixture day 2026-10-05 of the
+# reconciliation (partner files and decisions, the 6 differences of its
+# answer key) and of the analytics (more decisions and the generator's
+# labels), then one run of the nightly state machine for that day. With
+# both sets the treasury e-mail says 19 differences: the analytics
+# decisions add 13 approved transactions no partner reported.
+locals {
+  demo_files = var.load_demo_day && local.lambda_image_tag != null ? merge(
+    { for f in fileset("${local.repo_root}/services/reconciliation/tests/fixtures/extractos", "**") :
+    "raw/extractos/${f}" => "${local.repo_root}/services/reconciliation/tests/fixtures/extractos/${f}" },
+    { for f in fileset("${local.repo_root}/services/reconciliation/tests/fixtures/decisiones", "**") :
+    "raw/decisiones/${f}" => "${local.repo_root}/services/reconciliation/tests/fixtures/decisiones/${f}" },
+    { for f in fileset("${local.repo_root}/services/analytics/tests/fixtures/raw", "{decisiones,labels}/**") :
+    "raw/${f}" => "${local.repo_root}/services/analytics/tests/fixtures/raw/${f}" },
+  ) : {}
+}
+
+resource "aws_s3_object" "demo_day" {
+  for_each = local.demo_files
+
+  bucket = module.storage.bucket_names["datalake"]
+  key    = each.key
+  source = each.value
+  etag   = filemd5(each.value)
+}
+
+# Started once (again only if a fixture changes); the apply does not wait
+# for the run, which takes 5 to 10 minutes.
+resource "terraform_data" "demo_day_run" {
+  count = length(local.demo_files) > 0 ? 1 : 0
+
+  triggers_replace = [for key in sort(keys(local.demo_files)) : aws_s3_object.demo_day[key].etag]
+
+  provisioner "local-exec" {
+    command = "${local.dev_up} start-day --state-machine ${module.reconciliation.state_machine_arn} --day 2026-10-05 --region ${var.region}"
+  }
+
+  # The seed and the cache first: the run's store and export read RDS.
+  depends_on = [terraform_data.seed]
+}
