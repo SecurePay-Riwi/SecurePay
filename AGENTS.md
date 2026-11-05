@@ -628,7 +628,22 @@ Read this before adding or changing a rule in `services/decision_engine/`.
   - Recharges are not recorded. Attempts count whatever the decision: the
     history is written before deciding (team decision, 2026-10-21).
   - One key per Lua script: ElastiCache Serverless may put two keys on
-    different nodes. Write every history key through `history.record()`.
+    different nodes. Write every history key through `history.record()`
+    or, for several at once, `history.run()` with `history.Record`s.
+- **A decision makes four round trips to Valkey** (HU-60, load test of
+  2026-11-05): the idempotency reservation, one pipeline with the
+  accounts and the merchant (`reference_data.lookup()`), one pipeline
+  with the history scripts and the restricted list
+  (`decision_service._write_history()`: `history.queue()` /
+  `finish()`, `reference_data.queue_restricted()` /
+  `restricted_answer()`), and saving the decision. Pipelines without
+  transaction, one key per command, so they work in cluster mode; the
+  scripts go as raw `EVALSHA` (valkey-py's cluster pipeline blocks its
+  `evalsha()` method) and a `NoScriptError` is recorded again with the
+  script. A new read in `_decide()` goes into one of the two pipelines,
+  not a round trip of its own; `test_cache_round_trips.py` counts them.
+  Lazy reads of `RuleContext` (incoming, security events) stay single
+  commands because few decisions need them.
 - **Amounts in the history are in the account's currency, not USD.**
   `RuleContext.amount_usd` is the transaction in USD, computed once per
   decision at the rate of the transaction's day (HU-42, below), the

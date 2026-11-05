@@ -114,23 +114,38 @@ def _payload(amount="10.00", merchant=False) -> TransactionRequest:
     )
 
 
+class _Source:
+    """Every account exists in USD, every merchant exists and nobody is
+    listed, unless a test changes it."""
+
+    def __init__(self):
+        self.account_found = True
+        self.merchant_found = True
+        self.listed = False
+
+    def get_account(self, account_id):
+        if not self.account_found:
+            return None
+        return Account(str(account_id), "USD", "u", "123", "activa")
+
+    def merchant_exists(self, _merchant_id):
+        return self.merchant_found
+
+    def on_restricted_list(self, _documents):
+        return self.listed
+
+
 @pytest.fixture
-def known_account(monkeypatch):
-    """Every account exists in USD, every merchant exists, and the
-    history is not written."""
-    monkeypatch.setattr(
-        reference_data,
-        "get_account",
-        lambda account_id: Account(str(account_id), "USD", "u", "123", "activa"),
-    )
-    monkeypatch.setattr(reference_data, "merchant_exists", lambda _id: True)
-    monkeypatch.setattr(ds.history, "record_outgoing", lambda *a, **k: [])
-    monkeypatch.setattr(ds.history, "record_device", lambda *a, **k: [])
+def known_account():
+    """The reference data of _Source (use_source, as the replay does)."""
+    source = _Source()
+    with reference_data.use_source(source):
+        yield source
 
 
 @pytest.mark.parametrize("amount", ["10.00", "80.00"])
-def test_list_not_loaded_holds_whatever_the_amount(known_account, monkeypatch, amount):
-    monkeypatch.setattr(reference_data, "on_restricted_list", lambda _docs: None)
+def test_list_not_loaded_holds_whatever_the_amount(known_account, amount):
+    known_account.listed = None
 
     result = ds._decide(_payload(amount), catalog.current())
 
@@ -139,10 +154,8 @@ def test_list_not_loaded_holds_whatever_the_amount(known_account, monkeypatch, a
     assert "restricted list is not loaded" in result["decision_reason"]
 
 
-def test_list_not_loaded_does_not_matter_if_the_rule_is_disabled(
-    known_account, monkeypatch
-):
-    monkeypatch.setattr(reference_data, "on_restricted_list", lambda _docs: None)
+def test_list_not_loaded_does_not_matter_if_the_rule_is_disabled(known_account):
+    known_account.listed = None
     base = catalog.current()
     snapshot = base.model_copy(
         update={
@@ -163,8 +176,10 @@ def test_list_not_loaded_does_not_matter_if_the_rule_is_disabled(
 @pytest.mark.parametrize(
     ("amount", "expected"), [("10.00", "APPROVE"), ("80.00", "HOLD")]
 )
-def test_account_missing_in_the_cache_is_decided_by_rn01(monkeypatch, amount, expected):
-    monkeypatch.setattr(reference_data, "get_account", lambda _id: None)
+def test_account_missing_in_the_cache_is_decided_by_rn01(
+    known_account, amount, expected
+):
+    known_account.account_found = False
 
     result = ds._decide(_payload(amount), catalog.current())
 
@@ -174,8 +189,8 @@ def test_account_missing_in_the_cache_is_decided_by_rn01(monkeypatch, amount, ex
     assert "is not in the cache" in result["decision_reason"]
 
 
-def test_merchant_missing_in_the_cache_is_decided_by_rn01(known_account, monkeypatch):
-    monkeypatch.setattr(reference_data, "merchant_exists", lambda _id: False)
+def test_merchant_missing_in_the_cache_is_decided_by_rn01(known_account):
+    known_account.merchant_found = False
 
     result = ds._decide(_payload("10.00", merchant=True), catalog.current())
 
@@ -191,10 +206,10 @@ def test_another_currency_is_still_refused(known_account):
 
 
 def test_cache_down_is_decided_by_rn01_in_time(monkeypatch):
-    def down(_id):
+    def down(*_args):
         raise CacheUnavailable("simulated")
 
-    monkeypatch.setattr(reference_data, "get_account", down)
+    monkeypatch.setattr(reference_data, "lookup", down)
 
     start = perf_counter()
     result, _ = ds.process_transaction(_payload("80.00"))

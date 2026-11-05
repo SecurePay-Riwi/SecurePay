@@ -28,10 +28,12 @@ engine reads the exchange-rates table.
 """
 
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+
+import valkey
 
 from shared.cache import get_cache
 
@@ -72,27 +74,70 @@ return {}
 """
 
 
+def _args(member, t_ms, retention_ms, return_history, limit) -> list:
+    return [
+        member,
+        t_ms,
+        retention_ms,
+        retention_ms // 1000,
+        1 if return_history else 0,
+        -limit,
+    ]
+
+
 class ValkeyHistory:
     """The engine's backend: every history key in Valkey."""
 
     def __init__(self):
         self._script = None
 
-    def record(self, key, member, t_ms, retention_ms, return_history, limit=0) -> list:
-        """_RECORD in one call. Valkey's reply: member, score, member..."""
+    def _registered(self):
         if self._script is None:
             self._script = get_cache().register_script(_RECORD)
-        return self._script(
-            keys=[key],
-            args=[
-                member,
-                t_ms,
-                retention_ms,
-                retention_ms // 1000,
-                1 if return_history else 0,
-                -limit,
-            ],
+        return self._script
+
+    def record(self, key, member, t_ms, retention_ms, return_history, limit=0) -> list:
+        """_RECORD in one call. Valkey's reply: member, score, member..."""
+        return self._registered()(
+            keys=[key], args=_args(member, t_ms, retention_ms, return_history, limit)
         )
+
+    def queue(self, pipe, record: "Record") -> None:
+        """Queue _RECORD on a pipeline by its SHA (EVALSHA), so several
+        records share one round trip. valkey-py's cluster pipeline blocks
+        its evalsha() method and cannot load scripts, but sends the
+        command itself to the key's node; when Valkey does not know the
+        script yet the reply is NoScriptError and finish() records that
+        one again with record(), which loads it."""
+        pipe.execute_command(
+            "EVALSHA",
+            self._registered().sha,
+            1,
+            record.key,
+            *_args(
+                record.member,
+                record.t_ms,
+                record.retention_ms,
+                record.return_history,
+                record.limit,
+            ),
+        )
+
+    def finish(self, record: "Record", reply) -> list:
+        """The reply of a queued record: the history, or the error Valkey
+        returned in its place, raised (NoScriptError is recorded again)."""
+        if isinstance(reply, valkey.exceptions.NoScriptError):
+            return self.record(
+                record.key,
+                record.member,
+                record.t_ms,
+                record.retention_ms,
+                record.return_history,
+                record.limit,
+            )
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
 
     def read(self, key) -> list[tuple[str, float]]:
         return get_cache().zrange(key, 0, -1, withscores=True)
@@ -133,6 +178,11 @@ _backend: ContextVar[ValkeyHistory | InMemoryHistory | None] = ContextVar(
 )
 
 
+def uses_valkey() -> bool:
+    """True unless use_backend() put another backend in this context."""
+    return backend() is _valkey
+
+
 def backend() -> ValkeyHistory | InMemoryHistory:
     """Valkey, unless use_backend() put another one in this context."""
     return _backend.get() or _valkey
@@ -148,6 +198,21 @@ def use_backend(new_backend) -> Iterator[None]:
         yield
     finally:
         _backend.reset(token)
+
+
+@dataclass(frozen=True)
+class Record:
+    """One member to add to a history key, and how to read the reply:
+    `parse` turns Valkey's reply (member, score, ...) into what the
+    record_*() function of that key returns."""
+
+    key: str
+    member: str
+    t_ms: int
+    retention_ms: int
+    return_history: bool
+    limit: int = 0
+    parse: Callable[[list], object] = lambda _raw: None
 
 
 @dataclass(frozen=True)
@@ -210,19 +275,43 @@ def _pairs(raw):
     return zip(raw[0::2], raw[1::2], strict=True)
 
 
-def record_outgoing(account_id, tx_id, tx_type, amount, date) -> list[Outgoing]:
-    """Store what leaves the account and return its newest OUT_LIMIT
-    retained outgoing movements, in real chronological order."""
-    member = f"{tx_id}|{tx_type}|{amount}"
-    raw = record(
-        outgoing_key(account_id),
-        member,
-        date,
-        OUT_MS,
-        return_history=True,
-        limit=OUT_LIMIT,
-    )
+def run(records: list[Record]) -> list:
+    """Write every record, in order, and return what each one's parse
+    makes of its reply. In Valkey they share one round trip (a pipeline,
+    not a transaction: each script is still atomic on its own key)."""
+    if not uses_valkey():
+        return [
+            r.parse(
+                backend().record(
+                    r.key, r.member, r.t_ms, r.retention_ms, r.return_history, r.limit
+                )
+            )
+            for r in records
+        ]
+    pipe = get_cache().pipeline(transaction=False)
+    queue(pipe, records)
+    return finish(records, pipe.execute(raise_on_error=False))
 
+
+def queue(pipe, records: list[Record]) -> None:
+    """Queue the records on a Valkey pipeline that may carry other
+    commands too (the engine adds the restricted list's); finish() reads
+    their replies, the first len(records) of the pipeline."""
+    for r in records:
+        _valkey.queue(pipe, r)
+
+
+def finish(records: list[Record], replies: list) -> list:
+    """What run() returns, from the replies of queue()'s commands. Run
+    the pipeline with raise_on_error=False: a record Valkey did not have
+    the script for yet is recorded again here."""
+    return [
+        r.parse(_valkey.finish(r, reply))
+        for r, reply in zip(records, replies, strict=True)
+    ]
+
+
+def _outgoing(raw) -> list[Outgoing]:
     result = []
     for m, t in _pairs(raw):
         id_, type_, amount_ = m.split("|")
@@ -230,16 +319,58 @@ def record_outgoing(account_id, tx_id, tx_type, amount, date) -> list[Outgoing]:
     return result
 
 
-def record_incoming(account_id, tx_id, sender_id, amount, date) -> None:
-    """Store a transfer coming into the account. Returns nothing: rules
-    are evaluated on the account that moves the money."""
-    record(
+def _device_uses(raw) -> list[DeviceUse]:
+    return [DeviceUse(m, int(float(t))) for m, t in _pairs(raw)]
+
+
+def outgoing_record(account_id, tx_id, tx_type, amount, date) -> Record:
+    """record_outgoing() as a Record, for run()."""
+    return Record(
+        outgoing_key(account_id),
+        f"{tx_id}|{tx_type}|{amount}",
+        to_ms(date),
+        OUT_MS,
+        return_history=True,
+        limit=OUT_LIMIT,
+        parse=_outgoing,
+    )
+
+
+def incoming_record(account_id, tx_id, sender_id, amount, date) -> Record:
+    """record_incoming() as a Record, for run()."""
+    return Record(
         incoming_key(account_id),
         f"{tx_id}|{sender_id}|{amount}",
-        date,
+        to_ms(date),
         IN_MS,
         return_history=False,
     )
+
+
+def device_record(device_id, account_id, date) -> Record:
+    """record_device() as a Record, for run()."""
+    return Record(
+        device_key(device_id),
+        str(account_id),
+        to_ms(date),
+        DEVICE_MS,
+        return_history=True,
+        parse=_device_uses,
+    )
+
+
+def record_outgoing(account_id, tx_id, tx_type, amount, date) -> list[Outgoing]:
+    """Store what leaves the account and return its newest OUT_LIMIT
+    retained outgoing movements, in real chronological order."""
+    r = outgoing_record(account_id, tx_id, tx_type, amount, date)
+    return r.parse(record(r.key, r.member, date, r.retention_ms, True, r.limit))
+
+
+def record_incoming(account_id, tx_id, sender_id, amount, date) -> None:
+    """Store a transfer coming into the account. Returns nothing: rules
+    are evaluated on the account that moves the money."""
+    r = incoming_record(account_id, tx_id, sender_id, amount, date)
+    record(r.key, r.member, date, r.retention_ms, return_history=False)
 
 
 def incoming(account_id) -> list[Incoming]:
@@ -259,7 +390,5 @@ def record_device(device_id, account_id, date) -> list[DeviceUse]:
     An event older than the one already stored for that account moves
     its last time back; that only shortens how long it is kept.
     """
-    raw = record(
-        device_key(device_id), str(account_id), date, DEVICE_MS, return_history=True
-    )
-    return [DeviceUse(m, int(float(t))) for m, t in _pairs(raw)]
+    r = device_record(device_id, account_id, date)
+    return r.parse(record(r.key, r.member, date, r.retention_ms, True))
