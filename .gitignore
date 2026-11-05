@@ -31,6 +31,12 @@ crash.log
 infra/terraform/envs/dev/list-loader.json
 infra/terraform/envs/dev/check.json
 infra/terraform/envs/dev/rates.json
+infra/terraform/envs/dev/export-error.json
+# The Object Lock test file of the guide (delete it after the test)
+infra/terraform/envs/dev/test.txt
 
 # Output of services/reconciliation/benchmark.py
 benchmark/
+
+# CSV files of the load test, downloaded from S3 (load-test.mdx)
+load-results/
