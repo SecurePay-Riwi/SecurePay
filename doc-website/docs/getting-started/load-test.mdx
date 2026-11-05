@@ -20,7 +20,7 @@ The files are in `infra/load/`:
 
 ## Where to read the result
 
-Locust runs on your computer and reaches the load balancer over the internet, so its times include the trip from Colombia to `us-east-2` (about 80 to 120 ms). **The 200 ms limit is judged inside AWS:**
+Run from your computer, Locust reaches the load balancer over the internet, so its times include the trip from Colombia to `us-east-2` (about 80 to 120 ms). Run from the EC2 machine inside the VPC ([below](#from-inside-the-vpc-ec2)), they include only a few milliseconds of network. **The 200 ms limit is judged inside AWS:**
 
 - the load balancer's `TargetResponseTime` p99, which is the time the engine took, on the dashboard `securepay-dev` and in alarm 1;
 - the engine's decision log, which lists every decision slower than 150 ms (query `securepay-dev/slow-decisions`).
@@ -71,6 +71,46 @@ Locust's numbers say what a client sees, and they are the ones to look at for er
    | Alarms that fired | **CloudWatch → Alarms**, and the `ops-alarms` inbox |
 
 6. Write the numbers in the table below and in the logbook, then destroy dev (or keep it for the EKS session of [Run the engine on Kubernetes](./kubernetes.mdx), which uses the same test).
+
+### From inside the VPC (EC2)
+
+The recommended way for the measured run. The client is an EC2 machine in an application subnet (`modules/load_runner`, topic 6 of the brief): Amazon Linux 2023, `c7i-flex.large` (2 vCPU, allowed on AWS's free account plan, about USD 0.10 an hour). It has no SSH, no key and no inbound rule: Systems Manager runs the test, and the CSV files go to the artifacts bucket under `load-tests/`. With it, your computer's CPU and the internet no longer count in Locust's numbers.
+
+1. Add `load_runner = true` to `terraform.tfvars` and apply. It must say `7 to add`: the role, its two policies, the instance profile, the security group, its HTTPS rule and the machine. The machine clones `main` (`load_runner_git_ref` changes the branch) and installs Locust by itself in about 3 minutes:
+
+   ```powershell
+   terraform apply
+   ```
+
+2. Run the full test (15 minutes) and keep the command id. Start the dashboard first:
+
+   ```powershell
+   $RUN = Invoke-Expression (terraform output -raw load_test_command)
+   $VM = terraform output -raw load_runner_instance_id
+   ```
+
+   Ask how it is going; it says `InProgress` until it ends, then `Success` and the summary with the `decisions` line:
+
+   ```powershell
+   aws ssm get-command-invocation --command-id $RUN --instance-id $VM --query "[Status, StandardOutputContent]"
+   ```
+
+   If it fails at once with `securepay-load: command not found`, the machine was still installing: wait a minute and run step 2 again.
+
+3. Copy the CSV files, `run_stats.csv` among them:
+
+   ```powershell
+   $ARTIFACTS = (terraform output -json bucket_names | ConvertFrom-Json).artifacts
+   aws s3 cp --recursive "s3://$ARTIFACTS/load-tests/" load-results/
+   ```
+
+4. Remove `load_runner = true` and apply again (`7 to destroy`), or leave it for `terraform destroy`.
+
+A shorter run is `securepay-load <seconds per step> <tx/s> ...`. For example, this does 30 seconds at 5 tx/s, like step 3 above:
+
+```powershell
+aws ssm send-command --instance-ids $VM --document-name AWS-RunShellScript --parameters "commands=securepay-load 30 5" --query Command.CommandId --output text
+```
 
 ## Expected and how to read it
 

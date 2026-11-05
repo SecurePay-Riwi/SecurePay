@@ -79,6 +79,7 @@ One group per function, and the rules are written between groups instead of betw
 | `sg-motor` | 8080/TCP from `sg-alb` | 6379 and 6380/TCP to `sg-cache`; 443/TCP to the internet (SNS, ECR, CloudWatch, X-Ray, Parameter Store, DynamoDB through its endpoint, list service) |
 | `sg-lambda` | None (Lambdas do not receive connections) | 5432/TCP to `sg-rds`; 6379 and 6380/TCP to `sg-cache`; 443/TCP to the internet |
 | `sg-admin` | None | 5432/TCP to `sg-rds`; 443/TCP to the internet (ECR, CloudWatch, Parameter Store) |
+| `sg-load-runner` (dev, load test only) | None (no SSH: Systems Manager) | 443/TCP to the internet (GitHub, uv, Systems Manager, S3, the load balancer) |
 | `sg-rds` | 5432/TCP from `sg-lambda` and `sg-admin` | None |
 | `sg-cache` | 6379 and 6380/TCP from `sg-motor` and `sg-lambda` | None |
 

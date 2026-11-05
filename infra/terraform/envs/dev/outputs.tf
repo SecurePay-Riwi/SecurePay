@@ -135,3 +135,13 @@ output "user_pool_client_id" {
   description = "Cognito app client to sign in with (null until lambda_image_tag is set)."
   value       = module.api.client_id
 }
+
+output "load_runner_instance_id" {
+  description = "The load test machine (null unless load_runner = true)."
+  value       = module.load_runner.instance_id
+}
+
+output "load_test_command" {
+  description = "Starts the full load test on the machine through Systems Manager and prints its command id (null unless load_runner = true)."
+  value       = module.load_runner.load_test_command
+}

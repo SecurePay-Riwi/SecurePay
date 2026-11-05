@@ -151,3 +151,15 @@ variable "load_data_on_apply" {
   type        = bool
   default     = true
 }
+
+variable "load_runner" {
+  description = "Create the EC2 machine that runs the load test from inside the VPC (HU-60, load-test.mdx). About USD 0.10 an hour: only for that session."
+  type        = bool
+  default     = false
+}
+
+variable "load_runner_git_ref" {
+  description = "Branch or tag of SecurePay the load test machine clones (infra/load)."
+  type        = string
+  default     = "main"
+}

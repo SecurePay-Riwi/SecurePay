@@ -2,60 +2,54 @@
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "ManageSecurePayRoles",
+      "Sid": "ManageSecurePayIdentities",
       "Effect": "Allow",
       "Action": [
         "iam:CreateRole",
         "iam:DeleteRole",
-        "iam:GetRole",
         "iam:UpdateRole",
         "iam:UpdateAssumeRolePolicy",
         "iam:TagRole",
         "iam:UntagRole",
         "iam:PutRolePolicy",
-        "iam:GetRolePolicy",
         "iam:DeleteRolePolicy",
-        "iam:ListRolePolicies",
-        "iam:ListAttachedRolePolicies",
-        "iam:ListInstanceProfilesForRole"
-      ],
-      "Resource": "arn:aws:iam::*:role/securepay-*"
-    },
-    {
-      "Sid": "AttachOnlyTheLambdaVpcPolicy",
-      "Effect": "Allow",
-      "Action": ["iam:AttachRolePolicy", "iam:DetachRolePolicy"],
-      "Resource": "arn:aws:iam::*:role/securepay-*",
-      "Condition": {
-        "ArnEquals": {
-          "iam:PolicyARN": "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
-        }
-      }
-    },
-    {
-      "Sid": "ManageSecurePayUsers",
-      "Effect": "Allow",
-      "Action": [
         "iam:CreateUser",
         "iam:DeleteUser",
-        "iam:GetUser",
         "iam:TagUser",
         "iam:UntagUser",
         "iam:PutUserPolicy",
-        "iam:GetUserPolicy",
         "iam:DeleteUserPolicy",
-        "iam:ListUserPolicies",
-        "iam:ListAttachedUserPolicies",
-        "iam:ListGroupsForUser",
-        "iam:ListAccessKeys",
         "iam:DeleteAccessKey",
-        "iam:ListMFADevices",
-        "iam:ListSigningCertificates",
-        "iam:ListSSHPublicKeys",
-        "iam:ListServiceSpecificCredentials",
-        "iam:GetLoginProfile"
+        "iam:CreateInstanceProfile",
+        "iam:DeleteInstanceProfile",
+        "iam:TagInstanceProfile",
+        "iam:AddRoleToInstanceProfile",
+        "iam:RemoveRoleFromInstanceProfile",
+        "iam:Get*",
+        "iam:List*"
       ],
-      "Resource": "arn:aws:iam::*:user/securepay-*"
+      "Resource": [
+        "arn:aws:iam::*:role/securepay-*",
+        "arn:aws:iam::*:user/securepay-*",
+        "arn:aws:iam::*:instance-profile/securepay-*"
+      ]
+    },
+    {
+      "Sid": "AttachOnlyTheseManagedPolicies",
+      "Effect": "Allow",
+      "Action": [
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy"
+      ],
+      "Resource": "arn:aws:iam::*:role/securepay-*",
+      "Condition": {
+        "ArnEquals": {
+          "iam:PolicyARN": [
+            "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
+            "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+          ]
+        }
+      }
     },
     {
       "Sid": "ManageGitHubOidcProvider",
@@ -73,7 +67,10 @@
     {
       "Sid": "ReadManagedPolicies",
       "Effect": "Allow",
-      "Action": ["iam:GetPolicy", "iam:GetPolicyVersion"],
+      "Action": [
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion"
+      ],
       "Resource": "arn:aws:iam::aws:policy/*"
     },
     {
@@ -83,7 +80,14 @@
       "Resource": "arn:aws:iam::*:role/securepay-*",
       "Condition": {
         "StringEquals": {
-          "iam:PassedToService": ["ecs-tasks.amazonaws.com", "lambda.amazonaws.com", "scheduler.amazonaws.com", "states.amazonaws.com", "glue.amazonaws.com"]
+          "iam:PassedToService": [
+            "ecs-tasks.amazonaws.com",
+            "lambda.amazonaws.com",
+            "scheduler.amazonaws.com",
+            "states.amazonaws.com",
+            "glue.amazonaws.com",
+            "ec2.amazonaws.com"
+          ]
         }
       }
     }
