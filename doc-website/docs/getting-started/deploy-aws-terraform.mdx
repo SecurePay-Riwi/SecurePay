@@ -308,7 +308,7 @@ The engine publishes every decision to `securepay-dev-decisions`, which copies i
 
    **Tested on AWS on November 3, 2026** (engine and Lambdas `7dd1ddb`, from `main` after MAG-356): after one `list-loader` run, `smoke-transaction.json` returned `APPROVE` without `by_default` and `restricted-transaction.json` returned `REJECT` with `restricted_list`, and the cases Lambda opened the case. The exchange-rates table was empty (nothing fills it in AWS yet), so the engine logged that and converted with the fixed snapshot.
 
-3. Send a withdrawal from an account whose owner is on the restricted list ([`restricted-transaction.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/envs/dev/restricted-transaction.json); the seed is deterministic, so the account is the same in every environment):
+3. Send a withdrawal from an account whose owner is on the restricted list ([`restricted-transaction.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/envs/dev/restricted-transaction.json); the seed is deterministic, so the account is the same in every environment seeded with the same `SEED_USERS`, 10,000 in `envs/dev`; with another number the seed lists other customers and this withdrawal is approved):
 
    ```powershell
    curl.exe -k -X POST "https://$ALB/transactions" -H "Content-Type: application/json" --data-binary "@restricted-transaction.json"
@@ -392,11 +392,11 @@ The same apply creates `securepay-dev-rules-api` and `securepay-dev-cases-api`, 
    Invoke-RestMethod -Method Post "$api/rules/velocity/enable" -Headers $auth
    ```
 
-5. Assign and resolve the case of step 7 (its id is in `GET /cases`); the case events record `ana@example.com`:
+5. Assign and resolve the case of step 7 (its id is in `GET /cases`); the case events record `analista@example.com`:
 
    ```powershell
    $case = (Invoke-RestMethod "$api/cases" -Headers $auth).items[0].id
-   Invoke-RestMethod -Method Put "$api/cases/$case/assignee" -Headers $auth -ContentType "application/json" -Body '{"assignee": "ana@example.com"}'
+   Invoke-RestMethod -Method Put "$api/cases/$case/assignee" -Headers $auth -ContentType "application/json" -Body '{"assignee": "analista@example.com"}'
    Invoke-RestMethod -Method Post "$api/cases/$case/resolution" -Headers $auth -ContentType "application/json" -Body '{"outcome": "FRAUD", "note": "Confirmed with the customer."}'
    ```
 

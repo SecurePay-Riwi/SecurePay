@@ -16,9 +16,13 @@ budget_emails = ["you@example.com"]
 # on the first apply; set them after pushing the images to ECR.
 # engine_image_tag = "<short commit of SecurePay>"
 # admin_image_tag  = "<short commit of securepay-seed>"
-# engine_min_tasks = 2
-# engine_max_tasks = 4
 # domain_name      = "api.example.com"   # unset: self-signed certificate
+
+# Load test (load-test.mdx): the EC2 machine that runs Locust inside the VPC
+# and room for the engine to scale. Only for that session.
+# load_runner      = true
+# engine_min_tasks = 4
+# engine_max_tasks = 24
 
 # Consumers and alerts task as Lambdas (deploy-aws-terraform.mdx). They run
 # the engine image, so the tag is usually the same as engine_image_tag.
