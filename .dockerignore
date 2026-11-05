@@ -14,3 +14,13 @@ data/kaggle/
 dump.rdb
 # Not needed at runtime: the documentation site.
 doc-website/
+# Never in an image: Terraform's state holds database and Cognito passwords,
+# and the running apply locks it (Windows cannot read it for the build context).
+infra/terraform/
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfvars
+**/.terraform/
+# Local outputs of the benchmark and the load test.
+benchmark/
+load-results/
