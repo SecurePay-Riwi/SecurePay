@@ -15,7 +15,12 @@
 
 locals {
   repo_root = abspath("${path.root}/../../../..")
-  dev_up    = "uv run --no-project python \"${abspath("${path.root}/../../scripts/dev_up.py")}\""
+  # Run from the scripts folder (working_dir), with no quotes and no path
+  # in the command: on Windows Terraform hands the command to cmd with its
+  # quotes escaped as \", so a quoted path with spaces broke into pieces.
+  # A path with spaces goes in an environment variable instead.
+  scripts_dir = abspath("${path.root}/../../scripts")
+  dev_up      = "uv run --no-project python dev_up.py"
 
   # {engine, admin, apis}: the commit of each clone, "" when the clone is
   # not beside SecurePay (that image is not built).
@@ -66,7 +71,9 @@ resource "terraform_data" "image" {
   input            = { url = module.ecr.repository_urls[each.key], tag = each.value }
 
   provisioner "local-exec" {
-    command = "${local.dev_up} push --repository ${self.input.url} --tag ${self.input.tag} --context \"${local.build_contexts[each.key]}\" --region ${var.region}"
+    working_dir = local.scripts_dir
+    command     = "${local.dev_up} push --repository ${self.input.url} --tag ${self.input.tag} --region ${var.region}"
+    environment = { DEV_UP_CONTEXT = local.build_contexts[each.key] }
   }
 }
 
@@ -80,7 +87,8 @@ resource "terraform_data" "seed" {
   input            = module.lambdas.db_bootstrap_result
 
   provisioner "local-exec" {
-    command = "${local.dev_up} run-task --cluster ${module.ecs.cluster_name} --task-definition ${module.ecs.admin_task_family}:${module.ecs.admin_task_revision} --subnets ${join(",", module.network.app_subnet_ids)} --security-group ${module.security_groups.ids["admin"]} --region ${var.region}"
+    working_dir = local.scripts_dir
+    command     = "${local.dev_up} run-task --cluster ${module.ecs.cluster_name} --task-definition ${module.ecs.admin_task_family}:${module.ecs.admin_task_revision} --subnets ${join(",", module.network.app_subnet_ids)} --security-group ${module.security_groups.ids["admin"]} --region ${var.region}"
   }
 
   # The NAT routes too, or the task cannot pull its image.
@@ -161,7 +169,8 @@ resource "terraform_data" "demo_day_run" {
   triggers_replace = [for key in sort(keys(local.demo_files)) : aws_s3_object.demo_day[key].etag]
 
   provisioner "local-exec" {
-    command = "${local.dev_up} start-day --state-machine ${module.reconciliation.state_machine_arn} --day 2026-10-05 --region ${var.region}"
+    working_dir = local.scripts_dir
+    command     = "${local.dev_up} start-day --state-machine ${module.reconciliation.state_machine_arn} --day 2026-10-05 --region ${var.region}"
   }
 
   # The seed and the cache first: the run's store and export read RDS.

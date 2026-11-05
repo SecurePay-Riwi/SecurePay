@@ -18,6 +18,7 @@ Windows (cmd) and on Linux alike.
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import time
@@ -161,7 +162,9 @@ def main(argv: list[str] | None = None) -> None:
     p = commands.add_parser("push")
     p.add_argument("--repository", required=True)
     p.add_argument("--tag", required=True)
-    p.add_argument("--context", required=True)
+    # The build folder may have spaces: Terraform passes it in DEV_UP_CONTEXT
+    # (a quoted argument breaks on Windows, see up.tf).
+    p.add_argument("--context", default=os.environ.get("DEV_UP_CONTEXT"))
     p.add_argument("--region", required=True)
 
     t = commands.add_parser("run-task")
@@ -181,6 +184,8 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "tags":
         print(json.dumps(tags(json.load(sys.stdin))))
     elif args.command == "push":
+        if not args.context:
+            parser.error("push needs --context or DEV_UP_CONTEXT")
         push(args.repository, args.tag, args.context, args.region)
     elif args.command == "start-day":
         start_day(args.state_machine, args.day, args.region)
