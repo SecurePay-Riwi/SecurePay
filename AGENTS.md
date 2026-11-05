@@ -481,7 +481,11 @@ Read this before touching `shared/reconciliation.py`,
   once per transaction id, `partner_day()` == the day, read from
   `raw/decisiones/fecha=<day-1..day+1>`. DATE_OFF (dates more than 1 day
   apart) is checked before AMOUNT_OFF; both limits are included.
-  `match.reconcile()` is PySpark (HU-37): `match.session()` is local[*]
+  `match.reconcile()` is PySpark (HU-37), one full outer join by
+  reference; its session settings are `match.SESSION_SETTINGS` (UTC, 8
+  shuffle partitions: E-13, `doc-website/docs/operations/performance.mdx`,
+  measured with `python -m services.reconciliation.benchmark`, output in
+  the ignored `benchmark/`). `match.session()` is local[*]
   in tests and Compose, the job's on AWS Glue 6.0 (`infra/spark/match_job.py`
   runs `match.main --day --records --decisions --output`). Spark reads
   and writes local folders, and `s3://` only on Glue; in local mode

@@ -31,3 +31,6 @@ crash.log
 infra/terraform/envs/dev/list-loader.json
 infra/terraform/envs/dev/check.json
 infra/terraform/envs/dev/rates.json
+
+# Output of services/reconciliation/benchmark.py
+benchmark/

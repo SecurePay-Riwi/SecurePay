@@ -87,7 +87,7 @@ Each step has a fixed input and output from step 0, so nobody waits for the step
 
 A partner record whose reference is an `APPROVE` of the window but of another partner day still counts: its date decides. The output is one `MatchRow` per reference as JSON lines in `curated/conciliacion/fecha=<day>/part-*.json`, with every key (nulls included); running the day again replaces it.
 
-`reconcile()` runs in PySpark (HU-37): the decisions of the window and the day's records are read as JSON lines, deduplicated, and joined by reference (a left join of the records with our side, plus our transactions of the day that no record has). `match.session()` is `local[*]` in the tests and in Compose, and the job's session on AWS Glue 6.0, where Step Functions starts `match.main` through `infra/spark/match_job.py`:
+`reconcile()` runs in PySpark (HU-37): the decisions of the window and the day's records are read as JSON lines, deduplicated, and joined by reference in one full outer join (every record, plus our transactions of the day that no record has). The session uses `match.SESSION_SETTINGS` (UTC and 8 shuffle partitions); why, and the before and after, are in the [performance report](../operations/performance.mdx). `match.session()` is `local[*]` in the tests and in Compose, and the job's session on AWS Glue 6.0, where Step Functions starts `match.main` through `infra/spark/match_job.py`:
 
 ```bash
 spark-submit services/reconciliation/match.py --day 2026-10-05 \

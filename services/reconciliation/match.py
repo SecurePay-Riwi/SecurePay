@@ -182,16 +182,26 @@ MATCH_COLUMNS = (
 )
 
 
+# The session's settings (E-13, doc-website/docs/operations/performance.mdx;
+# services/reconciliation/benchmark.py measures them). A partner day is a
+# few hundred MB of JSON at most: 200 shuffle partitions (Spark's default)
+# were 200 tasks of a few KB, because adaptive execution does not shrink
+# the partitions of a cached plan.
+SESSION_SETTINGS = {
+    "spark.sql.session.timeZone": "UTC",
+    "spark.sql.shuffle.partitions": "8",
+}
+
+
 def session():
     """The Spark session of the match: the cluster's under spark-submit
     (AWS Glue), local[*] otherwise. Times are compared in UTC."""
     from pyspark.sql import SparkSession
 
-    return (
-        SparkSession.builder.appName(APP_NAME)
-        .config("spark.sql.session.timeZone", "UTC")
-        .getOrCreate()
-    )
+    builder = SparkSession.builder.appName(APP_NAME)
+    for key, value in SESSION_SETTINGS.items():
+        builder = builder.config(key, value)
+    return builder.getOrCreate()
 
 
 def _spark_reads(spark, path: str) -> bool:
@@ -359,48 +369,44 @@ def spark_match(spark, day: date, records_path: str, decisions_path: str):
         )
         .otherwise(MatchStatus.MATCHED.value)
     )
-    in_file = records.join(ours, "reference", "left").select(
+    # One full outer join (E-13): each side is read and shuffled once. It
+    # was a left join plus a left anti join, which read the decisions and
+    # the records twice. Without a record: ONLY_PAGOSEGURO, and only for
+    # the run's partner day (a transaction of another day is that day's).
+    joined = records.join(ours, "reference", "full").where(
+        F.col("partner").isNotNull()
+        | (F.col("our_day") == F.lit(day.isoformat()).cast("date"))
+    )
+    in_file = F.col("partner").isNotNull()
+    rows = joined.select(
         "reference",
-        "partner",
-        status.alias("status"),
+        F.when(in_file, F.col("partner"))
+        .otherwise(F.col("our_partner"))
+        .alias("partner"),
+        F.when(in_file, status)
+        .otherwise(MatchStatus.ONLY_PAGOSEGURO.value)
+        .alias("status"),
         "partner_reference",
-        "currency",
+        F.when(in_file, F.col("currency"))
+        .otherwise(F.col("our_currency"))
+        .alias("currency"),
         "pagoseguro_amount",
         "partner_amount",
         F.col("our_at"),
         F.col("partner_ts"),
     )
-    only_ours = (
-        ours.where(F.col("our_day") == F.lit(day.isoformat()).cast("date"))
-        .join(records.select("reference"), "reference", "left_anti")
-        .select(
-            "reference",
-            F.col("our_partner").alias("partner"),
-            F.lit(MatchStatus.ONLY_PAGOSEGURO.value).alias("status"),
-            F.lit(None).cast("string").alias("partner_reference"),
-            F.col("our_currency").alias("currency"),
-            "pagoseguro_amount",
-            F.lit(None).cast("string").alias("partner_amount"),
-            F.col("our_at"),
-            F.lit(None).cast("timestamp").alias("partner_ts"),
-        )
-    )
-    return (
-        in_file.unionByName(only_ours)
-        .select(
-            F.lit(day.isoformat()).alias("run_day"),
-            "partner",
-            "status",
-            "reference",
-            "partner_reference",
-            "currency",
-            "pagoseguro_amount",
-            "partner_amount",
-            _utc_text(F.col("our_at")).alias("pagoseguro_at"),
-            _utc_text(F.col("partner_ts")).alias("partner_at"),
-        )
-        .orderBy("partner", "reference")
-    )
+    return rows.select(
+        F.lit(day.isoformat()).alias("run_day"),
+        "partner",
+        "status",
+        "reference",
+        "partner_reference",
+        "currency",
+        "pagoseguro_amount",
+        "partner_amount",
+        _utc_text(F.col("our_at")).alias("pagoseguro_at"),
+        _utc_text(F.col("partner_ts")).alias("partner_at"),
+    ).orderBy("partner", "reference")
 
 
 def write_rows(spark, rows, output_path: str) -> None:
