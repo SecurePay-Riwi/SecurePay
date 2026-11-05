@@ -147,6 +147,16 @@ The assignment names a Kaggle credit card dataset as the card payment history. A
 | The statement reader, the restricted-list service and EMR Serverless (now the Glue jobs, ADR-05) **stay outside the VPC**. | None of them needs RDS or the cache, so they do not need the private network or the NAT. |
 | **LocalStack is the local environment**, not RabbitMQ or Airflow. | The same code runs locally and on AWS. |
 
+## The rules read the newest 100 outgoing movements
+
+**Decided by Habith on 2026-11-05** (Sprint 6, HU-60, MAG-307), after the first load test in AWS.
+
+| Decision | Why |
+| :--- | :--- |
+| Valkey keeps the whole 24 h of `out:{account}`, but **the rules get only its newest 100 movements** (`HISTORY_OUT_LIMIT`). | In the load test 98 accounts took about 700 transactions each; every decision read and parsed the account's whole day, the rules ran out of their 120 ms and 73 % of the decisions were default ones ([Load test](../getting-started/load-test.mdx#result)). With the limit the same case decides in about 11 ms. |
+| The catalog caps velocity's `limit` at 99 and splitting's `min_transactions` at 100, and the engine refuses to start with a lower `HISTORY_OUT_LIMIT`. | The rules can never ask for more movements than they get. |
+| An account with more than 100 outgoing movements in a day is judged on its newest 100. | Velocity (more than 5 in 10 minutes) already holds such an account; a normal account has a few movements a day and never reaches the limit. |
+
 ## X-Ray is left out
 
 **Decided by Habith on 2026-11-04** (Sprint 6, HU-59, MAG-341).

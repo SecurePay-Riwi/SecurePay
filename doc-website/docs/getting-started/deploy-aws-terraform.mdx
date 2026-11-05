@@ -553,7 +553,7 @@ Once the lock of the last uploaded version has passed, destroy everything and ty
 terraform destroy
 ```
 
-It ends with `Destroy complete! Resources: 282 destroyed` after steps 6 to 9 with one budget e-mail (214 of the first `apply`, 20 of the engine, 44 of the Lambdas, the reconciliation and the analytics, 4 of the exchange-rates Lambda; each extra e-mail address is one more). Fewer if some steps were skipped: it destroys what the state has. The Glue job and its files go with it. The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
+It ends with `Destroy complete! Resources: 283 destroyed` after steps 6 to 9 with one budget e-mail (214 of the first `apply`, 21 of the engine, 44 of the Lambdas, the reconciliation and the analytics, 4 of the exchange-rates Lambda; each extra e-mail address is one more). Fewer if some steps were skipped: it destroys what the state has. The Glue job and its files go with it. The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
 
 **Check that nothing is left.** This must print nothing:
 

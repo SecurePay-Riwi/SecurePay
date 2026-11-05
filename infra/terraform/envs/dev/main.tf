@@ -166,8 +166,12 @@ module "ecs" {
   # securepay-seed in dev mode (100 users); it also exports the restricted
   # list to the list provider bucket.
   admin_environment = {
-    AWS_DEFAULT_REGION      = var.region
-    SEED_MODE               = "dev"
+    AWS_DEFAULT_REGION = var.region
+    SEED_MODE          = "dev"
+    # 10,000 users (9,820 active accounts): the accounts of
+    # infra/load/accounts.json, so the load test spreads its traffic as
+    # production would instead of piling it on 98 accounts.
+    SEED_USERS              = "10000"
     SEED_LIST_OUTPUT        = "s3"
     PROVEEDOR_LISTAS_BUCKET = module.storage.bucket_names["list-provider"]
   }

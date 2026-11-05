@@ -206,3 +206,14 @@ def test_incoming_history_older_than_retention_is_pruned(cuenta):
 
     assert [e.id for e in incoming(cuenta)] == ["nuevo"]
     assert 0 < get_cache().ttl(incoming_key(cuenta)) <= history.IN_MS // 1000
+
+
+def test_outgoing_history_returns_only_the_newest_out_limit(cuenta, monkeypatch):
+    # Valkey keeps every movement of the 24 h; the rules get the newest.
+    monkeypatch.setattr(history, "OUT_LIMIT", 3)
+    ids, _ = transferir(cuenta, [4, 1, 3, 0, 2])
+
+    salidas = record_outgoing(cuenta, "last", "P2P", "1.00", minuto(5))
+
+    assert [s.id for s in salidas] == [ids[2], ids[0], "last"]
+    assert len(ids_salidas(cuenta)) == 6

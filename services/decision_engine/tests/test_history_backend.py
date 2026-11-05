@@ -137,3 +137,30 @@ def test_use_source_replaces_the_cache_reads(monkeypatch):
         assert reference_data.on_restricted_list({"1"}) is True
 
     assert reference_data._source.get() is None
+
+
+def test_in_memory_returns_the_newest_like_valkey():
+    try:
+        get_cache().ping()
+    except valkey.exceptions.ConnectionError:
+        pytest.skip("Valkey is not available at VALKEY_URL")
+    account = str(uuid4())
+    key = history.outgoing_key(account)
+    memory = InMemoryHistory()
+    try:
+        for minute in [4, 1, 3, 0, 2]:
+            t = 1_000_000 + minute * 60_000
+            for backend in (history._valkey, memory):
+                backend.record(key, f"tx{minute}|P2P|1", t, history.OUT_MS, True, 3)
+        in_valkey = history._valkey.record(
+            key, "tx9|P2P|1", 9_000_000, history.OUT_MS, True, 3
+        )
+    finally:
+        get_cache().delete(key)
+    in_memory = memory.record(key, "tx9|P2P|1", 9_000_000, history.OUT_MS, True, 3)
+
+    def plain(raw):
+        return [(m, int(float(t))) for m, t in history._pairs(raw)]
+
+    assert plain(in_memory) == plain(in_valkey)
+    assert [m for m, _ in plain(in_valkey)] == ["tx3|P2P|1", "tx4|P2P|1", "tx9|P2P|1"]
