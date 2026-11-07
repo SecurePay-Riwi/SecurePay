@@ -23,7 +23,14 @@ The files are in `infra/load/`:
 Run from your computer, Locust reaches the load balancer over the internet, so its times include the trip from Colombia to `us-east-2` (about 80 to 120 ms). Run from the EC2 machine inside the VPC ([below](#from-inside-the-vpc-ec2)), they include only a few milliseconds of network. **The 200 ms limit is judged inside AWS:**
 
 - the load balancer's `TargetResponseTime` p99, which is the time the engine took, on the dashboard `securepay-dev` and in alarm 1;
-- the engine's decision log, which lists every decision slower than 150 ms (query `securepay-dev/slow-decisions`).
+- the engine's decision log, which lists every decision slower than 150 ms (query `securepay-dev/slow-decisions`);
+- for each default decision by timeout, one `late_decision` line on the same log with where its time went: `queue_ms` (waiting for a worker), `lookup_ms` (the accounts' round trip to Valkey), `history_ms` (the history's round trip), `rules_ms` and `total_ms`. A stage it never reached is missing. In Logs Insights, on the engine's log group:
+
+```
+fields @timestamp, queue_ms, lookup_ms, history_ms, rules_ms, total_ms
+| filter event = "late_decision"
+| sort @timestamp asc
+```
 
 Locust's numbers say what a client sees, and they are the ones to look at for errors.
 
@@ -124,7 +131,7 @@ aws ssm send-command --instance-ids $VM --document-name AWS-RunShellScript --par
 ## Expected and how to read it
 
 - **Autoscaling** starts at 4 tasks and adds tasks at 60 % CPU or at 1,800 requests per task per minute (30 tx/s, `engine_requests_per_task`), whichever asks for more, up to 24. The estimate is about 25 tx/s per task (0.5 vCPU). 50 tx/s should hold on the 4 tasks, and 300 tx/s should reach about 12 tasks. If p99 goes above 180 ms while tasks are still being added, the scaling is too slow for the ramp: lower the CPU target or raise the minimum. Record the time from the start of the 300 step to the last new task.
-- **HOLD is rare.** 9,820 accounts share the load, so an account sends a few transactions in the whole test and velocity (more than 5 in 10 minutes) seldom fires. A HOLD is a full decision with every rule run, so it is measured the same as an APPROVE. `REJECT` comes from the accounts whose owner is on the restricted list.
+- **HOLD grows with the load.** 9,820 accounts share the load. At 50 tx/s an account sends about 2 transfers in 10 minutes and velocity (more than 5 in 10 minutes) seldom fires; at 300 tx/s it sends about 11 and velocity holds about half of the traffic (run 5: 0.2 % HOLD at 50 tx/s, 54 % in the last minute at 300). A HOLD is a full decision with every rule run, so it costs about the same as an APPROVE, but it adds a line to the decision log. `REJECT` comes from the accounts whose owner is on the restricted list.
 - **Default decisions above 1 %** (alarm 2) mean the rules or the cache did not answer in `DECISION_TIMEOUT_MS`. That is a failure of the test even if the latency looks good.
 - After the test, the engine's history in Valkey keeps these accounts' activity for 24 hours (`out:{account}`), and the cases consumer has opened cases for the restricted accounts. Dev is disposable; do not run this against data that matters.
 
@@ -132,13 +139,27 @@ aws ssm send-command --instance-ids $VM --document-name AWS-RunShellScript --par
 
 ## Result
 
-To be completed after the run:
+Run 5 (November 5, 2026, 21:28 UTC), from the EC2 machine, 10 tasks at 0.5 vCPU that never scaled out, the cache limited to 20,000 ECPU/s:
 
-| Step | Tasks | Cache (MB) | p50 / p99 in AWS (ms) | p50 / p99 at the client (ms) | Errors | Default decisions | Alarms |
-| :--- | ---: | ---: | :--- | :--- | ---: | ---: | :--- |
-| 50 tx/s | | | | | | | |
-| 150 tx/s | | | | | | | |
-| 300 tx/s | | | | | | | |
+| Step | Requests | p50 / p95 / p99 in AWS (ms) | Default decisions | 5XX | CPU avg / max |
+| :--- | ---: | :--- | ---: | ---: | :--- |
+| 50 tx/s | 14,967 | 12 / 18 / 50 | 0.02 % | 1 (load balancer) | 4.5 / 6.6 % |
+| 150 tx/s | 44,723 | 22 / 36 / 85 | 0.07 % | 1 | 13.1 / 16.7 % |
+| 300 tx/s | 89,796 | 32 / 106 / **229** | 0.40 % | 2 | 26.6 / 40.8 % |
+
+At the client (Locust, every step): p50 29 ms, p99 170 ms, 4 `HTTP 502` in 149,486 requests (the load balancer's 5XX, none from the engine). The cache never throttled (peak 14,430 ECPU/s; read p99 3.6 ms). The limit holds at 50 and 150 tx/s; at 300 tx/s the p99 per minute was under 200 ms in 2 of the 5 minutes (184 and 125 ms) and above in 3 (207, 290 and 267 ms). Of the 389 default decisions, 298 fell in the first 5 seconds of a minute: something stalls once a minute, not the load. The `late_decision` line (above) is there to find it in the next run.
+
+Every run of the day, at 300 tx/s:
+
+| Run | Tasks | Change before it | p95 / p99 (ms) | Default decisions |
+| :--- | ---: | :--- | :--- | ---: |
+| 1 | 4 to 5 | — | — | 100 % |
+| 2 | 10 | late decisions waiting for a worker are cancelled (`_decide_in_time`) | p50 1,250 | — |
+| 3 | 10 | the cache's limit from 5,000 to 20,000 ECPU/s (`cache_max_ecpu_per_second`) | 164 / 246 | 1.79 % |
+| 4 | 20 | — (to check that the limit was per task) | 40 / 129 | 0.40 % |
+| 5 | 10 | 4 round trips to Valkey per decision instead of 8.4 | 106 / 229 | 0.40 % |
+
+In run 2 the cache throttled about 72,000 commands a minute. In runs 3 to 5 it throttled none, and the CPU stayed under 41 %: what is left is per task and once a minute. The autoscaling did not add tasks in run 5 because 300 tx/s over 10 tasks is exactly its target of 1,800 requests per task per minute.
 
 With the numbers:
 - check alarm 1 (p99 > 180 ms) and alarm 7 (fewer than 2 healthy tasks per zone), and adjust `latency_p99_seconds` or `min_healthy_tasks_per_zone` of `modules/monitoring` if they fired with the engine healthy;
