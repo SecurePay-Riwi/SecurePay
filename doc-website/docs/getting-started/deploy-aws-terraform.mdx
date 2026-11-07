@@ -525,6 +525,8 @@ If any of the three fails, the day is still reconciled: the execution sends `Ana
 
 ### Power BI over Athena
 
+**What you need, from zero.** Power BI Desktop (Windows), the [AWS CLI v2](#1-install-the-aws-cli-and-terraform), Git with SecurePay cloned (the report is `services/analytics/powerbi/securepay.pbix`) and dev up with its demo day: someone with the Terraform user runs `terraform apply` ([the short path](#the-short-path); `load_demo_day` is on by default) and waits for the treasury e-mail, about 10 minutes after the apply. To bring dev up yourself, do steps 1 to 4 first. You never need Terraform for the report itself, only the `securepay-dev-powerbi` key and `terraform output -json bucket_names` (or the data lake's bucket name, `securepay-dev-datalake-<account id>`, from the S3 console).
+
 The `.pbix` reads the views through the Athena ODBC driver 2.x, with the key of the `securepay-dev-powerbi` IAM user. Create that key by hand (**IAM → Users → securepay-dev-powerbi → Security credentials → Create access key**) and hand it over privately: never in the repository, a chat or a screenshot. This is how it was connected on Windows on November 5, 2026:
 
 1. Install the [Amazon Athena ODBC driver 2.x](https://docs.aws.amazon.com/athena/latest/ug/odbc-v2-driver.html) (64-bit).
@@ -560,7 +562,18 @@ The `.pbix` reads the views through the Athena ODBC driver 2.x, with the key of 
 
 4. In Power BI: **Get data → ODBC**, DSN `securepay-athena`, and **Use Data Source Configuration** for the credentials (if an old attempt is saved, clear it first in **File → Options → Data source settings**). The navigator shows 19 objects: the 13 tables and the views q1..q6.
 
-5. After the session, delete the key in IAM and the `securepay-powerbi` section of `~\.aws\credentials`. The user has `force_destroy`, so `terraform destroy` removes it even if the key is left.
+5. Point the report's queries at Athena. In **Transform data**, open each query that reads a local Parquet folder, then **Advanced Editor**, and replace its whole text with the Athena table or view of the same name (the names and columns are those of [the analytics model](../reference/analytics-model.mdx)):
+
+   ```
+   let
+       Source = Odbc.Query("dsn=securepay-athena", "SELECT * FROM q1_transactions")
+   in
+       Source
+   ```
+
+   The views are `q1_transactions`, `q2_rules`, `q3_fraud_detection`, `q4_cases`, `q5_reconciliation` and `q6_risk`; the tables keep their names (`fact_decision`, `dim_rule`, ...). Keep any step after the source (renames, types) if the query had one. **Close & Apply**: every page must show the demo day 2026-10-05 with no errors. Save the `.pbix` and commit it.
+
+6. After the session, delete the key in IAM and the `securepay-powerbi` section of `~\.aws\credentials`. The user has `force_destroy`, so `terraform destroy` removes it even if the key is left.
 
 ## 9. Load the daily exchange rates
 
