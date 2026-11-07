@@ -92,7 +92,7 @@ The managed version of C costs more still: Amazon MQ for RabbitMQ as a 3-node `m
 
 **What the numbers do not show.** A and B have nothing to patch below the container; C needs Kubernetes upgrades every few months, node AMIs, the RabbitMQ cluster and Airflow's database, and the team has 4 people for 6 weeks ([ADR-06](./decisions.mdx#adr-06), with the ECS vs EKS table). A is the cheapest and the one with the least to operate, so it stays.
 
-**Pending the load test (HU-60).** The Fargate line (4 tasks at 50 tx/s, up to ~12 at 300) and the cache size (300 MB assumed) are estimates until [Load test the engine](../getting-started/load-test.mdx) measures them; both lines move A and B equally. The B and C figures are computed from the price list, not loaded into the Pricing Calculator.
+**Measured in the load test (HU-60).** [Load test the engine](../getting-started/load-test.mdx) held the 200 ms p99 at 300 tx/s with 10 tasks of 0.5 vCPU (runs 5 and 6, CPU under 41 %), so the peak needs about 10 tasks, not ~12: $0.247 an hour while it lasts. At 50 tx/s the same 10 tasks used under 7 % of CPU, so the 4 tasks of the Fargate line (the minimum to keep 2 per zone) are enough off-peak. The cache never throttled once its limit was 20,000 ECPU/s (peak 14,430); its size (300 MB assumed) is still an estimate. The B and C figures are computed from the price list, not loaded into the Pricing Calculator.
 
 ## AWS Pricing Calculator {/* #pricing-calculator */}
 
