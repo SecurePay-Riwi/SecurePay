@@ -20,6 +20,7 @@ import pytest
 from services.decision_engine import catalog, currency
 from services.decision_engine import decision_service as ds
 from services.decision_engine.schemas import TransactionRequest
+from shared import cache
 
 
 def _payload(amount: str, currency_code: str = "USD") -> TransactionRequest:
@@ -212,7 +213,8 @@ def test_a_late_decision_says_where_its_time_went(slow_rules, caplog):
     assert lines[0]["total_ms"] >= ds.TIMEOUT_MS * 3
 
 
-def test_the_late_line_has_every_stage_it_reached():
+def test_the_late_line_has_every_stage_it_reached(monkeypatch):
+    monkeypatch.setattr(cache, "stats", {"connections": 7, "topology_refreshes": 1})
     stages = {"submitted": 1.0, "started": 1.002, "lookup": 1.0035, "history": 1.2}
 
     line = ds.late_decision_line("t1", stages, 1.25)
@@ -224,9 +226,13 @@ def test_the_late_line_has_every_stage_it_reached():
         "lookup_ms": 1.5,
         "history_ms": 196.5,
         "total_ms": 250.0,
+        "cache_connections": 7,
+        "cache_refreshes": 1,
     }
     assert ds.late_decision_line("t2", {"submitted": 1.0}, 1.2) == {
         "event": "late_decision",
         "transaction_id": "t2",
         "total_ms": 200.0,
+        "cache_connections": 7,
+        "cache_refreshes": 1,
     }

@@ -24,6 +24,7 @@ from services.decision_engine.schemas import (
     TransactionRequest,
     TransactionType,
 )
+from shared import cache
 from shared.cache import get_cache
 from shared.events import evento_decision
 from shared.refdata import digits
@@ -459,6 +460,8 @@ def late_decision_line(transaction_id: str, stages: dict, ended: float) -> dict:
         line[field] = round((stages[stage] - previous) * 1000, 1)
         previous = stages[stage]
     line["total_ms"] = round((ended - stages["submitted"]) * 1000, 1)
+    line["cache_connections"] = cache.stats["connections"]
+    line["cache_refreshes"] = cache.stats["topology_refreshes"]
     return line
 
 
