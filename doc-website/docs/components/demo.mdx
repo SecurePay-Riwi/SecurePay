@@ -1,0 +1,47 @@
+---
+sidebar_position: 10
+title: Demo
+description: The interactive demo of the decision engine, where its data comes from and how to regenerate it.
+---
+
+# Demo
+
+**Page:** [/demo](/demo) · **Folders:** `services/analytics/demo.py`, `doc-website/src/components/Demo/`, `doc-website/static/demo/` · **Run:** `uv run python -m services.analytics.demo`
+
+The demo shows, in one click, how the engine decides a transaction: pick a story (a mule account, a velocity burst, an account takeover…) and watch the transaction go through the cache lookup and each rule of the catalog until the decision comes out.
+
+## Where the data comes from
+
+The page never calls an API and never decides anything. Everything it shows is in `doc-website/static/demo/scenarios.json`, written by `services/analytics/demo.py`:
+
+1. It builds nine fixed stories as `TransactionRequest` and `SecurityEventRequest` (fixed dates, uuid5 ids, invented accounts, never data of the seed).
+2. It decides each one with the engine's own rules through the replay in memory (`services/analytics/replay.decide_all`), with the code default catalog (version 0) and the fixed 2026-10-01 exchange rates. Each story starts with an empty history.
+3. It decides them again with one threshold changed (`velocity.limit` 3, 5, 8 and `default_timeout.limit_usd` 20, 50, 100) for the threshold control.
+
+`services/analytics/tests/test_demo.py` fails when the committed `scenarios.json` is not what the engine gives today, so a change to a rule that changes a decision also changes the demo, in the same PR.
+
+| Story | Rule | Decision |
+| :--- | :--- | :--- |
+| Everyday transfer | RN-01 | APPROVE, no rule fires |
+| Default decision | RN-01 | HOLD: the account is not in the cache yet, USD 75 is above the USD 50 limit |
+| Restricted list | RN-06 | REJECT + case + compliance report |
+| Velocity | RN-02 | HOLD on the sixth transfer in 10 minutes |
+| Mule account | RN-03 | HOLD + case |
+| Shared device | RN-04 | APPROVE with risk score 30 |
+| Splitting | RN-05 | HOLD + case |
+| Account takeover | RN-07 | HOLD |
+| Other currency | RN-11 | APPROVE, reported in USD with the day's rate |
+
+:::note The default decision
+`default_timeout` is never evaluated as a rule: the engine uses it only when the rules cannot decide, because they did not answer in 200 ms or because the cache does not have an account or the merchant. A timeout cannot be reproduced in a replay, so the demo shows the second cause: an account opened after the nightly cache load.
+:::
+
+## Changing the demo
+
+```bash
+uv run python -m services.analytics.demo     # writes doc-website/static/demo/scenarios.json
+uv run pytest services/analytics/tests/test_demo.py
+cd doc-website && npm run build
+```
+
+Commit the new `scenarios.json` with the change. A new field in the file is compatible; renaming or removing one raises `format_version` in `demo.py` and in `src/components/Demo/data.ts`, in the same PR.
