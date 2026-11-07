@@ -1,9 +1,11 @@
 import {type ReactNode, useEffect, useState} from 'react';
 import Link from '@docusaurus/Link';
 import Layout from '@theme/Layout';
+import AfterTimeline from '@site/src/components/Demo/AfterTimeline';
 import DecisionFlow from '@site/src/components/Demo/DecisionFlow';
 import ScenarioPicker from '@site/src/components/Demo/ScenarioPicker';
 import StoryTimeline from '@site/src/components/Demo/StoryTimeline';
+import ThresholdSlider from '@site/src/components/Demo/ThresholdSlider';
 import {useDemoData} from '@site/src/components/Demo/data';
 import styles from './demo.module.css';
 
@@ -66,6 +68,8 @@ export default function Demo(): ReactNode {
               <StoryTimeline scenario={scenario} />
             </section>
             <DecisionFlow key={scenario.id} data={data} scenario={scenario} />
+            <AfterTimeline key={`after-${scenario.id}`} scenario={scenario} />
+            <ThresholdSlider data={data} />
           </>
         )}
 

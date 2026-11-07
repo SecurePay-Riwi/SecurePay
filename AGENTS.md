@@ -44,7 +44,7 @@ SecurePay/                  ← this repo: the product (engine, consumers, infra
 │   ├── reconciliation/     ← nightly reconciliation: ingest, match (Spark), store (Sprint 5)
 │   ├── cache_loader/       ← loads accounts, merchants and the restricted list into Valkey (HU-67)
 │   ├── db_bootstrap/       ← AWS only: creates the tables, one database user per component and its grants (MAG-361)
-│   ├── analytics/          ← analytics ETL (Spark), views q1..q6, labels, replay and metrics (Sprint 6)
+│   ├── analytics/          ← analytics ETL (Spark), views q1..q6, labels, replay, metrics and the web demo's data (demo.py)
 │   └── consumers/          ← SNS/SQS consumers and analytics
 ├── tests/                  ← end-to-end tests that run more than one service
 │                             (test_rule_catalog_e2e.py: rules API + engine)
@@ -328,6 +328,12 @@ Pages: `doc-website/docs/components/analytics.mdx` and
   services.analytics.catalog` and commit it (`test_glue_job.py` checks).
   What the ETL imports goes in `python_modules` of `modules/analytics`
   at the versions of `uv.lock`.
+- **Web demo:** `uv run python -m services.analytics.demo` decides fixed
+  scenarios with the replay and writes `doc-website/static/demo/scenarios.json`,
+  which the page `/demo` (`doc-website/src/pages/demo.tsx`,
+  `src/components/Demo/`) only reads. `test_demo.py` fails when the committed
+  file differs from what the engine gives: after changing a rule, run the
+  command and commit the file. Page: `doc-website/docs/components/demo.mdx`.
 - **Fixtures:** `services/analytics/tests/fixtures/` is one day
   (2026-10-05) built by `make_fixtures.py` with the engine's rules; do not
   edit them without Habith. Its `README.md` lists the day.
