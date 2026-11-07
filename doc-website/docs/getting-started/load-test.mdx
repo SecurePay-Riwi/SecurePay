@@ -24,10 +24,10 @@ Run from your computer, Locust reaches the load balancer over the internet, so i
 
 - the load balancer's `TargetResponseTime` p99, which is the time the engine took, on the dashboard `securepay-dev` and in alarm 1;
 - the engine's decision log, which lists every decision slower than 150 ms (query `securepay-dev/slow-decisions`);
-- for each default decision by timeout, one `late_decision` line on the same log with where its time went: `queue_ms` (waiting for a worker), `lookup_ms` (the accounts' round trip to Valkey), `history_ms` (the history's round trip), `rules_ms` and `total_ms`. A stage it never reached is missing. In Logs Insights, on the engine's log group:
+- for each default decision by timeout, one `late_decision` line on the same log with where its time went: `queue_ms` (waiting for a worker), `lookup_ms` (the accounts' round trip to Valkey), `history_ms` (the history's round trip), `rules_ms` and `total_ms`. A stage it never reached is missing. It also carries how many connections to the cache the task has opened (`cache_connections`) and how many times it reloaded the cluster's map (`cache_refreshes`) since it started: if they jump between two lines of the same task (`@logStream`) in the seconds of a stall, the client reconnected. In Logs Insights, on the engine's log group:
 
 ```
-fields @timestamp, queue_ms, lookup_ms, history_ms, rules_ms, total_ms
+fields @timestamp, @logStream, queue_ms, lookup_ms, history_ms, rules_ms, total_ms, cache_connections, cache_refreshes
 | filter event = "late_decision"
 | sort @timestamp asc
 ```
