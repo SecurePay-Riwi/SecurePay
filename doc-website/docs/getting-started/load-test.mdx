@@ -158,8 +158,14 @@ Every run of the day, at 300 tx/s:
 | 3 | 10 | the cache's limit from 5,000 to 20,000 ECPU/s (`cache_max_ecpu_per_second`) | 164 / 246 | 1.79 % |
 | 4 | 20 | — (to check that the limit was per task) | 40 / 129 | 0.40 % |
 | 5 | 10 | 4 round trips to Valkey per decision instead of 8.4 | 106 / 229 | 0.40 % |
+| 6 | 10 | the `late_decision` line (only measures) | p99 about 150 to 160 per minute, 250 in the minute of the step to 300 | about 0.3 % |
 
-In run 2 the cache throttled about 72,000 commands a minute. In runs 3 to 5 it throttled none, and the CPU stayed under 41 %: what is left is per task and once a minute. The autoscaling did not add tasks in run 5 because 300 tx/s over 10 tasks is exactly its target of 1,800 requests per task per minute.
+Run 6 (November 7, 2026, 20:43 UTC) repeated run 5 with the `late_decision` line, to find the once-a-minute stall:
+
+- **The limit holds at 300 tx/s with 10 tasks.** The load balancer's p99 per minute stayed at about 150 to 160 ms, except in the minute of the step from 150 to 300 tx/s (about 250 ms at 20:54). In that minute the cache was scaling itself: its maximum write latency rose to about 50 ms, and for a few seconds the accounts' lookup took 200 to 650 ms. The engine's CPU stayed under 25 %.
+- **The stall at second :02 is not the cache and not the client.** Of the 342 default decisions, 260 fell in the first 5 seconds of a minute, most of them at :01 to :03. In those decisions `lookup_ms` and `history_ms` both grow (50 to 180 ms each) while `rules_ms` stays near 0 and `queue_ms` mostly under 50 ms. The cache's own maximum latency per minute (`SuccessfulReadRequestLatency`, `SuccessfulWriteRequestLatency`) stayed at a few milliseconds outside 20:54, and the decisions that reach the engine at :02 are as many as in any other second (171 to 173, the busiest second had 181). The time is lost between the engine and the cache (the network, ElastiCache Serverless's proxy or the client's connections), on 10 to 20 decisions a minute, under 1 %: it does not move the p99.
+
+In run 2 the cache throttled about 72,000 commands a minute. In runs 3 to 5 it throttled none, and the CPU stayed under 41 %: what is left is once a minute, between the engine and the cache (run 6). The autoscaling did not add tasks in run 5 because 300 tx/s over 10 tasks is exactly its target of 1,800 requests per task per minute.
 
 With the numbers:
 - check alarm 1 (p99 > 180 ms) and alarm 7 (fewer than 2 healthy tasks per zone), and adjust `latency_p99_seconds` or `min_healthy_tasks_per_zone` of `modules/monitoring` if they fired with the engine healthy;
