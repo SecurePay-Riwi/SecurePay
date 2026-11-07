@@ -20,6 +20,7 @@
         "iam:PutUserPolicy",
         "iam:DeleteUserPolicy",
         "iam:DeleteAccessKey",
+        "iam:DeleteLoginProfile",
         "iam:CreateInstanceProfile",
         "iam:DeleteInstanceProfile",
         "iam:TagInstanceProfile",
@@ -33,6 +34,12 @@
         "arn:aws:iam::*:user/securepay-*",
         "arn:aws:iam::*:instance-profile/securepay-*"
       ]
+    },
+    {
+      "Sid": "ListMfaDevicesOnDestroy",
+      "Effect": "Allow",
+      "Action": "iam:ListVirtualMFADevices",
+      "Resource": "*"
     },
     {
       "Sid": "AttachOnlyTheseManagedPolicies",
