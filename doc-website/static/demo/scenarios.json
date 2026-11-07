@@ -1,0 +1,1142 @@
+{
+  "catalog": {
+    "rules": [
+      {
+        "action": "REJECT",
+        "code": "restricted_list",
+        "description": "Account owner is on a restricted list.",
+        "enabled": true,
+        "opens_case": true,
+        "params": {},
+        "rn": "RN-06",
+        "score": 0,
+        "title": "Restricted list"
+      },
+      {
+        "action": "HOLD",
+        "code": "velocity",
+        "description": "",
+        "enabled": true,
+        "opens_case": false,
+        "params": {
+          "limit": 5,
+          "window_minutes": 10
+        },
+        "rn": "RN-02",
+        "score": 0,
+        "title": "Velocity"
+      },
+      {
+        "action": "HOLD",
+        "code": "mule",
+        "description": "",
+        "enabled": true,
+        "opens_case": true,
+        "params": {
+          "min_senders": 3,
+          "window_minutes": 30,
+          "withdrawn_pct": "80"
+        },
+        "rn": "RN-03",
+        "score": 0,
+        "title": "Mule account"
+      },
+      {
+        "action": "APPROVE",
+        "code": "shared_device",
+        "description": "",
+        "enabled": true,
+        "opens_case": false,
+        "params": {
+          "max_accounts": 3,
+          "window_days": 30
+        },
+        "rn": "RN-04",
+        "score": 30,
+        "title": "Shared device"
+      },
+      {
+        "action": "HOLD",
+        "code": "splitting",
+        "description": "",
+        "enabled": true,
+        "opens_case": true,
+        "params": {
+          "daily_limit_usd": "10000",
+          "min_transactions": 3,
+          "window_hours": 24
+        },
+        "rn": "RN-05",
+        "score": 40,
+        "title": "Splitting"
+      },
+      {
+        "action": "HOLD",
+        "code": "account_takeover",
+        "description": "",
+        "enabled": true,
+        "opens_case": false,
+        "params": {
+          "min_amount_usd": "200",
+          "window_minutes": 60
+        },
+        "rn": "RN-07",
+        "score": 0,
+        "title": "Account takeover"
+      },
+      {
+        "action": "HOLD",
+        "code": "default_timeout",
+        "description": "",
+        "enabled": true,
+        "opens_case": false,
+        "params": {
+          "limit_usd": "50"
+        },
+        "rn": "RN-01",
+        "score": 0,
+        "title": "Default decision"
+      }
+    ],
+    "version": "0"
+  },
+  "format_version": 1,
+  "generated_from": "services/analytics/demo.py",
+  "scenarios": [
+    {
+      "after": {
+        "case_due_minutes": null,
+        "compliance_report": false,
+        "evidence": null,
+        "opens_case": false,
+        "queues": [
+          "cases",
+          "history",
+          "analytics"
+        ]
+      },
+      "id": "normal",
+      "rn": "RN-01",
+      "steps": [
+        {
+          "decision": {
+            "amount_usd": "28.00",
+            "by_default": false,
+            "decision": "APPROVE",
+            "decision_reason": "The transaction did not trigger any configured rule.",
+            "opens_case": false,
+            "rate_date": "2026-10-05",
+            "risk_score": 0,
+            "rule_versions": {},
+            "rules_triggered": [],
+            "rules_version": "0",
+            "transaction_id": "4ce8e5a8-285d-5b42-a962-a81e83b9e271",
+            "usd_rate": "1"
+          },
+          "kind": "transaction",
+          "label": "Alice sends Bob USD 28",
+          "request": {
+            "amount": "28.00",
+            "channel": "APP",
+            "currency": "USD",
+            "destination_account_id": "eaea4d4a-5b56-5163-a7d3-0d9d3d7edd60",
+            "destination_balance_after": "5028.00",
+            "destination_balance_before": "5000.00",
+            "device_id": "824f39a0-a07a-55ed-887b-9595dd12ee73",
+            "id": "4ce8e5a8-285d-5b42-a962-a81e83b9e271",
+            "source_account_id": "d333ada4-0814-5c51-81d0-03cfe0603e25",
+            "source_balance_after": "4972.00",
+            "source_balance_before": "5000.00",
+            "transaction_date": "2026-10-05T09:00:00Z",
+            "type": "P2P"
+          }
+        }
+      ],
+      "story": "Alice sends Bob USD 28. Nothing unusual: no rule fires.",
+      "title": "Everyday transfer"
+    },
+    {
+      "after": {
+        "case_due_minutes": null,
+        "compliance_report": false,
+        "evidence": null,
+        "opens_case": false,
+        "queues": [
+          "cases",
+          "history",
+          "analytics"
+        ]
+      },
+      "id": "over_limit",
+      "rn": "RN-01",
+      "steps": [
+        {
+          "decision": {
+            "amount_usd": "75.00",
+            "by_default": true,
+            "decision": "HOLD",
+            "decision_reason": "Default decision: account 423e6e08-96e8-5730-939d-5d152cb6c532 is not in the cache (USD 75.00, limit USD 50).",
+            "opens_case": false,
+            "rate_date": "2026-10-05",
+            "risk_score": 0,
+            "rule_versions": {
+              "default_timeout": 1
+            },
+            "rules_triggered": [
+              "default_timeout"
+            ],
+            "rules_version": "0",
+            "transaction_id": "8174c7b8-61f4-527e-98a8-7bef4bdb8e31",
+            "usd_rate": "1"
+          },
+          "kind": "transaction",
+          "label": "A new account sends Bob USD 75",
+          "request": {
+            "amount": "75.00",
+            "channel": "APP",
+            "currency": "USD",
+            "destination_account_id": "eaea4d4a-5b56-5163-a7d3-0d9d3d7edd60",
+            "destination_balance_after": "5075.00",
+            "destination_balance_before": "5000.00",
+            "device_id": "a6a1ad28-f956-50a3-b81d-9ab0360b036b",
+            "id": "8174c7b8-61f4-527e-98a8-7bef4bdb8e31",
+            "source_account_id": "423e6e08-96e8-5730-939d-5d152cb6c532",
+            "source_balance_after": "4925.00",
+            "source_balance_before": "5000.00",
+            "transaction_date": "2026-10-05T09:30:00Z",
+            "type": "P2P"
+          }
+        }
+      ],
+      "story": "A brand-new account sends USD 75 before the nightly cache load includes it. The rules cannot run, so the default decision applies: approve below USD 50, hold from USD 50 up.",
+      "title": "Default decision"
+    },
+    {
+      "after": {
+        "case_due_minutes": 240,
+        "compliance_report": true,
+        "evidence": "cases/<yyyy>/<mm>/<case_id>.json (S3 Object Lock, 10 years)",
+        "opens_case": true,
+        "queues": [
+          "cases",
+          "history",
+          "analytics"
+        ]
+      },
+      "id": "restricted_list",
+      "rn": "RN-06",
+      "steps": [
+        {
+          "decision": {
+            "amount_usd": "120.00",
+            "by_default": false,
+            "decision": "REJECT",
+            "decision_reason": "Account owner is on a restricted list.",
+            "opens_case": true,
+            "rate_date": "2026-10-05",
+            "risk_score": 0,
+            "rule_versions": {
+              "restricted_list": 1
+            },
+            "rules_triggered": [
+              "restricted_list"
+            ],
+            "rules_version": "0",
+            "transaction_id": "52f3b525-6fd1-5053-bee5-e49f91a5cc84",
+            "usd_rate": "1"
+          },
+          "kind": "transaction",
+          "label": "Carol sends Dave USD 120",
+          "request": {
+            "amount": "120.00",
+            "channel": "APP",
+            "currency": "USD",
+            "destination_account_id": "aabafc65-7cb6-5427-8d2d-0d96a827e189",
+            "destination_balance_after": "5120.00",
+            "destination_balance_before": "5000.00",
+            "device_id": "fd1f734c-7a95-52d2-9748-52877ac97549",
+            "id": "52f3b525-6fd1-5053-bee5-e49f91a5cc84",
+            "source_account_id": "0c1cef95-f0d5-52ca-81a8-c6c4871267e1",
+            "source_balance_after": "4880.00",
+            "source_balance_before": "5000.00",
+            "transaction_date": "2026-10-05T10:00:00Z",
+            "type": "P2P"
+          }
+        }
+      ],
+      "story": "Carol sends USD 120 to Dave, whose document is on a sanctions list. The engine rejects it and compliance gets a report.",
+      "title": "Restricted list"
+    },
+    {
+      "after": {
+        "case_due_minutes": null,
+        "compliance_report": false,
+        "evidence": null,
+        "opens_case": false,
+        "queues": [
+          "cases",
+          "history",
+          "analytics"
+        ]
+      },
+      "id": "velocity",
+      "rn": "RN-02",
+      "steps": [
+        {
+          "decision": {
+            "amount_usd": "15.00",
+            "by_default": false,
+            "decision": "APPROVE",
+            "decision_reason": "The transaction did not trigger any configured rule.",
+            "opens_case": false,
+            "rate_date": "2026-10-05",
+            "risk_score": 0,
+            "rule_versions": {},
+            "rules_triggered": [],
+            "rules_version": "0",
+            "transaction_id": "ea470329-8369-5f5b-b2bd-7ba8fae91907",
+            "usd_rate": "1"
+          },
+          "kind": "transaction",
+          "label": "Transfer 1 of 6: USD 15 to Frank",
+          "request": {
+            "amount": "15.00",
+            "channel": "APP",
+            "currency": "USD",
+            "destination_account_id": "e20c3a45-8183-564a-9c93-317122f5f9b2",
+            "destination_balance_after": "5015.00",
+            "destination_balance_before": "5000.00",
+            "device_id": "6dd06ed1-1047-5c73-be72-751cd440d54f",
+            "id": "ea470329-8369-5f5b-b2bd-7ba8fae91907",
+            "source_account_id": "2524d581-6a3f-5db7-950e-7d302a02d0e0",
+            "source_balance_after": "4985.00",
+            "source_balance_before": "5000.00",
+            "transaction_date": "2026-10-05T11:00:00Z",
+            "type": "P2P"
+          }
+        },
+        {
+          "decision": {
+            "amount_usd": "15.00",
+            "by_default": false,
+            "decision": "APPROVE",
+            "decision_reason": "The transaction did not trigger any configured rule.",
+            "opens_case": false,
+            "rate_date": "2026-10-05",
+            "risk_score": 0,
+            "rule_versions": {},
+            "rules_triggered": [],
+            "rules_version": "0",
+            "transaction_id": "e4ad093b-79fa-5211-b511-a645789cf849",
+            "usd_rate": "1"
+          },
+          "kind": "transaction",
+          "label": "Transfer 2 of 6: USD 15 to Frank",
+          "request": {
+            "amount": "15.00",
+            "channel": "APP",
+            "currency": "USD",
+            "destination_account_id": "e20c3a45-8183-564a-9c93-317122f5f9b2",
+            "destination_balance_after": "5015.00",
+            "destination_balance_before": "5000.00",
+            "device_id": "6dd06ed1-1047-5c73-be72-751cd440d54f",
+            "id": "e4ad093b-79fa-5211-b511-a645789cf849",
+            "source_account_id": "2524d581-6a3f-5db7-950e-7d302a02d0e0",
+            "source_balance_after": "4985.00",
+            "source_balance_before": "5000.00",
+            "transaction_date": "2026-10-05T11:01:00Z",
+            "type": "P2P"
+          }
+        },
+        {
+          "decision": {
+            "amount_usd": "15.00",
+            "by_default": false,
+            "decision": "APPROVE",
+            "decision_reason": "The transaction did not trigger any configured rule.",
+            "opens_case": false,
+            "rate_date": "2026-10-05",
+            "risk_score": 0,
+            "rule_versions": {},
+            "rules_triggered": [],
+            "rules_version": "0",
+            "transaction_id": "1089905e-3ad9-57f8-912a-c34eb72e05b2",
+            "usd_rate": "1"
+          },
+          "kind": "transaction",
+          "label": "Transfer 3 of 6: USD 15 to Frank",
+          "request": {
+            "amount": "15.00",
+            "channel": "APP",
+            "currency": "USD",
+            "destination_account_id": "e20c3a45-8183-564a-9c93-317122f5f9b2",
+            "destination_balance_after": "5015.00",
+            "destination_balance_before": "5000.00",
+            "device_id": "6dd06ed1-1047-5c73-be72-751cd440d54f",
+            "id": "1089905e-3ad9-57f8-912a-c34eb72e05b2",
+            "source_account_id": "2524d581-6a3f-5db7-950e-7d302a02d0e0",
+            "source_balance_after": "4985.00",
+            "source_balance_before": "5000.00",
+            "transaction_date": "2026-10-05T11:03:00Z",
+            "type": "P2P"
+          }
+        },
+        {
+          "decision": {
+            "amount_usd": "15.00",
+            "by_default": false,
+            "decision": "APPROVE",
+            "decision_reason": "The transaction did not trigger any configured rule.",
+            "opens_case": false,
+            "rate_date": "2026-10-05",
+            "risk_score": 0,
+            "rule_versions": {},
+            "rules_triggered": [],
+            "rules_version": "0",
+            "transaction_id": "31c7c704-9337-55aa-ab4a-deee024f2bf8",
+            "usd_rate": "1"
+          },
+          "kind": "transaction",
+          "label": "Transfer 4 of 6: USD 15 to Frank",
+          "request": {
+            "amount": "15.00",
+            "channel": "APP",
+            "currency": "USD",
+            "destination_account_id": "e20c3a45-8183-564a-9c93-317122f5f9b2",
+            "destination_balance_after": "5015.00",
+            "destination_balance_before": "5000.00",
+            "device_id": "6dd06ed1-1047-5c73-be72-751cd440d54f",
+            "id": "31c7c704-9337-55aa-ab4a-deee024f2bf8",
+            "source_account_id": "2524d581-6a3f-5db7-950e-7d302a02d0e0",
+            "source_balance_after": "4985.00",
+            "source_balance_before": "5000.00",
+            "transaction_date": "2026-10-05T11:04:00Z",
+            "type": "P2P"
+          }
+        },
+        {
+          "decision": {
+            "amount_usd": "15.00",
+            "by_default": false,
+            "decision": "APPROVE",
+            "decision_reason": "The transaction did not trigger any configured rule.",
+            "opens_case": false,
+            "rate_date": "2026-10-05",
+            "risk_score": 0,
+            "rule_versions": {},
+            "rules_triggered": [],
+            "rules_version": "0",
+            "transaction_id": "a793b48d-2d3f-5016-a496-af8926646a1f",
+            "usd_rate": "1"
+          },
+          "kind": "transaction",
+          "label": "Transfer 5 of 6: USD 15 to Frank",
+          "request": {
+            "amount": "15.00",
+            "channel": "APP",
+            "currency": "USD",
+            "destination_account_id": "e20c3a45-8183-564a-9c93-317122f5f9b2",
+            "destination_balance_after": "5015.00",
+            "destination_balance_before": "5000.00",
+            "device_id": "6dd06ed1-1047-5c73-be72-751cd440d54f",
+            "id": "a793b48d-2d3f-5016-a496-af8926646a1f",
+            "source_account_id": "2524d581-6a3f-5db7-950e-7d302a02d0e0",
+            "source_balance_after": "4985.00",
+            "source_balance_before": "5000.00",
+            "transaction_date": "2026-10-05T11:06:00Z",
+            "type": "P2P"
+          }
+        },
+        {
+          "decision": {
+            "amount_usd": "15.00",
+            "by_default": false,
+            "decision": "HOLD",
+            "decision_reason": "Velocity: 6 outgoing transfers in 10 minutes from the same account.",
+            "opens_case": false,
+            "rate_date": "2026-10-05",
+            "risk_score": 0,
+            "rule_versions": {
+              "velocity": 1
+            },
+            "rules_triggered": [
+              "velocity"
+            ],
+            "rules_version": "0",
+            "transaction_id": "4d3ce39e-221a-5ea8-ac4c-63606d8f5135",
+            "usd_rate": "1"
+          },
+          "kind": "transaction",
+          "label": "Transfer 6 of 6: USD 15 to Frank",
+          "request": {
+            "amount": "15.00",
+            "channel": "APP",
+            "currency": "USD",
+            "destination_account_id": "e20c3a45-8183-564a-9c93-317122f5f9b2",
+            "destination_balance_after": "5015.00",
+            "destination_balance_before": "5000.00",
+            "device_id": "6dd06ed1-1047-5c73-be72-751cd440d54f",
+            "id": "4d3ce39e-221a-5ea8-ac4c-63606d8f5135",
+            "source_account_id": "2524d581-6a3f-5db7-950e-7d302a02d0e0",
+            "source_balance_after": "4985.00",
+            "source_balance_before": "5000.00",
+            "transaction_date": "2026-10-05T11:08:00Z",
+            "type": "P2P"
+          }
+        }
+      ],
+      "story": "Erin sends six small transfers to Frank in 8 minutes. More than 5 in 10 minutes holds the sixth.",
+      "title": "Velocity"
+    },
+    {
+      "after": {
+        "case_due_minutes": 240,
+        "compliance_report": false,
+        "evidence": "cases/<yyyy>/<mm>/<case_id>.json (S3 Object Lock, 10 years)",
+        "opens_case": true,
+        "queues": [
+          "cases",
+          "history",
+          "analytics"
+        ]
+      },
+      "id": "mule",
+      "rn": "RN-03",
+      "steps": [
+        {
+          "decision": {
+            "amount_usd": "300.00",
+            "by_default": false,
+            "decision": "APPROVE",
+            "decision_reason": "The transaction did not trigger any configured rule.",
+            "opens_case": false,
+            "rate_date": "2026-10-05",
+            "risk_score": 0,
+            "rule_versions": {},
+            "rules_triggered": [],
+            "rules_version": "0",
+            "transaction_id": "e53c2458-1726-5aa9-85ed-f7316c721984",
+            "usd_rate": "1"
+          },
+          "kind": "transaction",
+          "label": "Sender 1 transfers USD 300",
+          "request": {
+            "amount": "300.00",
+            "channel": "APP",
+            "currency": "USD",
+            "destination_account_id": "0afdcbc6-3ed7-59ae-a375-bfd597564d42",
+            "destination_balance_after": "5300.00",
+            "destination_balance_before": "5000.00",
+            "device_id": "c6551765-2677-5376-aabe-52423a50250c",
+            "id": "e53c2458-1726-5aa9-85ed-f7316c721984",
+            "source_account_id": "9f72b4fb-a545-5c27-abca-c53e937dbe20",
+            "source_balance_after": "4700.00",
+            "source_balance_before": "5000.00",
+            "transaction_date": "2026-10-05T12:00:00Z",
+            "type": "P2P"
+          }
+        },
+        {
+          "decision": {
+            "amount_usd": "300.00",
+            "by_default": false,
+            "decision": "APPROVE",
+            "decision_reason": "The transaction did not trigger any configured rule.",
+            "opens_case": false,
+            "rate_date": "2026-10-05",
+            "risk_score": 0,
+            "rule_versions": {},
+            "rules_triggered": [],
+            "rules_version": "0",
+            "transaction_id": "961e9272-8ea3-5c53-8719-503b0fb2d912",
+            "usd_rate": "1"
+          },
+          "kind": "transaction",
+          "label": "Sender 2 transfers USD 300",
+          "request": {
+            "amount": "300.00",
+            "channel": "APP",
+            "currency": "USD",
+            "destination_account_id": "0afdcbc6-3ed7-59ae-a375-bfd597564d42",
+            "destination_balance_after": "5300.00",
+            "destination_balance_before": "5000.00",
+            "device_id": "7f721186-6491-5584-adcb-6acae9d37dc9",
+            "id": "961e9272-8ea3-5c53-8719-503b0fb2d912",
+            "source_account_id": "24b78a53-b399-5a52-b082-5869d2c9cb32",
+            "source_balance_after": "4700.00",
+            "source_balance_before": "5000.00",
+            "transaction_date": "2026-10-05T12:04:00Z",
+            "type": "P2P"
+          }
+        },
+        {
+          "decision": {
+            "amount_usd": "300.00",
+            "by_default": false,
+            "decision": "APPROVE",
+            "decision_reason": "The transaction did not trigger any configured rule.",
+            "opens_case": false,
+            "rate_date": "2026-10-05",
+            "risk_score": 0,
+            "rule_versions": {},
+            "rules_triggered": [],
+            "rules_version": "0",
+            "transaction_id": "2808418b-17f8-557f-aae0-ebd876b8c0d2",
+            "usd_rate": "1"
+          },
+          "kind": "transaction",
+          "label": "Sender 3 transfers USD 300",
+          "request": {
+            "amount": "300.00",
+            "channel": "APP",
+            "currency": "USD",
+            "destination_account_id": "0afdcbc6-3ed7-59ae-a375-bfd597564d42",
+            "destination_balance_after": "5300.00",
+            "destination_balance_before": "5000.00",
+            "device_id": "815afc41-98b7-5962-acdf-4a53760d722c",
+            "id": "2808418b-17f8-557f-aae0-ebd876b8c0d2",
+            "source_account_id": "d86ae3e4-293f-5b7f-9047-1f4545da7fda",
+            "source_balance_after": "4700.00",
+            "source_balance_before": "5000.00",
+            "transaction_date": "2026-10-05T12:08:00Z",
+            "type": "P2P"
+          }
+        },
+        {
+          "decision": {
+            "amount_usd": "765.00",
+            "by_default": false,
+            "decision": "HOLD",
+            "decision_reason": "Mule account: received transfers from 3 accounts and withdrew 85.0% of the balance in less than 30 minutes.",
+            "opens_case": true,
+            "rate_date": "2026-10-05",
+            "risk_score": 0,
+            "rule_versions": {
+              "mule": 1
+            },
+            "rules_triggered": [
+              "mule"
+            ],
+            "rules_version": "0",
+            "transaction_id": "0421d1ec-ea3a-5df4-900f-b30441d01398",
+            "usd_rate": "1"
+          },
+          "kind": "transaction",
+          "label": "The account withdraws USD 765 of USD 900",
+          "request": {
+            "amount": "765.00",
+            "channel": "CAJERO",
+            "currency": "USD",
+            "device_id": "34414142-97a3-5f58-9e5d-92c6991a1fb3",
+            "id": "0421d1ec-ea3a-5df4-900f-b30441d01398",
+            "source_account_id": "0afdcbc6-3ed7-59ae-a375-bfd597564d42",
+            "source_balance_after": "135.00",
+            "source_balance_before": "900.00",
+            "transaction_date": "2026-10-05T12:28:00Z",
+            "type": "RETIRO"
+          }
+        }
+      ],
+      "story": "Three different people send money to one account, and 20 minutes after the last one it withdraws 85 % of its balance.",
+      "title": "Mule account"
+    },
+    {
+      "after": {
+        "case_due_minutes": null,
+        "compliance_report": false,
+        "evidence": null,
+        "opens_case": false,
+        "queues": [
+          "cases",
+          "history",
+          "analytics"
+        ]
+      },
+      "id": "shared_device",
+      "rn": "RN-04",
+      "steps": [
+        {
+          "decision": {
+            "amount_usd": "12.00",
+            "by_default": false,
+            "decision": "APPROVE",
+            "decision_reason": "The transaction did not trigger any configured rule.",
+            "opens_case": false,
+            "rate_date": "2026-10-05",
+            "risk_score": 0,
+            "rule_versions": {},
+            "rules_triggered": [],
+            "rules_version": "0",
+            "transaction_id": "6f242bff-e2be-588d-b679-88a565fd8795",
+            "usd_rate": "1"
+          },
+          "kind": "transaction",
+          "label": "Account 1 pays USD 12 from the shared tablet",
+          "request": {
+            "amount": "12.00",
+            "channel": "APP",
+            "currency": "USD",
+            "device_id": "521da52e-a2c2-5391-8f15-0bbaa298e821",
+            "id": "6f242bff-e2be-588d-b679-88a565fd8795",
+            "merchant_id": "fb5ad5ed-caf1-5016-b629-b5ad30dc35ea",
+            "source_account_id": "3f4664a8-97cd-5dc4-9b92-ddf14a8c86d0",
+            "source_balance_after": "4988.00",
+            "source_balance_before": "5000.00",
+            "transaction_date": "2026-10-05T13:00:00Z",
+            "type": "QR"
+          }
+        },
+        {
+          "decision": {
+            "amount_usd": "12.00",
+            "by_default": false,
+            "decision": "APPROVE",
+            "decision_reason": "The transaction did not trigger any configured rule.",
+            "opens_case": false,
+            "rate_date": "2026-10-05",
+            "risk_score": 0,
+            "rule_versions": {},
+            "rules_triggered": [],
+            "rules_version": "0",
+            "transaction_id": "dd48e01f-23b9-5cb8-b0eb-6fcb09afcccd",
+            "usd_rate": "1"
+          },
+          "kind": "transaction",
+          "label": "Account 2 pays USD 12 from the shared tablet",
+          "request": {
+            "amount": "12.00",
+            "channel": "APP",
+            "currency": "USD",
+            "device_id": "521da52e-a2c2-5391-8f15-0bbaa298e821",
+            "id": "dd48e01f-23b9-5cb8-b0eb-6fcb09afcccd",
+            "merchant_id": "fb5ad5ed-caf1-5016-b629-b5ad30dc35ea",
+            "source_account_id": "69775569-09a0-5c98-9b36-b2b208b44e8e",
+            "source_balance_after": "4988.00",
+            "source_balance_before": "5000.00",
+            "transaction_date": "2026-10-05T13:10:00Z",
+            "type": "QR"
+          }
+        },
+        {
+          "decision": {
+            "amount_usd": "12.00",
+            "by_default": false,
+            "decision": "APPROVE",
+            "decision_reason": "The transaction did not trigger any configured rule.",
+            "opens_case": false,
+            "rate_date": "2026-10-05",
+            "risk_score": 0,
+            "rule_versions": {},
+            "rules_triggered": [],
+            "rules_version": "0",
+            "transaction_id": "c06eb1f3-c460-5066-a3b2-4b9dd75e1277",
+            "usd_rate": "1"
+          },
+          "kind": "transaction",
+          "label": "Account 3 pays USD 12 from the shared tablet",
+          "request": {
+            "amount": "12.00",
+            "channel": "APP",
+            "currency": "USD",
+            "device_id": "521da52e-a2c2-5391-8f15-0bbaa298e821",
+            "id": "c06eb1f3-c460-5066-a3b2-4b9dd75e1277",
+            "merchant_id": "fb5ad5ed-caf1-5016-b629-b5ad30dc35ea",
+            "source_account_id": "ea99d8e3-5fe5-57d0-b2ca-7d1c5c52f6bc",
+            "source_balance_after": "4988.00",
+            "source_balance_before": "5000.00",
+            "transaction_date": "2026-10-05T13:20:00Z",
+            "type": "QR"
+          }
+        },
+        {
+          "decision": {
+            "amount_usd": "12.00",
+            "by_default": false,
+            "decision": "APPROVE",
+            "decision_reason": "Shared device: used by 4 accounts in the last 30 days (limit 3).",
+            "opens_case": false,
+            "rate_date": "2026-10-05",
+            "risk_score": 30,
+            "rule_versions": {
+              "shared_device": 1
+            },
+            "rules_triggered": [
+              "shared_device"
+            ],
+            "rules_version": "0",
+            "transaction_id": "2c55c3f0-f494-5f94-bdd1-d88dd432c2ff",
+            "usd_rate": "1"
+          },
+          "kind": "transaction",
+          "label": "Account 4 pays USD 12 from the shared tablet",
+          "request": {
+            "amount": "12.00",
+            "channel": "APP",
+            "currency": "USD",
+            "device_id": "521da52e-a2c2-5391-8f15-0bbaa298e821",
+            "id": "2c55c3f0-f494-5f94-bdd1-d88dd432c2ff",
+            "merchant_id": "fb5ad5ed-caf1-5016-b629-b5ad30dc35ea",
+            "source_account_id": "547e81d6-d341-536f-b0dd-ec6826300396",
+            "source_balance_after": "4988.00",
+            "source_balance_before": "5000.00",
+            "transaction_date": "2026-10-05T13:30:00Z",
+            "type": "QR"
+          }
+        }
+      ],
+      "story": "Four different accounts pay at the same shop from the same tablet. The fourth raises the risk score, but it is approved.",
+      "title": "Shared device"
+    },
+    {
+      "after": {
+        "case_due_minutes": 240,
+        "compliance_report": false,
+        "evidence": "cases/<yyyy>/<mm>/<case_id>.json (S3 Object Lock, 10 years)",
+        "opens_case": true,
+        "queues": [
+          "cases",
+          "history",
+          "analytics"
+        ]
+      },
+      "id": "splitting",
+      "rn": "RN-05",
+      "steps": [
+        {
+          "decision": {
+            "amount_usd": "4000.00",
+            "by_default": false,
+            "decision": "APPROVE",
+            "decision_reason": "The transaction did not trigger any configured rule.",
+            "opens_case": false,
+            "rate_date": "2026-10-05",
+            "risk_score": 0,
+            "rule_versions": {},
+            "rules_triggered": [],
+            "rules_version": "0",
+            "transaction_id": "6a5e6e56-ab86-54ee-8614-68bb17cc0b15",
+            "usd_rate": "1"
+          },
+          "kind": "transaction",
+          "label": "Withdrawal 1 of 3: USD 4,000",
+          "request": {
+            "amount": "4000.00",
+            "channel": "CAJERO",
+            "currency": "USD",
+            "device_id": "3b753262-0b79-5c74-8616-52d20d464891",
+            "id": "6a5e6e56-ab86-54ee-8614-68bb17cc0b15",
+            "source_account_id": "13a7d4fe-39ea-521b-9874-df28d46a29f0",
+            "source_balance_after": "11000.00",
+            "source_balance_before": "15000.00",
+            "transaction_date": "2026-10-05T08:00:00Z",
+            "type": "RETIRO"
+          }
+        },
+        {
+          "decision": {
+            "amount_usd": "4000.00",
+            "by_default": false,
+            "decision": "APPROVE",
+            "decision_reason": "The transaction did not trigger any configured rule.",
+            "opens_case": false,
+            "rate_date": "2026-10-05",
+            "risk_score": 0,
+            "rule_versions": {},
+            "rules_triggered": [],
+            "rules_version": "0",
+            "transaction_id": "649cda9f-8ae9-5b71-96e9-0537c64946ae",
+            "usd_rate": "1"
+          },
+          "kind": "transaction",
+          "label": "Withdrawal 2 of 3: USD 4,000",
+          "request": {
+            "amount": "4000.00",
+            "channel": "CAJERO",
+            "currency": "USD",
+            "device_id": "3b753262-0b79-5c74-8616-52d20d464891",
+            "id": "649cda9f-8ae9-5b71-96e9-0537c64946ae",
+            "source_account_id": "13a7d4fe-39ea-521b-9874-df28d46a29f0",
+            "source_balance_after": "11000.00",
+            "source_balance_before": "15000.00",
+            "transaction_date": "2026-10-05T14:00:00Z",
+            "type": "RETIRO"
+          }
+        },
+        {
+          "decision": {
+            "amount_usd": "4000.00",
+            "by_default": false,
+            "decision": "HOLD",
+            "decision_reason": "Splitting: 3 transactions in 24 hours, each below USD 10000, adding up to USD 12000.00.",
+            "opens_case": true,
+            "rate_date": "2026-10-05",
+            "risk_score": 40,
+            "rule_versions": {
+              "splitting": 1
+            },
+            "rules_triggered": [
+              "splitting"
+            ],
+            "rules_version": "0",
+            "transaction_id": "c04a7054-3ddc-5b0a-8328-8dde37e73a55",
+            "usd_rate": "1"
+          },
+          "kind": "transaction",
+          "label": "Withdrawal 3 of 3: USD 4,000",
+          "request": {
+            "amount": "4000.00",
+            "channel": "CAJERO",
+            "currency": "USD",
+            "device_id": "3b753262-0b79-5c74-8616-52d20d464891",
+            "id": "c04a7054-3ddc-5b0a-8328-8dde37e73a55",
+            "source_account_id": "13a7d4fe-39ea-521b-9874-df28d46a29f0",
+            "source_balance_after": "11000.00",
+            "source_balance_before": "15000.00",
+            "transaction_date": "2026-10-05T20:00:00Z",
+            "type": "RETIRO"
+          }
+        }
+      ],
+      "story": "Henry withdraws USD 4,000 three times in one day. Each is below the USD 10,000 reporting limit, together they are above it.",
+      "title": "Splitting"
+    },
+    {
+      "after": {
+        "case_due_minutes": null,
+        "compliance_report": false,
+        "evidence": null,
+        "opens_case": false,
+        "queues": [
+          "cases",
+          "history",
+          "analytics"
+        ]
+      },
+      "id": "account_takeover",
+      "rn": "RN-07",
+      "steps": [
+        {
+          "kind": "security_event",
+          "label": "Device changed to a new phone",
+          "request": {
+            "account_id": "b60a13db-d260-50c2-b25c-d593fe4b26d5",
+            "device_id": "987e8e67-72e2-5552-9cfb-efad97472b40",
+            "event_date": "2026-10-05T15:00:00Z",
+            "id": "cf9d730a-934d-5470-b4b6-bddb56b6c304",
+            "type": "DEVICE_CHANGE",
+            "user_id": "0cb27074-bb24-578e-8cdd-28efdf0581b3"
+          }
+        },
+        {
+          "kind": "security_event",
+          "label": "Password changed",
+          "request": {
+            "account_id": "b60a13db-d260-50c2-b25c-d593fe4b26d5",
+            "device_id": "987e8e67-72e2-5552-9cfb-efad97472b40",
+            "event_date": "2026-10-05T15:05:00Z",
+            "id": "31fc0c33-618e-51c4-bf94-473234dc3d08",
+            "type": "PASSWORD_CHANGE",
+            "user_id": "0cb27074-bb24-578e-8cdd-28efdf0581b3"
+          }
+        },
+        {
+          "decision": {
+            "amount_usd": "350.00",
+            "by_default": false,
+            "decision": "HOLD",
+            "decision_reason": "Account takeover: device and password changed in the last 60 minutes and the transaction is USD 350.00 (limit USD 200).",
+            "opens_case": false,
+            "rate_date": "2026-10-05",
+            "risk_score": 0,
+            "rule_versions": {
+              "account_takeover": 1
+            },
+            "rules_triggered": [
+              "account_takeover"
+            ],
+            "rules_version": "0",
+            "transaction_id": "e2ce43c5-1f67-5f37-82f6-a44eec2185f3",
+            "usd_rate": "1"
+          },
+          "kind": "transaction",
+          "label": "Ivan's account sends Bob USD 350",
+          "request": {
+            "amount": "350.00",
+            "channel": "APP",
+            "currency": "USD",
+            "destination_account_id": "eaea4d4a-5b56-5163-a7d3-0d9d3d7edd60",
+            "destination_balance_after": "5350.00",
+            "destination_balance_before": "5000.00",
+            "device_id": "987e8e67-72e2-5552-9cfb-efad97472b40",
+            "id": "e2ce43c5-1f67-5f37-82f6-a44eec2185f3",
+            "source_account_id": "b60a13db-d260-50c2-b25c-d593fe4b26d5",
+            "source_balance_after": "4650.00",
+            "source_balance_before": "5000.00",
+            "transaction_date": "2026-10-05T15:20:00Z",
+            "type": "P2P"
+          }
+        }
+      ],
+      "story": "Ivan's account logs in from a new phone and changes its password. 15 minutes later it sends USD 350.",
+      "title": "Account takeover"
+    },
+    {
+      "after": {
+        "case_due_minutes": null,
+        "compliance_report": false,
+        "evidence": null,
+        "opens_case": false,
+        "queues": [
+          "cases",
+          "history",
+          "analytics"
+        ]
+      },
+      "id": "currency",
+      "rn": "RN-11",
+      "steps": [
+        {
+          "decision": {
+            "amount_usd": "28.63",
+            "by_default": false,
+            "decision": "APPROVE",
+            "decision_reason": "The transaction did not trigger any configured rule.",
+            "opens_case": false,
+            "rate_date": "2026-10-01",
+            "risk_score": 0,
+            "rule_versions": {},
+            "rules_triggered": [],
+            "rules_version": "0",
+            "transaction_id": "f30e6d48-b716-5f7b-81d7-1f6436f8cda3",
+            "usd_rate": "3317.65"
+          },
+          "kind": "transaction",
+          "label": "Julia sends Kevin COP 95,000",
+          "request": {
+            "amount": "95000.00",
+            "channel": "APP",
+            "currency": "COP",
+            "destination_account_id": "abf98eb3-605d-5647-8c2e-e86b83072b7e",
+            "destination_balance_after": "20095000.00",
+            "destination_balance_before": "20000000.00",
+            "device_id": "f009a0bd-f6e0-5f6b-8bf7-8fbe3d3c89f2",
+            "id": "f30e6d48-b716-5f7b-81d7-1f6436f8cda3",
+            "source_account_id": "b7a293c0-8982-541f-a410-1490310d1107",
+            "source_balance_after": "19905000.00",
+            "source_balance_before": "20000000.00",
+            "transaction_date": "2026-10-05T16:00:00Z",
+            "type": "P2P"
+          }
+        }
+      ],
+      "story": "Julia sends Kevin COP 95,000. The engine reports it in USD with the day's rate and keeps the original amount.",
+      "title": "Other currency"
+    }
+  ],
+  "threshold_variants": [
+    {
+      "default": 5,
+      "param": "limit",
+      "rule": "velocity",
+      "values": [
+        {
+          "changed": 0,
+          "decisions": {
+            "account_takeover": "HOLD",
+            "currency": "APPROVE",
+            "mule": "HOLD",
+            "normal": "APPROVE",
+            "over_limit": "HOLD",
+            "restricted_list": "REJECT",
+            "shared_device": "APPROVE",
+            "splitting": "HOLD",
+            "velocity": "HOLD"
+          },
+          "value": 3
+        },
+        {
+          "changed": 0,
+          "decisions": {
+            "account_takeover": "HOLD",
+            "currency": "APPROVE",
+            "mule": "HOLD",
+            "normal": "APPROVE",
+            "over_limit": "HOLD",
+            "restricted_list": "REJECT",
+            "shared_device": "APPROVE",
+            "splitting": "HOLD",
+            "velocity": "HOLD"
+          },
+          "value": 5
+        },
+        {
+          "changed": 1,
+          "decisions": {
+            "account_takeover": "HOLD",
+            "currency": "APPROVE",
+            "mule": "HOLD",
+            "normal": "APPROVE",
+            "over_limit": "HOLD",
+            "restricted_list": "REJECT",
+            "shared_device": "APPROVE",
+            "splitting": "HOLD",
+            "velocity": "APPROVE"
+          },
+          "value": 8
+        }
+      ]
+    },
+    {
+      "default": 50,
+      "param": "limit_usd",
+      "rule": "default_timeout",
+      "values": [
+        {
+          "changed": 0,
+          "decisions": {
+            "account_takeover": "HOLD",
+            "currency": "APPROVE",
+            "mule": "HOLD",
+            "normal": "APPROVE",
+            "over_limit": "HOLD",
+            "restricted_list": "REJECT",
+            "shared_device": "APPROVE",
+            "splitting": "HOLD",
+            "velocity": "HOLD"
+          },
+          "value": 20
+        },
+        {
+          "changed": 0,
+          "decisions": {
+            "account_takeover": "HOLD",
+            "currency": "APPROVE",
+            "mule": "HOLD",
+            "normal": "APPROVE",
+            "over_limit": "HOLD",
+            "restricted_list": "REJECT",
+            "shared_device": "APPROVE",
+            "splitting": "HOLD",
+            "velocity": "HOLD"
+          },
+          "value": 50
+        },
+        {
+          "changed": 1,
+          "decisions": {
+            "account_takeover": "HOLD",
+            "currency": "APPROVE",
+            "mule": "HOLD",
+            "normal": "APPROVE",
+            "over_limit": "APPROVE",
+            "restricted_list": "REJECT",
+            "shared_device": "APPROVE",
+            "splitting": "HOLD",
+            "velocity": "HOLD"
+          },
+          "value": 100
+        }
+      ]
+    }
+  ]
+}
