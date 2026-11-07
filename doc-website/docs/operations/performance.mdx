@@ -131,4 +131,4 @@ The reads and writes that do not depend on each other now share a pipeline: the 
 | One command at a time | 8.4 | 16.8 ms | 20.9 ms | 24.6 ms |
 | Two pipelines | **4.0** | **9.5 ms** | **12.6 ms** | **16.4 ms** |
 
-Both runs had 0 % default decisions. The engine's tests also pass against a local three-node Valkey cluster (`VALKEY_CLUSTER=true`), the protocol ElastiCache Serverless speaks (except `test_reference_data.py`'s reads, which use database 15 of a single node). The fifth load test in AWS, with 10 tasks, fills in the table of [Load test](../getting-started/load-test.mdx#result).
+Both runs had 0 % default decisions. The engine's tests also pass against a local three-node Valkey cluster (`VALKEY_CLUSTER=true`), the protocol ElastiCache Serverless speaks (except `test_reference_data.py`'s reads, which use database 15 of a single node). In the fifth load test in AWS, with 10 tasks, the p95 at 300 tx/s went from 164 to 106 ms and the default decisions from 1.79 % to 0.40 %; the p99 (229 ms) is still above the limit because of a stall once a minute ([Load test](../getting-started/load-test.mdx#result)).
