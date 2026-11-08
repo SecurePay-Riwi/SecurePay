@@ -1,0 +1,19 @@
+meta {
+  name: Catalog versions (happy)
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{rules}}/rules/versions
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  RN-08: one version per change.
+}

@@ -1,0 +1,19 @@
+meta {
+  name: Suspicious operations report (happy)
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{cases}}/reports/suspicious?from=2026-10-01&to=2026-10-31
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  HU-35.
+}

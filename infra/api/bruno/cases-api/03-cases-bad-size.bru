@@ -1,0 +1,15 @@
+meta {
+  name: Inbox with size 0 (400)
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{cases}}/cases?size=0
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 400
+}

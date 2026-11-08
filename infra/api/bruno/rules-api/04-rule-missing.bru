@@ -1,0 +1,15 @@
+meta {
+  name: Rule that does not exist (404)
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{rules}}/rules/no_such_rule
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 404
+}

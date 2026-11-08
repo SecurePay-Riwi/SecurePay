@@ -1,0 +1,19 @@
+meta {
+  name: Account history, 30 days (happy)
+  type: http
+  seq: 10
+}
+
+get {
+  url: {{cases}}/accounts/a8d456b7-ae6a-5481-9a4b-64deb0d295f7/transactions?days=30
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  HU-28.
+}

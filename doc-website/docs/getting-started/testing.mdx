@@ -97,6 +97,26 @@ uv run pytest -x                         # stop at the first failure
 | Kaggle ETL | `securepay-seed`: `tests/kaggle_etl/` | 26 | Exact fraud count in each sample and same sample with the same seed; reproducible ids and fingerprint; each card or source account is linked to one user, who already existed, with a device and merchant that already existed; dates fall before the reference date; which folder the CSVs are read from | Nothing: they build small CSVs |
 | Seed export | `securepay-seed`: `tests/seed/` | 3 | One person per line sorted by document; same file whatever the database order; empty list | Nothing |
 | Database connection | `shared/tests/` | 4 | PostgreSQL URLs always use the psycopg 3 driver | Nothing |
+| API contract (E-05) | `tests/test_openapi_export.py` | 4 | The committed `doc-website/static/openapi/*.json` equal what each app serves; every request of the Bruno collection calls a documented path and method | Nothing: the apps are imported, not started |
+
+## API contract and Bruno collection (E-05) {/* #api-contract */}
+
+The contract of the three HTTP services is exported to `doc-website/static/openapi/` (`decision-engine.json`, `rules-api.json`, `cases-api.json`), the same document each service serves at `/openapi.json`. The site publishes them, so they can be read without starting anything. After changing an endpoint, a status code or a schema, export them again and commit them; `tests/test_openapi_export.py` fails until you do:
+
+```bash
+uv run python -m infra.api.openapi
+```
+
+`infra/api/bruno/` is a [Bruno](https://www.usebruno.com/) collection with 33 requests against the local stack: the happy path and the documented errors of each service (decision engine 7, rules API 10, cases API 16). Each request checks its status code. It needs the Compose stack up and seeded ([Local setup](./local-setup.mdx)); nothing in AWS:
+
+```bash
+docker compose up -d
+npm install -g @usebruno/cli
+cd infra/api/bruno
+bru run --env local
+```
+
+Expected: every request passes. Request 03 of the engine reuses the id of request 02, so run the engine's folder in order (`bru run` does). The rules requests never write: the ones that would change the catalog are refused (409 or 400) before anything is stored. In the Bruno app, open the folder `infra/api/bruno` as a collection and pick the `local` environment.
 
 ## How to read the results
 

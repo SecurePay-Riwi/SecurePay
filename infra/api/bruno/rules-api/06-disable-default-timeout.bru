@@ -1,0 +1,23 @@
+meta {
+  name: Disable default_timeout (409)
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{rules}}/rules/default_timeout/disable
+  body: none
+  auth: none
+}
+
+headers {
+  X-User: {{user}}
+}
+
+assert {
+  res.status: eq 409
+}
+
+docs {
+  RN-01's default decision is always enabled.
+}

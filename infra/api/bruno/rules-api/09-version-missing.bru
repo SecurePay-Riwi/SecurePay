@@ -1,0 +1,15 @@
+meta {
+  name: Version that does not exist (404)
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{rules}}/rules/versions/999999
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 404
+}

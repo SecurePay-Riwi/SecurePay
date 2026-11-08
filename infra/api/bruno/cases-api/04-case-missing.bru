@@ -1,0 +1,15 @@
+meta {
+  name: Case that does not exist (404)
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{cases}}/cases/00000000-0000-0000-0000-000000000000
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 404
+}

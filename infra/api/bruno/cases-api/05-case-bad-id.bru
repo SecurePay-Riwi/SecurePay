@@ -1,0 +1,15 @@
+meta {
+  name: Case id that is not a UUID (400)
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{cases}}/cases/not-a-uuid
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 400
+}
