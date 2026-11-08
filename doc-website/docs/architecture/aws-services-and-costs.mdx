@@ -92,7 +92,7 @@ The managed version of C costs more still: Amazon MQ for RabbitMQ as a 3-node `m
 
 **What the numbers do not show.** A and B have nothing to patch below the container; C needs Kubernetes upgrades every few months, node AMIs, the RabbitMQ cluster and Airflow's database, and the team has 4 people for 6 weeks ([ADR-06](./decisions.mdx#adr-06), with the ECS vs EKS table). A is the cheapest and the one with the least to operate, so it stays.
 
-**Measured in the load test (HU-60).** [Load test the engine](../getting-started/load-test.mdx) held the 200 ms p99 at 300 tx/s with 10 tasks of 0.5 vCPU (runs 5 and 6, CPU under 41 %), so the peak needs about 10 tasks, not ~12: $0.247 an hour while it lasts. At 50 tx/s the same 10 tasks used under 7 % of CPU, so the 4 tasks of the Fargate line (the minimum to keep 2 per zone) are enough off-peak. The cache never throttled once its limit was 20,000 ECPU/s (peak 14,430); its size (300 MB assumed) is still an estimate. The B and C figures are computed from the price list, not loaded into the Pricing Calculator.
+**Measured in the load test (HU-60).** In [Load test the engine](../getting-started/load-test.mdx#result), 10 tasks of 0.5 vCPU ($0.247 an hour while the peak lasts) answered 300 tx/s with the CPU under 41 % and a p99 under 200 ms in most minutes, but **not in every minute**: run 5 gave 229 ms over the step, and later runs 205 to 215 ms in some minutes. A pause about once a minute causes it, not the capacity; it is a [known open issue](../getting-started/load-test.mdx#known-issue). 20 tasks met the limit (129 ms). Until the pause is fixed, how many tasks the peak needs is not settled. At 50 tx/s the same 10 tasks used under 7 % of CPU, so the 4 tasks of the Fargate line (the minimum to keep 2 per zone) are enough off-peak. The cache never throttled once its limit was 20,000 ECPU/s (peak 14,430); its size (300 MB assumed) is still an estimate. The B and C figures are computed from the price list, not loaded into the Pricing Calculator.
 
 ## AWS Pricing Calculator {/* #pricing-calculator */}
 
@@ -115,7 +115,7 @@ After the calculator (Sprint 6, HU-61), four lines changed by hand with the `us-
 
 **Evaluated and not applied:** moving to ARM (Graviton) would save ~$24 a month (Fargate, Lambda, RDS `db.t4g.micro`, Glue does not change), but needs `arm64` images. A regional NAT Gateway was also evaluated and rejected; one zonal NAT per zone stays ([ADR-08](./decisions.mdx#adr-08)).
 
-**One-off costs**, outside the monthly table: the load test at 50, 150 and 300 tx/s (USD 5 to 10 per full run) and running the full-mode seed against RDS (a couple of dollars).
+**One-off costs**, outside the monthly table: the load test at 50, 150 and 300 tx/s (about USD 0.10 for its 15 minutes of load, step by step in [Cost of a run](../getting-started/load-test.mdx#cost), plus the hours dev is up for it, below) and running the full-mode seed against RDS (a couple of dollars).
 
 **Cost of a dev test session**, per hour, with what `envs/dev` creates (2 engine tasks, single-AZ RDS). Rates from the official AWS price list for `us-east-2`, checked on October 31, 2026:
 

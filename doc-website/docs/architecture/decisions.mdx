@@ -133,6 +133,8 @@ With the measured numbers pending, the decision stands: for one service with con
 
 **Consequences.** The maximum is only paid while scaled out: 24 tasks cost $0.59/hour against $0.10 for the base 4. If the load test disproves the target of 25, the numbers change (20 → 6 base and 30 max; 15 → 8 and 40).
 
+**Load test (HU-60, 2026-11-08).** Not confirmed either way: 10 tasks (30 tx/s each) leave the CPU under 41 % but miss the 200 ms p99 at 300 tx/s in some minutes, because of a pause once a minute; 20 tasks (15 each) meet it. The status stays Proposed until that [known issue](../getting-started/load-test.mdx#known-issue) is fixed.
+
 ## ADR-08 — Private subnets go out through NAT Gateway, not VPC endpoints {/* #adr-08 */}
 
 **Status:** Accepted, validated with the professor · **Date:** 2026-10-05
