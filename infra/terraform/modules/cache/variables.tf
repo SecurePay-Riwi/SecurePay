@@ -35,3 +35,9 @@ variable "snapshot_retention_days" {
   type        = number
   default     = 1
 }
+
+variable "node_type" {
+  description = "null (default): ElastiCache Serverless. A node type (for example cache.m7g.large): a node-based cluster, one shard with a replica in the other zone."
+  type        = string
+  default     = null
+}

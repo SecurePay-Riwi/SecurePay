@@ -44,7 +44,7 @@ infra/terraform/
 │   ├── storage/            the 4 S3 buckets
 │   ├── database/           RDS PostgreSQL and its passwords in Parameter Store
 │   ├── ecr/                one image repository per component
-│   ├── cache/              ElastiCache Serverless for Valkey
+│   ├── cache/              ElastiCache for Valkey: Serverless, or nodes with cache_node_type
 │   ├── ecs/                cluster, load balancer, engine service with autoscaling, admin task
 │   ├── messaging/          decisions topic, 3 queues with their DLQs, business alerts and ops alarms topics, DLQ alarms
 │   ├── lambdas/            the cases, history and analytics consumers, the alerts task and the two reconciliation Lambdas, with their queue mappings and schedule

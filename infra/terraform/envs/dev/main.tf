@@ -123,6 +123,7 @@ module "cache" {
   security_group_id       = module.security_groups.ids["cache"]
   snapshot_retention_days = 0
   max_ecpu_per_second     = var.cache_max_ecpu_per_second
+  node_type               = var.cache_node_type
 }
 
 module "ecs" {
