@@ -79,7 +79,9 @@ export default function Demo(): ReactNode {
           default catalog and the fixed 2026-10-01 exchange rates, and a test keeps
           them in step with the engine. See the{' '}
           <Link to="/docs/architecture/overview">architecture</Link> and{' '}
-          <Link to="/docs/components/demo">how the demo is built</Link>.
+          <Link to="/docs/components/demo">how the demo is built</Link>. The same
+          stories sent to the real deployment are on{' '}
+          <Link to="/aws-run">Recorded on AWS</Link>.
         </footer>
       </main>
     </Layout>

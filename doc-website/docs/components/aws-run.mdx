@@ -1,0 +1,50 @@
+---
+sidebar_position: 11
+title: Recorded on AWS
+description: How the page "Recorded on AWS" is recorded from the real deployment, and what each number means.
+---
+
+# Recorded on AWS
+
+**Page:** [/aws-run](/aws-run) · **Folders:** `services/analytics/aws_run.py`, `doc-website/src/components/AwsRun/`, `doc-website/static/aws-run/` · **Run:** `uv run python -m services.analytics.aws_run`
+
+The [demo](./demo.mdx) decides its stories with the engine's code in memory. This page shows the same stories on the real deployment, and the load test against the 200 ms limit of RN-01. Dev is destroyed after every session, so the page is a recording: a JSON file written by a script while dev is up, committed, and published with the site.
+
+## Recording a run
+
+With dev up (`terraform apply`, [runbook step 2](../operations/runbook.mdx#2-run-the-demo)) and an AWS profile that can read CloudWatch, ELB, ECS and S3:
+
+```bash
+terraform -chdir=infra/terraform/envs/dev output -json > outputs.json
+terraform -chdir=infra/terraform/envs/dev output -json api_user_passwords   # a user and password
+uv run python -m services.analytics.aws_run --outputs outputs.json \
+    --user <analyst e-mail> --password <password> --allow-self-signed
+```
+
+`--allow-self-signed` is needed while the load balancer uses its self-signed certificate (no `domain_name`). `outputs.json` holds no secrets, but do not commit it. Then commit `doc-website/static/aws-run/run.json` before `terraform destroy`.
+
+The script:
+
+1. **Sends the stories** to `POST /transactions` and `POST /security-events` behind the load balancer, with random accounts and merchants of the seed (`infra/load/accounts.json`) and a new id for every request, so two runs never share idempotency keys or history windows. Dates are in the last minutes (the last 6 hours for splitting), so every window of the rules applies.
+2. **Waits 90 seconds** (`--settle-seconds`) for the Lambdas, signs in to Cognito with the user given, and through the cases API finds the case of each decision that opens one and the account history of each story.
+3. **Resolves the mule's case** as `LEGITIMATE`, reads its `evidence_key` and checks the object's Object Lock mode and date in S3 (RN-12).
+4. **Reads CloudWatch** for the minutes of the run: the load balancer's `TargetResponseTime` (p50, p95, p99) and requests, default decisions (`FallbackDecisions`), messages read per queue and each Lambda's invocations and errors.
+
+The restricted-list story needs an account whose owner is on the list; give it with `--listed-account <id>`, or the page says it was not in the run.
+
+The times on the page come from AWS's clocks: "Case opened +1.5 s" is the case's `created_at` minus the engine's `processed_at`. The milliseconds "at the client" are measured by the script and include the network to AWS.
+
+## Recording the load test
+
+After a [load test](../getting-started/load-test.mdx) from the EC2 runner, its CSV files are in `s3://<artifacts>/load-tests/`:
+
+```bash
+uv run python -m services.analytics.aws_run --outputs outputs.json --user ... --password ... \
+    --skip-run --load-test s3://<artifacts>/load-tests
+```
+
+It reads Locust's `run_stats_history.csv` to find each step (users = tx/s, held at least a minute) and `run_stats.csv` for the client's totals, and for each step asks CloudWatch for the latency inside AWS, the requests, the default decisions, the 5XX and the engine's CPU, plus the p99 of every minute. Without `--load-test` the file keeps the load test it had: today, run 5 as written in the load test page.
+
+## The file
+
+`run.json` (format 1) has `run` (null until a run is recorded) and `load_test` (`source` is `documented` when it was copied from the load test page, `recorded` when the script read it). `services/analytics/tests/test_aws_run.py` checks the script with a fake engine, cases API and AWS, and that the committed file has the shape the page reads.

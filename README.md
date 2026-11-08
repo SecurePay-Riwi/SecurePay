@@ -101,6 +101,7 @@ levanta por separado:
 | Construir la analítica de un día | `uv run python -m services.analytics --day 2026-10-05` | Java 17+; las decisiones (LocalStack o `--raw`) | 13c |
 | Simular una versión de reglas sobre un día | `uv run python -m services.analytics.simulate --day 2026-10-05 --candidate candidate.json` (o `POST /rules/simulations` en la API de reglas) | PostgreSQL con el seed; las decisiones del día (`--raw`) | 13c |
 | Regenerar los datos de la demo web (`doc-website/static/demo/scenarios.json`) | `uv run python -m services.analytics.demo` | Nada encendido (el motor corre en memoria) | 13c |
+| Grabar la corrida en AWS de la página "Recorded on AWS" (`doc-website/static/aws-run/run.json`) | `uv run python -m services.analytics.aws_run --outputs outputs.json --user <correo> --password <clave> --allow-self-signed` | dev arriba (`terraform apply`) y un perfil de AWS | 13c |
 | Medir las reglas contra la historia etiquetada | `uv run python -m services.analytics.metrics --kaggle` (o `--events` y `--labels` del generador) | PostgreSQL con el seed (y su ETL de Kaggle para `--kaggle`) | 13c |
 | Levantar el servicio de listas restrictivas | `uv run uvicorn securepay_apis.restricted_list.main:app --port 8001` (en `securepay-apis`) | El archivo que exporta el seed | 14 |
 | Consultar las tasas de cambio | `uv run python -m securepay_apis.exchange_rates` (en `securepay-apis`) | Internet | 15 |
