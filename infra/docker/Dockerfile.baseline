@@ -1,0 +1,11 @@
+# Baseline for the image size comparison (topic 3 of the brief): what an
+# image would be without the optimizations. Full Python image instead of
+# slim, every dependency group (dev tools, pytest, pyspark) and no
+# .dockerignore beyond secrets: Dockerfile.baseline.dockerignore, next to
+# this file, replaces the repository's. Built by measure-image-sizes.ps1.
+FROM python:3.12-bookworm
+RUN pip install --no-cache-dir uv
+WORKDIR /app
+COPY . .
+RUN uv sync --frozen --all-groups --no-install-project
+CMD ["python", "-c", "print('baseline')"]

@@ -148,3 +148,38 @@ Compose builds and coordinates PostgreSQL, Valkey, LocalStack, the seed, the cac
 Valkey starts empty on every `up` (no persistence), so no `FLUSHDB` is needed between runs. The engine settings (history, timeout, mule) are read from `.env`, with the same defaults as `.env.example`.
 
 To stop containers while retaining named volumes, run `docker compose down`. To delete the persisted data too, run `docker compose down -v`. Kaggle download is optional and requires `KAGGLE_API_TOKEN` in `.env`.
+
+## Image size before and after (topic 3) {/* #image-size */}
+
+Every image we build is smaller than the same image without the optimizations: 68 % to 92 % less on disk. Measured on November 8, 2026 with Docker Desktop on Windows, at the commit shown for each repository.
+
+| Image | Commit | Before (MB) | After (MB) | Saved | Compressed after (MB) |
+| --- | --- | --- | --- | --- | --- |
+| `SecurePay` (engine, consumers, APIs, Lambdas) | `e310a93` | 8,211 | 675 | 92 % | 172 |
+| `securepay-seed` | `922d01e` | 1,750 | 507 | 71 % | 133 |
+| `securepay-apis` | `4cdd333` | 1,743 | 459 | 74 % | 127 |
+| `securepay-generator` | `f3831d1` | 1,727 | 471 | 73 % | 129 |
+| `securepay-csv` | `1cdacab` | 1,634 | 516 | 68 % | 137 |
+
+"Before" and "after" are the size on disk (`docker image inspect`, `Size`); "compressed" is the content Docker reports for the image, close to what is pushed to ECR.
+
+**Before** is `infra/docker/Dockerfile.baseline`, built on each repository: what the image would be without the optimizations.
+
+- The full `python:3.12-bookworm` image instead of a slim one.
+- Every dependency group: the dev tools (pytest, ruff) and, in `SecurePay`, pyspark.
+- No `.dockerignore` except for secrets (`.env`, Terraform state and `tfvars`), so the local `.venv`, caches and generated data go into the image too. That is most of `SecurePay`'s 8 GB.
+
+**After** is each repository's own `Dockerfile` and `.dockerignore`, unchanged.
+
+- The slim `ghcr.io/astral-sh/uv:python3.12-bookworm-slim` base.
+- Only the main dependencies (`uv sync --no-dev`; `SecurePay` adds `--no-default-groups` to leave pyspark out, about 300 MB, which Glue brings itself).
+- A `.dockerignore` that keeps out `.venv`, caches, generated and Kaggle data, the documentation site and the Terraform state.
+- In `SecurePay`, `pyproject.toml` and `uv.lock` are copied before the code, so a code change does not reinstall the dependencies.
+
+To measure it again (Docker running, the five repositories side by side, from the root of `SecurePay`):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File infra\docker\measure-image-sizes.ps1
+```
+
+It builds ten images tagged `size-<repo>:before` and `size-<repo>:after` (10 to 20 minutes the first time), prints the table and writes `infra/docker/sizes.csv` (ignored by git). Remove them afterwards with `docker image rm $(docker image ls "size-*" -q)`.
