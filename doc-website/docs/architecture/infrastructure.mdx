@@ -79,7 +79,7 @@ This is the inventory of what Terraform must create, not of what exists today. D
 | ACM certificate | | 1 | For the load balancer; free | Decided |
 | Application Load Balancer | `pagoseguro-prod-alb` | 1 | Public, in the two public subnets. Listener on 443 with TLS; one target group on port 8080 with a health check on `/health` | Decided |
 | ECS cluster | `pagoseguro-prod` | 1 | Fargate only | Decided |
-| ECS service for the engine | `motor` | 1 | 0.5 vCPU / 1 GB per task; minimum 4, maximum 24, spread across the two zones; scales at 25 requests per task on the load balancer; deployment circuit breaker with automatic rollback | Minimum and maximum calculated; the 25 is confirmed in the load test |
+| ECS service for the engine | `motor` | 1 | 0.5 vCPU / 1 GB per task; minimum 4, maximum 24, spread across the two zones; scales at 25 requests per task on the load balancer; deployment circuit breaker with automatic rollback | Minimum and maximum calculated; the 25 is not confirmed yet (see [Estimated figures](#estimates)) |
 | Task definitions | `motor`, `admin` | 2 | Image tagged with the commit, never just `latest`. `admin` runs migrations and seed on demand | Decided |
 | ECR repositories | `motor`, `generador`, `admin` | 3 | Image scanning on push; lifecycle rule that keeps the last 10 | Decided |
 | Lambda functions | see the next table | 12 | Python 3.12, 512 MB and 30 s by default | 512 MB expected (see [Estimated figures](#estimates)) |
@@ -194,7 +194,7 @@ Some figures in the inventory cannot be known before building and measuring. Eac
 
 **Engine tasks: minimum 4, maximum 24.**
 - Calculation: with two zones, losing one takes half the tasks. For the 2 surviving tasks to handle the sustained 50 tx/s, each task must serve 50 ÷ 2 = 25 requests per second. For the peak: 300 ÷ 25 = 12 live tasks, and 12 × 2 = 24 so that 12 survive if a zone goes down (see [ADR-07](./decisions.mdx#adr-07)).
-- Expected: 25 requests per second per 0.5 vCPU task. **Still to be measured** in the load test.
+- Expected: 25 requests per second per 0.5 vCPU task. **Measured** in the [load test](../getting-started/load-test.mdx#result): at 30 per task (10 tasks at 300 tx/s) the CPU stays under 41 % but the p99 goes above 200 ms in some minutes, because of a pause once a minute, not the load ([known issue](../getting-started/load-test.mdx#known-issue)); at 15 per task (20 tasks) the p99 was 129 ms. The 25 stays unconfirmed until the pause is fixed.
 - If it comes out different: at 20 per task it would be 6 and 30; at 15, 8 and 40.
 
 **Memory of the consumer Lambdas: 512 MB.**

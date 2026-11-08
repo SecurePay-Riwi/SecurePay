@@ -41,6 +41,10 @@ Both run every night on AWS Glue 6.0 with two G.1X workers ($0.308 per DPU-hour,
 
 Measured in week 5 with a short EKS deployment (see [ADR-06](./decisions.mdx#adr-06)): p99 latency at 50, 150 and 300 tx/s, deployment and operation effort, and monthly cost at production size.
 
+## ❗ p99 above 200 ms at 300 tx/s with 10 tasks {/* #p99-at-300 */}
+
+RNF-01 and CA-09 ask for a decision p99 of 200 ms or less at 300 tx/s. The load test meets it at 50 and 150 tx/s, and at 300 tx/s in most minutes, on the client's p99 and with 20 tasks. With 10 tasks of 0.5 vCPU it is **not met end to end**: the load balancer's p99 goes above 200 ms in some minutes (run 5: 229 ms over the step; runs 7 and 8: 205 to 215 ms). The cause is an engine task pausing 100 to 300 ms about once a minute, not the CPU or the cache. Not proven: blocking log writes to CloudWatch or garbage collector pauses. Next check, after the delivery (team decision of 2026-11-08): the `awslogs` driver in non-blocking mode with `uvicorn --no-access-log`, and the GC pauses measured in the same run. Details in [Load test the engine](../getting-started/load-test.mdx#known-issue).
+
 ## 🟡 Where the Kaggle history lives in production
 
 Today the PaySim and Sparkov sample linked to the seed users is in the PostgreSQL `transacciones` table (loaded once, never edited), and the full CSVs are in `raw/kaggle/` in S3. Still to decide whether in production the sample also moves to S3 (and DynamoDB), so that all the history is in one place. Jorge sees S3 as the more feasible option (2026-10-19); for now it stays as it is.

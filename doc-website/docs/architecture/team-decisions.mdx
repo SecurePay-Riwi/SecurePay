@@ -178,6 +178,16 @@ The assignment names a Kaggle credit card dataset as the card payment history. A
 | The Lambdas and Step Functions are **not traced either**. | Without the engine the trace stops at the first hop; each Lambda and the nightly run already have their own errors, duration and state history in CloudWatch and Step Functions. |
 | The design keeps X-Ray as a **possible improvement**: the egress through the NAT and the IAM actions in [Security](./security.mdx) already allow it. | Adding it later is Terraform (`tracing_config`, `tracing_configuration`) plus the engine's instrumentation behind a variable that is off by default. |
 
+## No more engine optimization before the delivery {/* #no-more-engine-optimization */}
+
+**Decided by the team on 2026-11-08** (Jorge; Sprint 6, HU-60, MAG-307), after load test run 8.
+
+| Decision | Why |
+| :--- | :--- |
+| The engine is not optimized further before the delivery. The p99 ≤ 200 ms at 300 tx/s with 10 tasks (RNF-01, CA-09) is documented as **not met end to end**, a known open issue ([Load test](../getting-started/load-test.mdx#known-issue)). | Eight runs removed the capacity limits (cache throttling, round trips, history size); what is left is a pause of 100 to 300 ms about once a minute whose cause is not proven. There is no time left to find it. It is met at 50 and 150 tx/s, at 300 tx/s in most minutes and with 20 tasks. |
+| 10 tasks stay the reference, not 20. | The team does not accept 20 fixed tasks: with 10 the CPU stays under 41 %, so doubling them pays for a pause, not for load. |
+| The fix comes after the delivery, starting with one run with the `awslogs` driver in non-blocking mode and `uvicorn --no-access-log`, and the GC pauses measured in the same run. | They are the two hypotheses: blocking log writes and garbage collector pauses. |
+
 ## Partner statements
 
 **Decided on 2026-10-14.** Details in [Partner statements](../components/partner-statements.mdx).
