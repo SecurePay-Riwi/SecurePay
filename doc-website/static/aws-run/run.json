@@ -1,0 +1,53 @@
+{
+  "format_version": 1,
+  "generated_from": "services/analytics/aws_run.py",
+  "run": null,
+  "load_test": {
+    "source": "documented",
+    "label": "Run 5, November 5, 2026, 21:28 UTC, 10 engine tasks (docs/getting-started/load-test.mdx)",
+    "limit_ms": 200,
+    "steps": [
+      {
+        "rate": 50,
+        "requests": 14967,
+        "p50": 12,
+        "p95": 18,
+        "p99": 50,
+        "default_pct": 0.02,
+        "http_5xx": 1,
+        "cpu_avg": 4.5,
+        "cpu_max": 6.6
+      },
+      {
+        "rate": 150,
+        "requests": 44723,
+        "p50": 22,
+        "p95": 36,
+        "p99": 85,
+        "default_pct": 0.07,
+        "http_5xx": 1,
+        "cpu_avg": 13.1,
+        "cpu_max": 16.7
+      },
+      {
+        "rate": 300,
+        "requests": 89796,
+        "p50": 32,
+        "p95": 106,
+        "p99": 229,
+        "default_pct": 0.4,
+        "http_5xx": 2,
+        "cpu_avg": 26.6,
+        "cpu_max": 40.8
+      }
+    ],
+    "client": {
+      "requests": 149486,
+      "failures": 4,
+      "p50": 29,
+      "p99": 170
+    },
+    "series": [],
+    "notes": "At 300 tx/s the p99 per minute was under 200 ms in 2 of the 5 minutes and above in 3. Run 7 (November 7, 23:42 UTC) kept it at about 200 to 215 ms per minute; the once-a-minute stall between the engine and the cache is still being looked into."
+  }
+}

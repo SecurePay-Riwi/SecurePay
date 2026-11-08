@@ -334,6 +334,14 @@ Pages: `doc-website/docs/components/analytics.mdx` and
   `src/components/Demo/`) only reads. `test_demo.py` fails when the committed
   file differs from what the engine gives: after changing a rule, run the
   command and commit the file. Page: `doc-website/docs/components/demo.mdx`.
+- **Recorded on AWS:** `uv run python -m services.analytics.aws_run --outputs
+  outputs.json --user <e-mail> --password <password> --allow-self-signed`
+  (dev up, an AWS profile) sends the demo's stories to the real engine with
+  random seed accounts and fresh ids, follows them through the cases API
+  and S3, reads CloudWatch and, with `--load-test`, Locust's CSV, and writes
+  `doc-website/static/aws-run/run.json`, which the page `/aws-run` only
+  reads. Commit it before `terraform destroy`. `test_aws_run.py` fakes the
+  engine, the API and AWS. Page: `doc-website/docs/components/aws-run.mdx`.
 - **Fixtures:** `services/analytics/tests/fixtures/` is one day
   (2026-10-05) built by `make_fixtures.py` with the engine's rules; do not
   edit them without Habith. Its `README.md` lists the day.
