@@ -1,0 +1,898 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SecurePay Anti-fraud: decision engine",
+    "description": "Decision engine of SecurePay Anti-fraud. The wallet core sends every\ntransaction to `POST /transactions` and gets back `APPROVE`, `HOLD` or\n`REJECT` with the rules that fired.\n\n- **Idempotent:** the transaction `id` is the idempotency key. A resend of\n  the same id and body returns the stored decision with\n  `idempotent_replay: true`.\n- **Every rule runs:** the most severe decision wins (`REJECT`, then\n  `HOLD`). `rules_triggered` lists all the rules that fired.\n- **Default decision:** if the rules do not answer in time, small amounts\n  are approved and the rest held (`by_default: true`).\n\nFull documentation: https://securepay-riwi.github.io/SecurePay/docs/components/decision-engine",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Check that the engine is up",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Up. Messaging problems never change the ok.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                },
+                "example": {
+                  "status": "ok",
+                  "messaging": {
+                    "pendientes": 0,
+                    "publicados": 1000,
+                    "fallidos": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transactions": {
+      "post": {
+        "tags": [
+          "Decisions"
+        ],
+        "summary": "Evaluate a transaction",
+        "description": "Evaluates one transaction and returns the decision.\n\nAccounts by type: `P2P` source and destination, `QR` source and\n`merchant_id`, `RECARGA` destination only, `RETIRO` source only. Every\naccount present brings its balance before and after. Amounts use the\naccount's currency, with at most 2 decimals (`JPY`: none).\n\nAccounts, merchants and the restricted list are read from the cache,\nwhich the cache loader fills from PostgreSQL. What the cache does not\nhave, or a cache that does not answer, gets RN-01's default decision\n(`by_default: true`); without the restricted list the transaction is\nheld whatever the amount.\n\nThe example answers `200` on a seeded database with the cache loaded. Running it twice returns\nthe stored decision with `idempotent_replay: true`; change the `id` to\nevaluate it again.",
+        "operationId": "evaluate_transaction_transactions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransactionRequest"
+              },
+              "examples": {
+                "p2p": {
+                  "summary": "P2P transfer between two seeded accounts",
+                  "value": {
+                    "id": "6f1c2a4e-8b1d-4c3a-9e7f-2d5b8a0c1e34",
+                    "type": "P2P",
+                    "channel": "APP",
+                    "source_account_id": "a8d456b7-ae6a-5481-9a4b-64deb0d295f7",
+                    "destination_account_id": "3e1a0cdb-e3c9-5dba-b7b1-7ac28a50254a",
+                    "amount": "25.00",
+                    "currency": "EUR",
+                    "source_balance_before": "1999.97",
+                    "source_balance_after": "1974.97",
+                    "destination_balance_before": "1142.70",
+                    "destination_balance_after": "1167.70",
+                    "device_id": "f8692d53-a16a-595f-b796-dfde37f5f4b0",
+                    "transaction_date": "2026-10-01T08:15:00+00:00"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Decided, or a resend of an id that was already decided.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionResponse"
+                },
+                "examples": {
+                  "approve": {
+                    "summary": "No rule fired",
+                    "value": {
+                      "transaction_id": "6f1c2a4e-8b1d-4c3a-9e7f-2d5b8a0c1e34",
+                      "decision": "APPROVE",
+                      "decision_reason": "The transaction did not trigger any configured rule.",
+                      "rules_version": "0",
+                      "rules_triggered": [],
+                      "rule_versions": {},
+                      "opens_case": false,
+                      "amount_usd": "28.32",
+                      "usd_rate": "0.88284",
+                      "rate_date": "2026-10-01",
+                      "risk_score": 0,
+                      "by_default": false,
+                      "processed_at": "2026-10-14T00:10:03.512000Z",
+                      "idempotent_replay": false
+                    }
+                  },
+                  "hold_velocity": {
+                    "summary": "Held by the velocity rule",
+                    "value": {
+                      "transaction_id": "6f1c2a4e-8b1d-4c3a-9e7f-2d5b8a0c1e34",
+                      "decision": "HOLD",
+                      "decision_reason": "Velocity: 6 outgoing transfers in 10 minutes from the same account.",
+                      "rules_version": "0",
+                      "rules_triggered": [
+                        "velocity"
+                      ],
+                      "rule_versions": {
+                        "velocity": 1
+                      },
+                      "opens_case": false,
+                      "amount_usd": "28.32",
+                      "usd_rate": "0.88284",
+                      "rate_date": "2026-10-01",
+                      "risk_score": 0,
+                      "by_default": false,
+                      "processed_at": "2026-10-14T00:10:03.512000Z",
+                      "idempotent_replay": false
+                    }
+                  },
+                  "default_timeout": {
+                    "summary": "Rules too slow, default decision",
+                    "value": {
+                      "transaction_id": "6f1c2a4e-8b1d-4c3a-9e7f-2d5b8a0c1e34",
+                      "decision": "APPROVE",
+                      "decision_reason": "Default decision: the rules did not answer in 120 ms (USD 30.00, limit USD 50).",
+                      "rules_version": "0",
+                      "rules_triggered": [
+                        "default_timeout"
+                      ],
+                      "rule_versions": {
+                        "default_timeout": 1
+                      },
+                      "opens_case": false,
+                      "amount_usd": "30.00",
+                      "usd_rate": "0.88284",
+                      "rate_date": "2026-10-01",
+                      "risk_score": 0,
+                      "by_default": true,
+                      "processed_at": "2026-10-14T00:10:03.512000Z",
+                      "idempotent_replay": false
+                    }
+                  },
+                  "default_not_in_cache": {
+                    "summary": "Account not in the cache, default decision",
+                    "value": {
+                      "transaction_id": "6f1c2a4e-8b1d-4c3a-9e7f-2d5b8a0c1e34",
+                      "decision": "APPROVE",
+                      "decision_reason": "Default decision: account 9b71c3d2-5e4f-4a6b-8c7d-0e1f2a3b4c5d is not in the cache (USD 30.00, limit USD 50).",
+                      "rules_version": "0",
+                      "rules_triggered": [
+                        "default_timeout"
+                      ],
+                      "rule_versions": {
+                        "default_timeout": 1
+                      },
+                      "opens_case": false,
+                      "amount_usd": "30.00",
+                      "usd_rate": "0.88284",
+                      "rate_date": "2026-10-01",
+                      "risk_score": 0,
+                      "by_default": true,
+                      "processed_at": "2026-10-14T00:10:03.512000Z",
+                      "idempotent_replay": false
+                    }
+                  },
+                  "restricted_list_not_loaded": {
+                    "summary": "Restricted list not in the cache, held",
+                    "value": {
+                      "transaction_id": "6f1c2a4e-8b1d-4c3a-9e7f-2d5b8a0c1e34",
+                      "decision": "HOLD",
+                      "decision_reason": "Default decision: the restricted list is not loaded in the cache, held whatever the amount (USD 30.00).",
+                      "rules_version": "0",
+                      "rules_triggered": [
+                        "default_timeout"
+                      ],
+                      "rule_versions": {
+                        "default_timeout": 1
+                      },
+                      "opens_case": false,
+                      "amount_usd": "30.00",
+                      "usd_rate": "0.88284",
+                      "rate_date": "2026-10-01",
+                      "risk_score": 0,
+                      "by_default": true,
+                      "processed_at": "2026-10-14T00:10:03.512000Z",
+                      "idempotent_replay": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body: missing fields, wrong types, wrong accounts for the type or too many decimals. `errors` lists each problem.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The same id is still being decided, or it arrived with a different body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "in_progress": {
+                    "summary": "Still being decided",
+                    "value": {
+                      "detail": "La transacción con este id todavía se está procesando."
+                    }
+                  },
+                  "reused_id": {
+                    "summary": "Same id, different body",
+                    "value": {
+                      "detail": "El id ya se usó con otro contenido."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The body is valid but its currency is not the account's. An account or merchant the cache does not have is not a 422: it gets the default decision (200 with `by_default: true`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "wrong_currency": {
+                    "summary": "Currency is not the account's",
+                    "value": {
+                      "detail": "The transaction currency is not the account currency."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Valkey (idempotency store) is not available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "valkey_down": {
+                    "summary": "Valkey down",
+                    "value": {
+                      "detail": "El servicio de idempotencia no está disponible."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/security-events": {
+      "post": {
+        "tags": [
+          "Security events"
+        ],
+        "summary": "Record a security event",
+        "description": "Stores a device or password change of an account. The wallet core sends\nthese events apart from the transactions.\n\nThe account takeover rule reads them: a device change, a password change\nand a transaction above USD 200 from the same account within an hour put\nthe transaction on `HOLD`.\n\nThe account is not checked against the database, so the event can arrive\nbefore or after its transactions. A resend of the same `id` is stored\nonce. Events are kept for 60 minutes (`HISTORY_SECURITY_MINUTES`).",
+        "operationId": "record_security_event_security_events_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecurityEventRequest"
+              },
+              "examples": {
+                "device_change": {
+                  "summary": "New device on an account",
+                  "value": {
+                    "id": "0b6f2c1e-4d3a-5b8c-9e7f-1a2b3c4d5e6f",
+                    "type": "DEVICE_CHANGE",
+                    "user_id": "5d2c9b0a-7e4f-5a1b-8c3d-6e9f0a1b2c3d",
+                    "account_id": "a8d456b7-ae6a-5481-9a4b-64deb0d295f7",
+                    "device_id": "f8692d53-a16a-595f-b796-dfde37f5f4b0",
+                    "event_date": "2026-10-01T08:00:00+00:00"
+                  }
+                },
+                "password_change": {
+                  "summary": "Password changed on the same account",
+                  "value": {
+                    "id": "7c8d9e0f-1a2b-5c3d-8e4f-5a6b7c8d9e0f",
+                    "type": "PASSWORD_CHANGE",
+                    "user_id": "5d2c9b0a-7e4f-5a1b-8c3d-6e9f0a1b2c3d",
+                    "account_id": "a8d456b7-ae6a-5481-9a4b-64deb0d295f7",
+                    "device_id": "f8692d53-a16a-595f-b796-dfde37f5f4b0",
+                    "event_date": "2026-10-01T08:05:00+00:00"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Stored, or a resend of an id that was already stored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecurityEventResponse"
+                },
+                "example": {
+                  "recorded": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body: missing fields, an unknown type, an id that is not a UUID or a date without time zone.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Valkey (security event store) is not available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "valkey_down": {
+                    "summary": "Valkey down",
+                    "value": {
+                      "detail": "The security event store is not available."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Decision": {
+        "type": "string",
+        "enum": [
+          "APPROVE",
+          "HOLD",
+          "REJECT"
+        ],
+        "title": "Decision"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "What went wrong."
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorResponse",
+        "description": "Error body for 409, 422 and 503."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "title": "Status",
+            "description": "Always ok while the process runs; messaging problems do not change it."
+          },
+          "messaging": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Messaging",
+            "description": "SNS publisher counters: pending, published and failed decisions."
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "messaging"
+        ],
+        "title": "HealthResponse"
+      },
+      "SecurityEventRequest": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "Chosen by the core. A resend of the same id is stored once."
+          },
+          "type": {
+            "$ref": "#/components/schemas/SecurityEventType",
+            "description": "DEVICE_CHANGE or PASSWORD_CHANGE."
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id",
+            "description": "Owner of the account."
+          },
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Account Id",
+            "description": "Account the change applies to. It is not checked against the database: the event may arrive before or after its transactions."
+          },
+          "device_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Device Id",
+            "description": "Device used for the change (the new one in a DEVICE_CHANGE)."
+          },
+          "event_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Event Date",
+            "description": "When the change happened, with time zone. The account takeover rule compares it with the transaction date."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "user_id",
+          "account_id",
+          "device_id",
+          "event_date"
+        ],
+        "title": "SecurityEventRequest",
+        "description": "A device or password change, as the wallet core sends it."
+      },
+      "SecurityEventResponse": {
+        "properties": {
+          "recorded": {
+            "type": "boolean",
+            "const": true,
+            "title": "Recorded",
+            "description": "Always true: the event is stored for the account takeover rule."
+          }
+        },
+        "type": "object",
+        "required": [
+          "recorded"
+        ],
+        "title": "SecurityEventResponse"
+      },
+      "SecurityEventType": {
+        "type": "string",
+        "enum": [
+          "DEVICE_CHANGE",
+          "PASSWORD_CHANGE"
+        ],
+        "title": "SecurityEventType"
+      },
+      "TransactionRequest": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "Chosen by the core. It is the idempotency key."
+          },
+          "type": {
+            "$ref": "#/components/schemas/TransactionType",
+            "description": "P2P, QR (payment to a merchant), RECARGA (top-up) or RETIRO (withdrawal)."
+          },
+          "channel": {
+            "type": "string",
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Channel",
+            "description": "Where it was made, e.g. APP or WEB."
+          },
+          "source_account_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Account Id",
+            "description": "Required in P2P, QR and RETIRO."
+          },
+          "destination_account_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Account Id",
+            "description": "Required in P2P and RECARGA."
+          },
+          "merchant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Id",
+            "description": "Required in QR."
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Amount",
+            "description": "In the account's currency. At most 2 decimals (JPY: none)."
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "COP",
+              "USD",
+              "EUR",
+              "JPY"
+            ],
+            "title": "Currency",
+            "description": "Must be the currency of the account."
+          },
+          "source_balance_before": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Balance Before",
+            "description": "Required when there is a source account."
+          },
+          "source_balance_after": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Balance After",
+            "description": "Required when there is a source account."
+          },
+          "destination_balance_before": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Balance Before",
+            "description": "Required when there is a destination account."
+          },
+          "destination_balance_after": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Balance After",
+            "description": "Required when there is a destination account."
+          },
+          "device_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Device Id",
+            "description": "It does not need to exist in the database."
+          },
+          "transaction_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Transaction Date",
+            "description": "When it happened in the core, with time zone."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "channel",
+          "amount",
+          "currency",
+          "device_id",
+          "transaction_date"
+        ],
+        "title": "TransactionRequest",
+        "description": "La transacción tal como la manda el core (generators/core.py)."
+      },
+      "TransactionResponse": {
+        "properties": {
+          "transaction_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Transaction Id",
+            "description": "The `id` that was sent."
+          },
+          "decision": {
+            "$ref": "#/components/schemas/Decision",
+            "description": "APPROVE, HOLD or REJECT."
+          },
+          "decision_reason": {
+            "type": "string",
+            "title": "Decision Reason",
+            "description": "Why, from the rule that decided."
+          },
+          "rules_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rules Version",
+            "description": "Version of the rule catalog used: \"0\" is the code defaults, N a version published by the rules API. null in decisions stored before it existed."
+          },
+          "rules_triggered": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Rules Triggered",
+            "description": "Every rule that fired, not only the one that decided.",
+            "default": []
+          },
+          "rule_versions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Rule Versions",
+            "description": "rule_version of each rule in rules_triggered, by code. With rules_version, GET /rules/versions/{rules_version} of the rules API shows the exact thresholds that decided. {} in decisions stored before it existed.",
+            "default": {}
+          },
+          "opens_case": {
+            "type": "boolean",
+            "title": "Opens Case",
+            "description": "True when a rule that opens a case for an analyst fired (by default: mule account, splitting, restricted list).",
+            "default": false
+          },
+          "amount_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Usd",
+            "description": "The transaction amount in USD, rounded to cents (RN-11), with the same rate the rules use. The consumers store it with the case and the account history. null in decisions stored before it existed."
+          },
+          "usd_rate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usd Rate",
+            "description": "Units of the transaction's currency per 1 USD used for amount_usd (1 for USD), as a decimal string: the rate of rate_date from the pagoseguro-exchange-rates table (RN-11). null in decisions stored before it existed."
+          },
+          "rate_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Date",
+            "description": "Day of the exchange rate used for amount_usd: the transaction's day in UTC, or the last earlier day with a rate; 2026-10-01 when the engine fell back to its fixed rates. null in decisions stored before it existed."
+          },
+          "risk_score": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Risk Score",
+            "description": "Sum of the scores of the rules that fired, at most 100. 0 when no rule with a score fired.",
+            "default": 0
+          },
+          "by_default": {
+            "type": "boolean",
+            "title": "By Default",
+            "description": "True when RN-01's default decision was applied: the rules did not answer in time, or the cache did not have (or did not return) an account, the merchant or the restricted list.",
+            "default": false
+          },
+          "processed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Processed At",
+            "description": "When the engine decided (UTC)."
+          },
+          "idempotent_replay": {
+            "type": "boolean",
+            "title": "Idempotent Replay",
+            "description": "True when this is the stored decision returned to a resend of the same id.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "transaction_id",
+          "decision",
+          "decision_reason",
+          "processed_at"
+        ],
+        "title": "TransactionResponse"
+      },
+      "TransactionType": {
+        "type": "string",
+        "enum": [
+          "P2P",
+          "QR",
+          "RECARGA",
+          "RETIRO"
+        ],
+        "title": "TransactionType"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "ValidationErrorResponse": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "Always the same summary message."
+          },
+          "errors": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Errors",
+            "description": "One entry per problem, as Pydantic reports it (type, loc, msg, input)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail",
+          "errors"
+        ],
+        "title": "ValidationErrorResponse",
+        "description": "Error body for 400 (invalid request body).",
+        "examples": [
+          {
+            "detail": "La solicitud contiene datos inválidos.",
+            "errors": [
+              {
+                "input": {
+                  "type": "P2P"
+                },
+                "loc": [
+                  "body"
+                ],
+                "msg": "Value error, Un P2P necesita cuenta de origen y de destino.",
+                "type": "value_error"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Decisions",
+      "description": "Evaluate a wallet transaction against the anti-fraud rules."
+    },
+    {
+      "name": "Security events",
+      "description": "Device and password changes, read by the account takeover rule."
+    },
+    {
+      "name": "Health",
+      "description": "Liveness check for the load balancer and Docker Compose."
+    }
+  ]
+}
