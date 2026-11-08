@@ -1,0 +1,31 @@
+meta {
+  name: Security event recorded (happy)
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{engine}}/security-events
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "id": "1b6a4f3e-2c7d-4e8a-9f10-3a4b5c6d7e03",
+    "type": "DEVICE_CHANGE",
+    "user_id": "00000000-0000-0000-0000-000000000000",
+    "account_id": "a8d456b7-ae6a-5481-9a4b-64deb0d295f7",
+    "device_id": "f8692d53-a16a-595f-b796-dfde37f5f4b0",
+    "event_date": "2026-10-01T08:00:00+00:00"
+  }
+}
+
+assert {
+  res.status: eq 202
+  res.body.recorded: eq true
+}
+
+docs {
+  A device change for the account takeover rule (RN-07).
+}

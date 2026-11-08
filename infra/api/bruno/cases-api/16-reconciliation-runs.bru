@@ -1,0 +1,19 @@
+meta {
+  name: Reconciliation runs (happy)
+  type: http
+  seq: 16
+}
+
+get {
+  url: {{cases}}/reconciliation/runs?from=2026-10-01&to=2026-10-31
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  HU-37.
+}

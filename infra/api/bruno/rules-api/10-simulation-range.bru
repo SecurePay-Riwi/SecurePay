@@ -1,0 +1,27 @@
+meta {
+  name: Simulation over a range (422)
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{rules}}/rules/simulations
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "from": "2026-10-01",
+    "to": "2026-10-05",
+    "candidate": []
+  }
+}
+
+assert {
+  res.status: eq 422
+}
+
+docs {
+  HU-24 replays one day at a time.
+}

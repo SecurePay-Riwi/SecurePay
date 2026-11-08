@@ -1,0 +1,15 @@
+meta {
+  name: Differences of an unknown partner (400)
+  type: http
+  seq: 15
+}
+
+get {
+  url: {{cases}}/reconciliation/differences?partner=NOPE
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 400
+}

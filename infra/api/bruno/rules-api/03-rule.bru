@@ -1,0 +1,20 @@
+meta {
+  name: One rule (happy)
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{rules}}/rules/velocity
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.code: eq velocity
+}
+
+docs {
+  RN-02.
+}

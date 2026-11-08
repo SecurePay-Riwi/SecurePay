@@ -1,0 +1,3254 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SecurePay cases API",
+    "description": "The cases an analyst works on: the inbox, assigning, resolving, the account history and the compliance reports. Cases are opened by the consumers from the engine's decisions (only the ones with `opens_case`) and escalated by the alerts task after 4 hours (RN-09).\n\nSend `X-User` with your name on every request that changes a case: it is the actor of the case event.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Check that the API and its database are up",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Up.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                },
+                "example": {
+                  "status": "ok"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "detail": "The cases database is not available."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cases": {
+      "get": {
+        "tags": [
+          "Cases"
+        ],
+        "summary": "List the case inbox",
+        "description": "The cases an analyst has to work on. Without `status`, the pending ones: `OPEN` and `ESCALATED` (still open after the 4-hour limit, RN-09). `status` asks for one state (`RESOLVED` too) and `assignee` for one analyst's cases.\n\nHighest `risk_score` first and, with the same risk, the closest to `due_at`. `minutes_left` is the whole minutes until `due_at`, negative once it is overdue, and null for a resolved case. Paginated with `page` and `size` (default 20, at most 100).",
+        "operationId": "list_cases_cases_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CaseStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this state. Without it: the pending cases (OPEN and ESCALATED).",
+              "title": "Status"
+            },
+            "description": "Only this state. Without it: the pending cases (OPEN and ESCALATED)."
+          },
+          {
+            "name": "assignee",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only the cases of this analyst.",
+              "title": "Assignee"
+            },
+            "description": "Only the cases of this analyst."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number, from 1.",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number, from 1."
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Cases per page.",
+              "default": 20,
+              "title": "Size"
+            },
+            "description": "Cases per page."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The cases of the page, by risk and then by time left.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CasePage"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "id": "0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01",
+                      "transaction_id": "a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21",
+                      "account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+                      "status": "OPEN",
+                      "decision": "HOLD",
+                      "rules_triggered": [
+                        "mule"
+                      ],
+                      "risk_score": 50,
+                      "amount": "950000.00",
+                      "currency": "COP",
+                      "amount_usd": "230.05",
+                      "usd_rate": "4129.53",
+                      "rate_date": "2026-10-31",
+                      "created_at": "2026-10-31T14:02:11.418000Z",
+                      "due_at": "2026-10-31T18:02:11.418000Z",
+                      "minutes_left": 87
+                    }
+                  ],
+                  "total": 1,
+                  "page": 1,
+                  "size": 20
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`status` is not a case state, or `assignee`, `page` or `size` is out of range.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The request contains invalid data."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The cases database is not available."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cases/{case_id}": {
+      "get": {
+        "tags": [
+          "Cases"
+        ],
+        "summary": "Read a case with its events",
+        "description": "Everything the case stores (the engine's decision, the transaction as it came, the resolution and the evidence key) and its events, oldest first: `CREATED`, `ASSIGNED`, `ESCALATED`, `RESOLVED`, `EVIDENCE_ARCHIVED`.",
+        "operationId": "read_case_cases__case_id__get",
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The case and its events.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseDetail"
+                },
+                "example": {
+                  "id": "0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01",
+                  "transaction_id": "a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21",
+                  "account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+                  "status": "OPEN",
+                  "decision": "HOLD",
+                  "rules_triggered": [
+                    "mule"
+                  ],
+                  "risk_score": 50,
+                  "amount": "950000.00",
+                  "currency": "COP",
+                  "amount_usd": "230.05",
+                  "usd_rate": "4129.53",
+                  "rate_date": "2026-10-31",
+                  "created_at": "2026-10-31T14:02:11.418000Z",
+                  "due_at": "2026-10-31T18:02:11.418000Z",
+                  "minutes_left": 87,
+                  "decision_reason": "The account received 3 transfers from different senders and withdrew 95% of its balance.",
+                  "rules_version": "3",
+                  "rule_versions": {
+                    "mule": 1
+                  },
+                  "transaction_date": "2026-10-31T14:02:10Z",
+                  "transaction": {
+                    "id": "a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21",
+                    "type": "RETIRO",
+                    "source_account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+                    "amount": "950000.00",
+                    "currency": "COP",
+                    "transaction_date": "2026-10-31T14:02:10Z"
+                  },
+                  "events": [
+                    {
+                      "id": 1,
+                      "type": "CREATED",
+                      "actor": "system",
+                      "at": "2026-10-31T14:02:11.418000Z",
+                      "data": {}
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The case id is not a UUID.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The request contains invalid data."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "There is no case with that id.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Case not found."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The cases database is not available."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cases/{case_id}/assignee": {
+      "put": {
+        "tags": [
+          "Cases"
+        ],
+        "summary": "Assign or reassign a case",
+        "description": "Sets the analyst who owns the case and writes an `ASSIGNED` event with the previous and the new owner (`from` is null the first time), with `X-User` as its actor. Assigning the owner it already has changes nothing and writes no event. An `ESCALATED` case can still be assigned; a `RESOLVED` one cannot (`409`).\n\n`X-User` is required. Returns the case with its events.",
+        "operationId": "assign_case_cases__case_id__assignee_put",
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "x-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Who makes the change (1 to 100 characters).",
+              "title": "X-User"
+            },
+            "description": "Who makes the change (1 to 100 characters)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssigneeChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The case with its new owner and events.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseDetail"
+                },
+                "example": {
+                  "id": "0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01",
+                  "transaction_id": "a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21",
+                  "account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+                  "status": "OPEN",
+                  "decision": "HOLD",
+                  "rules_triggered": [
+                    "mule"
+                  ],
+                  "risk_score": 50,
+                  "amount": "950000.00",
+                  "currency": "COP",
+                  "amount_usd": "230.05",
+                  "usd_rate": "4129.53",
+                  "rate_date": "2026-10-31",
+                  "assignee": "ana",
+                  "created_at": "2026-10-31T14:02:11.418000Z",
+                  "due_at": "2026-10-31T18:02:11.418000Z",
+                  "minutes_left": 87,
+                  "decision_reason": "The account received 3 transfers from different senders and withdrew 95% of its balance.",
+                  "rules_version": "3",
+                  "rule_versions": {
+                    "mule": 1
+                  },
+                  "transaction_date": "2026-10-31T14:02:10Z",
+                  "transaction": {
+                    "id": "a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21",
+                    "type": "RETIRO",
+                    "source_account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+                    "amount": "950000.00",
+                    "currency": "COP",
+                    "transaction_date": "2026-10-31T14:02:10Z"
+                  },
+                  "events": [
+                    {
+                      "id": 1,
+                      "type": "CREATED",
+                      "actor": "system",
+                      "at": "2026-10-31T14:02:11.418000Z",
+                      "data": {}
+                    },
+                    {
+                      "id": 2,
+                      "type": "ASSIGNED",
+                      "actor": "supervisor.luis",
+                      "at": "2026-10-31T14:10:45.002000Z",
+                      "data": {
+                        "to": "ana"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`X-User` is missing, the id is not a UUID, or `assignee` is not 1 to 100 characters.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "X-User must have 1 to 100 characters."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "There is no case with that id.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Case not found."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The case is RESOLVED, which is final.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The case is resolved; it can no longer change."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The cases database is not available."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cases/{case_id}/resolution": {
+      "post": {
+        "tags": [
+          "Cases"
+        ],
+        "summary": "Resolve a case with its outcome",
+        "description": "Closes the case: `FRAUD` sets `final_decision` to `REJECT` and `LEGITIMATE` to `APPROVE`. That is how the held transaction is rejected or released: there is no core to call (team decision D4), so the core reads `final_decision` from the case. Stores the outcome, the note, `resolved_at` and `resolved_by` (`X-User`) and writes a `RESOLVED` event, all in one transaction. The outcome feeds the rule precision and false-positive metrics.\n\nThen the evidence is archived for 10 years (RN-12) and its key is `evidence_key`. If archiving fails the case stays resolved, `evidence_key` is null and the alerts task retries it.\n\nAn `OPEN` or `ESCALATED` case can be resolved, with or without an owner; a `RESOLVED` one cannot (`409`). `X-User` is required. Returns the case with its events.",
+        "operationId": "resolve_case_cases__case_id__resolution_post",
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "x-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Who resolves the case (1 to 100 characters).",
+              "title": "X-User"
+            },
+            "description": "Who resolves the case (1 to 100 characters)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Resolution"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The resolved case with its events.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseDetail"
+                },
+                "example": {
+                  "id": "0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01",
+                  "transaction_id": "a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21",
+                  "account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+                  "status": "RESOLVED",
+                  "decision": "HOLD",
+                  "rules_triggered": [
+                    "mule"
+                  ],
+                  "risk_score": 50,
+                  "amount": "950000.00",
+                  "currency": "COP",
+                  "amount_usd": "230.05",
+                  "usd_rate": "4129.53",
+                  "rate_date": "2026-10-31",
+                  "assignee": "ana",
+                  "created_at": "2026-10-31T14:02:11.418000Z",
+                  "due_at": "2026-10-31T18:02:11.418000Z",
+                  "decision_reason": "The account received 3 transfers from different senders and withdrew 95% of its balance.",
+                  "rules_version": "3",
+                  "rule_versions": {
+                    "mule": 1
+                  },
+                  "transaction_date": "2026-10-31T14:02:10Z",
+                  "transaction": {
+                    "id": "a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21",
+                    "type": "RETIRO",
+                    "source_account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+                    "amount": "950000.00",
+                    "currency": "COP",
+                    "transaction_date": "2026-10-31T14:02:10Z"
+                  },
+                  "resolved_at": "2026-10-31T15:31:02.540000Z",
+                  "resolved_by": "ana",
+                  "outcome": "FRAUD",
+                  "final_decision": "REJECT",
+                  "resolution_note": "The three senders are linked accounts; the customer did not recognise the withdrawal.",
+                  "evidence_key": "cases/2026/10/0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01.json",
+                  "events": [
+                    {
+                      "id": 1,
+                      "type": "CREATED",
+                      "actor": "system",
+                      "at": "2026-10-31T14:02:11.418000Z",
+                      "data": {}
+                    },
+                    {
+                      "id": 2,
+                      "type": "ASSIGNED",
+                      "actor": "supervisor.luis",
+                      "at": "2026-10-31T14:10:45.002000Z",
+                      "data": {
+                        "to": "ana"
+                      }
+                    },
+                    {
+                      "id": 3,
+                      "type": "RESOLVED",
+                      "actor": "ana",
+                      "at": "2026-10-31T15:31:02.540000Z",
+                      "data": {
+                        "outcome": "FRAUD",
+                        "final_decision": "REJECT",
+                        "note": "The three senders are linked accounts; the customer did not recognise the withdrawal."
+                      }
+                    },
+                    {
+                      "id": 4,
+                      "type": "EVIDENCE_ARCHIVED",
+                      "actor": "system",
+                      "at": "2026-10-31T15:31:02.871000Z",
+                      "data": {
+                        "bucket": "pagoseguro-evidence",
+                        "key": "cases/2026/10/0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01.json",
+                        "retain_until": "2036-10-28T15:31:02.871000+00:00"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`X-User` is missing, the id is not a UUID, `outcome` is not FRAUD or LEGITIMATE, or `note` is not 1 to 2000 characters.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "X-User must have 1 to 100 characters."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "There is no case with that id.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Case not found."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The case is RESOLVED, which is final.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The case is resolved; it can no longer change."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The cases database is not available."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reports/suspicious": {
+      "get": {
+        "tags": [
+          "Reports"
+        ],
+        "summary": "Report the suspicious operations of a period",
+        "description": "The compliance cases opened in the period: mule account (RN-03), splitting (RN-05) and restricted list (RN-06), the decisions that open a case. One row per case with its account, `pattern` (the rules that fired, joined by `+`), the amount in the original currency (with its decimals: JPY has none) and in USD, with the rate the engine used (`usd_rate`, `rate_date`; RN-11), its state and its outcome, oldest first.\n\n`from` and `to` are days (`YYYY-MM-DD`, UTC), both inclusive, at most 31 days apart. `format=csv` returns the same rows as a file to download, `suspicious-report-<from>-<to>.csv`, with amounts as decimal text and `usd_rate`, `rate_date` as the last columns. A period without cases is an empty list with `message` (JSON) or only the header (CSV).",
+        "operationId": "suspicious_report_reports_suspicious_get",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "First day (inclusive), YYYY-MM-DD, UTC.",
+              "title": "From"
+            },
+            "description": "First day (inclusive), YYYY-MM-DD, UTC."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "description": "Last day (inclusive), YYYY-MM-DD, UTC.",
+              "title": "To"
+            },
+            "description": "Last day (inclusive), YYYY-MM-DD, UTC."
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ReportFormat",
+              "description": "json (default) or csv, a file to download.",
+              "default": "json"
+            },
+            "description": "json (default) or csv, a file to download."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The cases of the period, as JSON or as a CSV file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuspiciousReport"
+                },
+                "example": {
+                  "from": "2026-10-31",
+                  "to": "2026-10-31",
+                  "items": [
+                    {
+                      "case_id": "0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01",
+                      "transaction_id": "a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21",
+                      "account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+                      "pattern": "mule",
+                      "amount": "950000.00",
+                      "currency": "COP",
+                      "amount_usd": "230.05",
+                      "usd_rate": "4129.53",
+                      "rate_date": "2026-10-31",
+                      "status": "RESOLVED",
+                      "outcome": "FRAUD",
+                      "created_at": "2026-10-31T14:02:11.418000Z"
+                    }
+                  ],
+                  "total": 1
+                }
+              },
+              "text/csv": {
+                "example": "case_id,transaction_id,account_id,pattern,amount,currency,amount_usd,status,outcome,created_at,usd_rate,rate_date\n0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01,a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21,5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42,mule,950000.00,COP,230.05,RESOLVED,FRAUD,2026-10-31T14:02:11.418000+00:00,4129.53,2026-10-31\n"
+              }
+            }
+          },
+          "400": {
+            "description": "A date is missing or not valid, `from` is after `to`, the period has more than 31 days, or `format` is not json or csv.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The period can have at most 31 days."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The cases database is not available."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/accounts/{account_id}/transactions": {
+      "get": {
+        "tags": [
+          "Accounts"
+        ],
+        "summary": "List the last 30 days of an account's transactions",
+        "description": "Every transaction where the account took part in the last `days` days (at most 30, `ACCOUNT_HISTORY_DAYS`), whatever the engine decided: `OUT` when it was the source, `IN` when it was the destination. The amount is in the account's currency (JPY without decimals), with the engine's `amount_usd` and the rate behind it, `usd_rate` and `rate_date` (RN-11, HU-43). `device_id` is only on the main account's row (the source; in a top-up, the destination).\n\nNewest first by `transaction_date`. An account without history is an empty list. Paginated with `page` and `size` (at most 100). The history consumer writes it a moment after the decision, and the alerts task deletes what is older than 30 days.",
+        "operationId": "account_transactions_accounts__account_id__transactions_get",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Account Id"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 30,
+              "minimum": 1,
+              "description": "Transactions of the last `days` days (1 to 30).",
+              "default": 30,
+              "title": "Days"
+            },
+            "description": "Transactions of the last `days` days (1 to 30)."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number, from 1.",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number, from 1."
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Transactions per page.",
+              "default": 50,
+              "title": "Size"
+            },
+            "description": "Transactions per page."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The account's transactions in the window, newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountTransactionPage"
+                },
+                "example": {
+                  "account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+                  "days": 30,
+                  "items": [
+                    {
+                      "transaction_id": "a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21",
+                      "direction": "OUT",
+                      "counterparty_account_id": "9e1b3d5f-7a9c-4e1b-8d3f-5a7c9e1b3d64",
+                      "type": "P2P",
+                      "channel": "APP",
+                      "amount": "950000.00",
+                      "currency": "COP",
+                      "amount_usd": "230.05",
+                      "usd_rate": "4129.53",
+                      "rate_date": "2026-10-31",
+                      "device_id": "c7e9a1b3-5d7f-4a9c-9e1b-3d5f7a9c1e86",
+                      "decision": "HOLD",
+                      "decision_reason": "More than 5 outgoing transfers in 10 minutes.",
+                      "rules_triggered": [
+                        "velocity"
+                      ],
+                      "risk_score": 40,
+                      "transaction_date": "2026-10-31T13:58:40Z",
+                      "processed_at": "2026-10-31T13:58:40.112000Z"
+                    }
+                  ],
+                  "total": 1,
+                  "page": 1,
+                  "size": 50
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The account id is not a UUID, or `days`, `page` or `size` is out of range.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The request contains invalid data."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The cases database is not available."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/accounts/{account_id}/related-accounts": {
+      "get": {
+        "tags": [
+          "Accounts"
+        ],
+        "summary": "List the accounts that shared a device with an account",
+        "description": "The devices the account used in the last `days` days (at most 30, `ACCOUNT_HISTORY_DAYS`) and the other accounts that used any of them in the same window, read from the account history (`device_id`, only on the main account's row: the source; in a top-up, the destination). It is the network behind the shared device rule (RN-04).\n\nOne item per related account and shared device: an account that used two of the devices appears twice. `last_seen` is the related account's last transaction on that device; `open_cases` counts its cases that are `OPEN` or `ESCALATED`. The latest seen first. An account without devices in the window, or without related accounts, is an empty list.",
+        "operationId": "related_accounts_accounts__account_id__related_accounts_get",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Account Id"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 30,
+              "minimum": 1,
+              "description": "Devices used in the last `days` days (1 to 30).",
+              "default": 30,
+              "title": "Days"
+            },
+            "description": "Devices used in the last `days` days (1 to 30)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The related accounts, the latest seen first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelatedAccountList"
+                },
+                "example": {
+                  "account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+                  "days": 30,
+                  "items": [
+                    {
+                      "account_id": "9e1b3d5f-7a9c-4e1b-8d3f-5a7c9e1b3d64",
+                      "device_id": "c7e9a1b3-5d7f-4a9c-9e1b-3d5f7a9c1e86",
+                      "last_seen": "2026-10-31T12:20:05Z",
+                      "open_cases": 1
+                    }
+                  ],
+                  "total": 1
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The account id is not a UUID, or `days` is out of range.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The request contains invalid data."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The cases database is not available."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/compliance/restricted-list-reports": {
+      "get": {
+        "tags": [
+          "Compliance"
+        ],
+        "summary": "List the restricted list reports (RN-06)",
+        "description": "One report per listed document of a transaction: when the engine fires `restricted_list`, the cases consumer opens the case and writes a report for every owner of the source or destination account who is on the list. The alerts task e-mails the new ones to compliance every 5 minutes and sets `notified_at`.\n\nNewest first. `from` (inclusive) and `to` (exclusive) filter by `matched_at`; a date or time without a time zone is UTC. A period without reports is an empty list. Paginated with `page` and `size` (at most 100).",
+        "operationId": "restricted_list_reports_compliance_restricted_list_reports_get",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "From this time (inclusive), by matched_at.",
+              "title": "From"
+            },
+            "description": "From this time (inclusive), by matched_at."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Up to this time (exclusive), by matched_at.",
+              "title": "To"
+            },
+            "description": "Up to this time (exclusive), by matched_at."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number, from 1.",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number, from 1."
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Reports per page.",
+              "default": 50,
+              "title": "Size"
+            },
+            "description": "Reports per page."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The reports of the period, newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestrictedListReportPage"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "id": "6f1c2b9e-3c1f-4a52-9a77-1e0f4f2d8c10",
+                      "case_id": "0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01",
+                      "transaction_id": "a3c1e5f7-2b4d-4c6e-8a0b-1d3f5a7c9e21",
+                      "account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+                      "document": "1000000070",
+                      "list_type": "PEP",
+                      "matched_at": "2026-10-31T14:02:11.418000Z",
+                      "notified_at": "2026-10-31T14:05:00.031000Z"
+                    }
+                  ],
+                  "total": 1,
+                  "page": 1,
+                  "size": 50
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A date is not valid, `from` is after `to`, or the page is out of range.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The request contains invalid data."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The cases database is not available."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reconciliation/differences": {
+      "get": {
+        "tags": [
+          "Reconciliation"
+        ],
+        "summary": "List the reconciliation differences (RN-10)",
+        "description": "What the nightly reconciliation could not match (RN-10: same reference, amount within 0.01, date within 1 day):\n\n- `MISSING_IN_PARTNER` (HU-38): PagoSeguro approved it and the partner's file does not have it. Only PagoSeguro's amount and time.\n- `MISSING_IN_PAGOSEGURO` (HU-39): it is in the partner's file and PagoSeguro did not approve it. Only the partner's amount, time and reference.\n- `AMOUNT_MISMATCH` (HU-40): same reference, more than 0.01 apart. Both amounts and `amount_difference` = partner − PagoSeguro.\n\nThe same reference more than one day apart is missing on both sides (team decision D4). Amounts keep their currency's decimals (JPY: none).\n\nWithout `status`, the `PENDING` ones; `type`, `partner` and `from`/`to` (days, inclusive, by `run_day`) narrow them. Oldest `run_day` first, then by partner. `age_days` counts whole days from `run_day` to today in UTC, null once resolved. Paginated with `page` and `size` (default 50, at most 200).",
+        "operationId": "list_differences_reconciliation_differences_get",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/DifferenceType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this type. Without it: every type.",
+              "title": "Type"
+            },
+            "description": "Only this type. Without it: every type."
+          },
+          {
+            "name": "partner",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Partner"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this partner.",
+              "title": "Partner"
+            },
+            "description": "Only this partner."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DifferenceStatus",
+              "description": "PENDING (default) or RESOLVED.",
+              "default": "PENDING"
+            },
+            "description": "PENDING (default) or RESOLVED."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "From this run_day (inclusive).",
+              "title": "From"
+            },
+            "description": "From this run_day (inclusive)."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Up to this run_day (inclusive).",
+              "title": "To"
+            },
+            "description": "Up to this run_day (inclusive)."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number, from 1.",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number, from 1."
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "Differences per page.",
+              "default": 50,
+              "title": "Size"
+            },
+            "description": "Differences per page."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The differences of the page, oldest day first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconciliationDifferencePage"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "id": "3b9d1f57-2c4e-4a6b-8d0f-1e3a5c7e9b20",
+                      "run_day": "2026-10-05",
+                      "partner": "cajeros_express",
+                      "type": "AMOUNT_MISMATCH",
+                      "reference": "d462ba1c-5dab-599d-ac2e-63c354c7f3ce",
+                      "partner_reference": "CX000000002",
+                      "currency": "COP",
+                      "pagoseguro_amount": "123456.78",
+                      "partner_amount": "123457.00",
+                      "amount_difference": "0.22",
+                      "pagoseguro_at": "2026-10-05T19:00:00Z",
+                      "partner_at": "2026-10-05T19:00:00Z",
+                      "status": "PENDING",
+                      "age_days": 3,
+                      "detected_at": "2026-10-06T07:04:41.530000Z"
+                    }
+                  ],
+                  "total": 1,
+                  "page": 1,
+                  "size": 50
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`type`, `partner` or `status` is not a known value, a day is not valid, `from` is after `to`, or `page` or `size` is out of range.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The request contains invalid data."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The cases database is not available."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reconciliation/differences/aging": {
+      "get": {
+        "tags": [
+          "Reconciliation"
+        ],
+        "summary": "Group the pending differences by age (HU-41)",
+        "description": "The `PENDING` differences by age in days (from `run_day` to today in UTC): `0-1`, `2-7` and `8+`. Always the three ranges, in that order, even when one is empty, each with its count by type. `partner` narrows it to one partner.",
+        "operationId": "differences_aging_reconciliation_differences_aging_get",
+        "parameters": [
+          {
+            "name": "partner",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Partner"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this partner.",
+              "title": "Partner"
+            },
+            "description": "Only this partner."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The pending differences by age range.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DifferenceAging"
+                },
+                "example": {
+                  "total": 6,
+                  "ranges": [
+                    {
+                      "range": "0-1",
+                      "count": 2,
+                      "by_type": {
+                        "MISSING_IN_PARTNER": 1,
+                        "MISSING_IN_PAGOSEGURO": 1,
+                        "AMOUNT_MISMATCH": 0
+                      }
+                    },
+                    {
+                      "range": "2-7",
+                      "count": 3,
+                      "by_type": {
+                        "MISSING_IN_PARTNER": 2,
+                        "MISSING_IN_PAGOSEGURO": 0,
+                        "AMOUNT_MISMATCH": 1
+                      }
+                    },
+                    {
+                      "range": "8+",
+                      "count": 1,
+                      "by_type": {
+                        "MISSING_IN_PARTNER": 0,
+                        "MISSING_IN_PAGOSEGURO": 1,
+                        "AMOUNT_MISMATCH": 0
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`partner` is not a known partner.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The request contains invalid data."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The cases database is not available."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reconciliation/differences/{difference_id}/resolution": {
+      "post": {
+        "tags": [
+          "Reconciliation"
+        ],
+        "summary": "Resolve a reconciliation difference (HU-41)",
+        "description": "Treasury closes a difference with a note (1 to 2000 characters): it becomes `RESOLVED` with `resolved_at`, `resolved_by` (`X-User`) and `resolution_note`, and stops counting as pending. `RESOLVED` is final: running the day again never reopens it, and resolving it again is `409`.\n\n`X-User` is required. Returns the difference.",
+        "operationId": "resolve_difference_reconciliation_differences__difference_id__resolution_post",
+        "parameters": [
+          {
+            "name": "difference_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Difference Id"
+            }
+          },
+          {
+            "name": "x-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Who resolves it (1 to 100 characters).",
+              "title": "X-User"
+            },
+            "description": "Who resolves it (1 to 100 characters)."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DifferenceResolution"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The resolved difference.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconciliationDifferenceItem"
+                },
+                "example": {
+                  "id": "3b9d1f57-2c4e-4a6b-8d0f-1e3a5c7e9b20",
+                  "run_day": "2026-10-05",
+                  "partner": "cajeros_express",
+                  "type": "AMOUNT_MISMATCH",
+                  "reference": "d462ba1c-5dab-599d-ac2e-63c354c7f3ce",
+                  "partner_reference": "CX000000002",
+                  "currency": "COP",
+                  "pagoseguro_amount": "123456.78",
+                  "partner_amount": "123457.00",
+                  "amount_difference": "0.22",
+                  "pagoseguro_at": "2026-10-05T19:00:00Z",
+                  "partner_at": "2026-10-05T19:00:00Z",
+                  "status": "RESOLVED",
+                  "detected_at": "2026-10-06T07:04:41.530000Z",
+                  "resolved_at": "2026-10-08T15:12:09.004000Z",
+                  "resolved_by": "tesoreria.maria",
+                  "resolution_note": "The ATM network rounds COP to whole pesos; adjusted in the partner's next settlement."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`X-User` is missing, the id is not a UUID, or `note` is not 1 to 2000 characters.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "X-User must have 1 to 100 characters."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "There is no difference with that id.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Difference not found."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The difference is RESOLVED, which is final.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The difference is resolved; it can no longer change."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The cases database is not available."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reconciliation/runs": {
+      "get": {
+        "tags": [
+          "Reconciliation"
+        ],
+        "summary": "List the reconciliation runs of a period (RN-10)",
+        "description": "One run per partners' day: the nightly reconciliation reads the four partners' files, matches them with the approved transactions by reference, amount (±0.01) and date (±1 day) and stores the differences. A day run again updates its run.\n\nOldest day first. `from` and `to` are days (`YYYY-MM-DD`), both inclusive, by `run_day`; without them, every run. A FAILED run says the step and its error in `error`.",
+        "operationId": "reconciliation_runs_reconciliation_runs_get",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "From this day (inclusive), by run_day.",
+              "title": "From"
+            },
+            "description": "From this day (inclusive), by run_day."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Up to this day (inclusive), by run_day.",
+              "title": "To"
+            },
+            "description": "Up to this day (inclusive), by run_day."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The runs of the period, oldest day first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReconciliationRunList"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "run_day": "2026-10-05",
+                      "status": "DONE",
+                      "started_at": "2026-10-06T07:00:02.118000Z",
+                      "finished_at": "2026-10-06T07:04:41.530000Z",
+                      "files_read": 4,
+                      "records_read": 11,
+                      "rows_rejected": 2,
+                      "matched": 8,
+                      "differences": 6
+                    }
+                  ],
+                  "total": 1
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A day is not valid, or `from` is after `to`.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The request contains invalid data."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The cases database is not available."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AccountTransactionItem": {
+        "properties": {
+          "transaction_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Transaction Id",
+            "description": "The transaction."
+          },
+          "direction": {
+            "type": "string",
+            "title": "Direction",
+            "description": "OUT: the account sent it (source). IN: the account received it (destination)."
+          },
+          "counterparty_account_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counterparty Account Id",
+            "description": "The other account of the transaction; null in a QR payment, a withdrawal or a top-up."
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "P2P, QR, RECARGA or RETIRO."
+          },
+          "channel": {
+            "type": "string",
+            "title": "Channel",
+            "description": "Where the transaction was made (APP, WEB, ...)."
+          },
+          "merchant_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Id",
+            "description": "The merchant of a QR payment; null otherwise."
+          },
+          "amount": {
+            "type": "string",
+            "title": "Amount",
+            "description": "Amount in the account's currency, as a decimal string with its decimals (JPY: none)."
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "description": "The original currency (COP, USD, EUR, JPY)."
+          },
+          "amount_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Usd",
+            "description": "The engine's amount in USD (RN-11), as a decimal string; null for decisions older than Sprint 4."
+          },
+          "usd_rate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usd Rate",
+            "description": "Units of the currency per 1 USD the engine used for amount_usd (1 for USD), as a decimal string (RN-11, HU-43); null for decisions older than Sprint 5."
+          },
+          "rate_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Date",
+            "description": "Day of that rate: the transaction's day in UTC, or the last earlier day with a rate; null for decisions older than Sprint 5."
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id",
+            "description": "The device, only on the main account's row (the source; in a top-up, the destination)."
+          },
+          "decision": {
+            "type": "string",
+            "title": "Decision",
+            "description": "The engine's decision: APPROVE, HOLD or REJECT."
+          },
+          "decision_reason": {
+            "type": "string",
+            "title": "Decision Reason",
+            "description": "Why the engine decided it."
+          },
+          "rules_triggered": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Rules Triggered",
+            "description": "The rules that fired, as in the transaction.decided event."
+          },
+          "risk_score": {
+            "type": "integer",
+            "title": "Risk Score",
+            "description": "Sum of the fired rules' scores, 0 to 100."
+          },
+          "transaction_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Transaction Date",
+            "description": "When the transaction happened, UTC."
+          },
+          "processed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Processed At",
+            "description": "When the engine decided it, UTC."
+          }
+        },
+        "type": "object",
+        "required": [
+          "transaction_id",
+          "direction",
+          "type",
+          "channel",
+          "amount",
+          "currency",
+          "decision",
+          "decision_reason",
+          "rules_triggered",
+          "risk_score",
+          "transaction_date",
+          "processed_at"
+        ],
+        "title": "AccountTransactionItem",
+        "description": "One transaction of the account (an account_transactions row).\n\nThe nullable fields are always sent; their default only lets Swagger\ndrop a null from an example."
+      },
+      "AccountTransactionPage": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Account Id",
+            "description": "The account."
+          },
+          "days": {
+            "type": "integer",
+            "title": "Days",
+            "description": "The window: transactions of the last `days` days."
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AccountTransactionItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "The transactions of the page, newest first."
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Transactions in the window, all pages."
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page",
+            "description": "Page number, from 1."
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size",
+            "description": "Transactions per page."
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id",
+          "days",
+          "items",
+          "total",
+          "page",
+          "size"
+        ],
+        "title": "AccountTransactionPage"
+      },
+      "AgeRange": {
+        "properties": {
+          "range": {
+            "type": "string",
+            "title": "Range",
+            "description": "0-1, 2-7 or 8+ days old."
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Pending differences of that age."
+          },
+          "by_type": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "By Type",
+            "description": "The same count by type: MISSING_IN_PARTNER, MISSING_IN_PAGOSEGURO, AMOUNT_MISMATCH."
+          }
+        },
+        "type": "object",
+        "required": [
+          "range",
+          "count",
+          "by_type"
+        ],
+        "title": "AgeRange"
+      },
+      "AssigneeChange": {
+        "properties": {
+          "assignee": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Assignee",
+            "description": "The analyst, 1 to 100 characters."
+          }
+        },
+        "type": "object",
+        "required": [
+          "assignee"
+        ],
+        "title": "AssigneeChange",
+        "description": "Who owns the case from now on."
+      },
+      "CaseDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "Case id."
+          },
+          "transaction_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Transaction Id",
+            "description": "The transaction that opened it (one case per transaction)."
+          },
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Account Id",
+            "description": "The main account: the source; in a top-up, the destination."
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "OPEN, ESCALATED (still open after due_at, RN-09) or RESOLVED."
+          },
+          "decision": {
+            "type": "string",
+            "title": "Decision",
+            "description": "The engine's decision: APPROVE, HOLD or REJECT."
+          },
+          "rules_triggered": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Rules Triggered",
+            "description": "The rules that fired, as in the transaction.decided event."
+          },
+          "risk_score": {
+            "type": "integer",
+            "title": "Risk Score",
+            "description": "Sum of the fired rules' scores, 0 to 100."
+          },
+          "amount": {
+            "type": "string",
+            "title": "Amount",
+            "description": "Amount in the original currency, as a decimal string with its decimals (JPY: none)."
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "description": "The original currency (COP, USD, EUR, JPY)."
+          },
+          "amount_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Usd",
+            "description": "The engine's amount in USD (RN-11), as a decimal string; null for decisions older than Sprint 4."
+          },
+          "usd_rate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usd Rate",
+            "description": "Units of the currency per 1 USD the engine used for amount_usd (1 for USD), as a decimal string (RN-11, HU-43); null for decisions older than Sprint 5."
+          },
+          "rate_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Date",
+            "description": "Day of that rate: the transaction's day in UTC, or the last earlier day with a rate; null for decisions older than Sprint 5."
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee",
+            "description": "The analyst who owns it; null until assigned."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the case was opened, UTC."
+          },
+          "due_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Due At",
+            "description": "The 4-hour limit (RN-09): created_at + CASE_DUE_MINUTES, UTC."
+          },
+          "minutes_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minutes Left",
+            "description": "Whole minutes until due_at, rounded down: negative once it is overdue. Null when RESOLVED."
+          },
+          "decision_reason": {
+            "type": "string",
+            "title": "Decision Reason",
+            "description": "Why the engine decided it."
+          },
+          "rules_version": {
+            "type": "string",
+            "title": "Rules Version",
+            "description": "The rule catalog version that decided (RN-08)."
+          },
+          "rule_versions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Rule Versions",
+            "description": "rule_version of each fired rule, by code (RN-08)."
+          },
+          "transaction_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Transaction Date",
+            "description": "When the transaction happened, UTC."
+          },
+          "transaction": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Transaction",
+            "description": "The transaction as it came in the event (evidence)."
+          },
+          "escalated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Escalated At",
+            "description": "When the alerts task escalated it, UTC."
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At",
+            "description": "When it was resolved, UTC."
+          },
+          "resolved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved By",
+            "description": "The X-User who resolved it."
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome",
+            "description": "FRAUD or LEGITIMATE, once resolved."
+          },
+          "final_decision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Decision",
+            "description": "REJECT (FRAUD) or APPROVE (LEGITIMATE), set on resolution; what the core applies."
+          },
+          "resolution_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Note",
+            "description": "The analyst's note on resolution."
+          },
+          "evidence_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Key",
+            "description": "S3 key of the archived evidence (RN-12); null until archived."
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/CaseEventItem"
+            },
+            "type": "array",
+            "title": "Events",
+            "description": "What happened to the case, oldest first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "transaction_id",
+          "account_id",
+          "status",
+          "decision",
+          "rules_triggered",
+          "risk_score",
+          "amount",
+          "currency",
+          "created_at",
+          "due_at",
+          "decision_reason",
+          "rules_version",
+          "rule_versions",
+          "transaction_date",
+          "transaction",
+          "events"
+        ],
+        "title": "CaseDetail",
+        "description": "A case with everything it stores and its events."
+      },
+      "CaseEventItem": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id",
+            "description": "Event id; increases with every event."
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "CREATED, ASSIGNED, ESCALATED, RESOLVED or EVIDENCE_ARCHIVED."
+          },
+          "actor": {
+            "type": "string",
+            "title": "Actor",
+            "description": "The X-User who did it, or `system`."
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At",
+            "description": "When it happened, UTC."
+          },
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data",
+            "description": "Details by type: ASSIGNED {\"from\", \"to\"}; ESCALATED {\"due_at\"}; RESOLVED {\"outcome\", \"final_decision\", \"note\"}; EVIDENCE_ARCHIVED {\"bucket\", \"key\", \"retain_until\"}; CREATED {}."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "actor",
+          "at",
+          "data"
+        ],
+        "title": "CaseEventItem",
+        "description": "One thing that happened to a case (a case_events row)."
+      },
+      "CaseOutcome": {
+        "type": "string",
+        "enum": [
+          "FRAUD",
+          "LEGITIMATE"
+        ],
+        "title": "CaseOutcome"
+      },
+      "CasePage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CaseSummary"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "The cases of the page: highest risk first, then the closest to due_at."
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Cases that match the filters, all pages."
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page",
+            "description": "Page number, from 1."
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size",
+            "description": "Cases per page."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "size"
+        ],
+        "title": "CasePage"
+      },
+      "CaseStatus": {
+        "type": "string",
+        "enum": [
+          "OPEN",
+          "ESCALATED",
+          "RESOLVED"
+        ],
+        "title": "CaseStatus"
+      },
+      "CaseSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "Case id."
+          },
+          "transaction_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Transaction Id",
+            "description": "The transaction that opened it (one case per transaction)."
+          },
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Account Id",
+            "description": "The main account: the source; in a top-up, the destination."
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "OPEN, ESCALATED (still open after due_at, RN-09) or RESOLVED."
+          },
+          "decision": {
+            "type": "string",
+            "title": "Decision",
+            "description": "The engine's decision: APPROVE, HOLD or REJECT."
+          },
+          "rules_triggered": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Rules Triggered",
+            "description": "The rules that fired, as in the transaction.decided event."
+          },
+          "risk_score": {
+            "type": "integer",
+            "title": "Risk Score",
+            "description": "Sum of the fired rules' scores, 0 to 100."
+          },
+          "amount": {
+            "type": "string",
+            "title": "Amount",
+            "description": "Amount in the original currency, as a decimal string with its decimals (JPY: none)."
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "description": "The original currency (COP, USD, EUR, JPY)."
+          },
+          "amount_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Usd",
+            "description": "The engine's amount in USD (RN-11), as a decimal string; null for decisions older than Sprint 4."
+          },
+          "usd_rate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usd Rate",
+            "description": "Units of the currency per 1 USD the engine used for amount_usd (1 for USD), as a decimal string (RN-11, HU-43); null for decisions older than Sprint 5."
+          },
+          "rate_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Date",
+            "description": "Day of that rate: the transaction's day in UTC, or the last earlier day with a rate; null for decisions older than Sprint 5."
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee",
+            "description": "The analyst who owns it; null until assigned."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the case was opened, UTC."
+          },
+          "due_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Due At",
+            "description": "The 4-hour limit (RN-09): created_at + CASE_DUE_MINUTES, UTC."
+          },
+          "minutes_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minutes Left",
+            "description": "Whole minutes until due_at, rounded down: negative once it is overdue. Null when RESOLVED."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "transaction_id",
+          "account_id",
+          "status",
+          "decision",
+          "rules_triggered",
+          "risk_score",
+          "amount",
+          "currency",
+          "created_at",
+          "due_at"
+        ],
+        "title": "CaseSummary",
+        "description": "One case of the inbox. The nullable fields are always sent."
+      },
+      "DifferenceAging": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Pending differences."
+          },
+          "ranges": {
+            "items": {
+              "$ref": "#/components/schemas/AgeRange"
+            },
+            "type": "array",
+            "title": "Ranges",
+            "description": "Always the three ranges, in order, even when empty."
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "ranges"
+        ],
+        "title": "DifferenceAging"
+      },
+      "DifferenceResolution": {
+        "properties": {
+          "note": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Note",
+            "description": "What was found or done, 1 to 2000 characters."
+          }
+        },
+        "type": "object",
+        "required": [
+          "note"
+        ],
+        "title": "DifferenceResolution",
+        "description": "How treasury closes a difference."
+      },
+      "DifferenceStatus": {
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "RESOLVED"
+        ],
+        "title": "DifferenceStatus"
+      },
+      "DifferenceType": {
+        "type": "string",
+        "enum": [
+          "MISSING_IN_PARTNER",
+          "MISSING_IN_PAGOSEGURO",
+          "AMOUNT_MISMATCH"
+        ],
+        "title": "DifferenceType"
+      },
+      "Error": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "What went wrong."
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "Error"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Health": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "Health"
+      },
+      "Partner": {
+        "type": "string",
+        "enum": [
+          "banco_andino",
+          "red_corresponsales",
+          "cajeros_express",
+          "qr_pagos"
+        ],
+        "title": "Partner"
+      },
+      "ReconciliationDifferenceItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "Difference id."
+          },
+          "run_day": {
+            "type": "string",
+            "format": "date",
+            "title": "Run Day",
+            "description": "The partners' day reconciled (YYYY-MM-DD)."
+          },
+          "partner": {
+            "type": "string",
+            "title": "Partner",
+            "description": "banco_andino, red_corresponsales, cajeros_express or qr_pagos."
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "MISSING_IN_PARTNER (approved by PagoSeguro, not in the partner's file), MISSING_IN_PAGOSEGURO (in the file, not approved by PagoSeguro) or AMOUNT_MISMATCH (same reference, more than 0.01 apart; RN-10)."
+          },
+          "reference": {
+            "type": "string",
+            "title": "Reference",
+            "description": "PagoSeguro's transaction id (as the partner wrote it, if only theirs)."
+          },
+          "partner_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Partner Reference",
+            "description": "The partner's own reference; null when only ours."
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "description": "The original currency (COP, USD, EUR, JPY)."
+          },
+          "pagoseguro_amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pagoseguro Amount",
+            "description": "PagoSeguro's amount, with its currency's decimals (JPY: none); null in MISSING_IN_PAGOSEGURO."
+          },
+          "partner_amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Partner Amount",
+            "description": "The partner's amount, with its currency's decimals; null in MISSING_IN_PARTNER."
+          },
+          "amount_difference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Difference",
+            "description": "partner_amount - pagoseguro_amount, only in AMOUNT_MISMATCH."
+          },
+          "pagoseguro_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pagoseguro At",
+            "description": "When PagoSeguro approved it, UTC."
+          },
+          "partner_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Partner At",
+            "description": "When the partner dated it, UTC."
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "PENDING or RESOLVED (final)."
+          },
+          "age_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age Days",
+            "description": "Whole days from run_day to today (UTC) while PENDING (HU-41); null once RESOLVED."
+          },
+          "detected_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Detected At",
+            "description": "When the reconciliation first found it, UTC."
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At",
+            "description": "When treasury resolved it, UTC."
+          },
+          "resolved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved By",
+            "description": "The X-User who resolved it."
+          },
+          "resolution_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Note",
+            "description": "Treasury's note on resolution."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "run_day",
+          "partner",
+          "type",
+          "reference",
+          "currency",
+          "status",
+          "detected_at"
+        ],
+        "title": "ReconciliationDifferenceItem",
+        "description": "What treasury has to look at: one reconciliation_differences row.\n\nThe nullable fields are always sent; their default only lets Swagger\ndrop a null from an example."
+      },
+      "ReconciliationDifferencePage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReconciliationDifferenceItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "The differences of the page: oldest run_day first, then by partner."
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Differences that match the filters, all pages."
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page",
+            "description": "Page number, from 1."
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size",
+            "description": "Differences per page."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "size"
+        ],
+        "title": "ReconciliationDifferencePage"
+      },
+      "ReconciliationRunItem": {
+        "properties": {
+          "run_day": {
+            "type": "string",
+            "format": "date",
+            "title": "Run Day",
+            "description": "The partners' day reconciled (YYYY-MM-DD)."
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "RUNNING, DONE or FAILED."
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At",
+            "description": "When the last run of the day started, UTC."
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At",
+            "description": "When it finished, UTC; null while RUNNING."
+          },
+          "files_read": {
+            "type": "integer",
+            "title": "Files Read",
+            "description": "Partner files read."
+          },
+          "records_read": {
+            "type": "integer",
+            "title": "Records Read",
+            "description": "Detail lines read from them."
+          },
+          "rows_rejected": {
+            "type": "integer",
+            "title": "Rows Rejected",
+            "description": "Lines or files that could not be read."
+          },
+          "matched": {
+            "type": "integer",
+            "title": "Matched",
+            "description": "References that matched (RN-10)."
+          },
+          "differences": {
+            "type": "integer",
+            "title": "Differences",
+            "description": "Differences the run found."
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Why it FAILED: the step and its error; null otherwise."
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_day",
+          "status",
+          "started_at",
+          "files_read",
+          "records_read",
+          "rows_rejected",
+          "matched",
+          "differences"
+        ],
+        "title": "ReconciliationRunItem",
+        "description": "One day reconciled (a reconciliation_runs row)."
+      },
+      "ReconciliationRunList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReconciliationRunItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "The runs of the period, oldest day first."
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Runs in the period."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ReconciliationRunList"
+      },
+      "RelatedAccount": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Account Id",
+            "description": "The related account."
+          },
+          "device_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Device Id",
+            "description": "The device both accounts used in the window."
+          },
+          "last_seen": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Seen",
+            "description": "The related account's last transaction on that device in the window, UTC."
+          },
+          "open_cases": {
+            "type": "integer",
+            "title": "Open Cases",
+            "description": "Cases of the related account that are OPEN or ESCALATED."
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id",
+          "device_id",
+          "last_seen",
+          "open_cases"
+        ],
+        "title": "RelatedAccount",
+        "description": "Another account that used one of the account's devices."
+      },
+      "RelatedAccountList": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Account Id",
+            "description": "The account."
+          },
+          "days": {
+            "type": "integer",
+            "title": "Days",
+            "description": "The window: devices used in the last `days` days."
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RelatedAccount"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "One item per related account and shared device, the latest seen first."
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Items in the list."
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id",
+          "days",
+          "items",
+          "total"
+        ],
+        "title": "RelatedAccountList"
+      },
+      "ReportFormat": {
+        "type": "string",
+        "enum": [
+          "json",
+          "csv"
+        ],
+        "title": "ReportFormat"
+      },
+      "Resolution": {
+        "properties": {
+          "outcome": {
+            "$ref": "#/components/schemas/CaseOutcome",
+            "description": "FRAUD (final_decision REJECT) or LEGITIMATE (final_decision APPROVE)."
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Note",
+            "description": "Why, 1 to 2000 characters."
+          }
+        },
+        "type": "object",
+        "required": [
+          "outcome",
+          "note"
+        ],
+        "title": "Resolution",
+        "description": "How the analyst closes the case."
+      },
+      "RestrictedListReport": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id",
+            "description": "Report id."
+          },
+          "case_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Case Id",
+            "description": "The case the transaction opened."
+          },
+          "transaction_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Transaction Id",
+            "description": "The transaction where the owner took part."
+          },
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Account Id",
+            "description": "The account whose owner is listed (source or destination)."
+          },
+          "document": {
+            "type": "string",
+            "title": "Document",
+            "description": "The owner's document, digits only, as the list stores it."
+          },
+          "list_type": {
+            "type": "string",
+            "title": "List Type",
+            "description": "The list it is on, as the provider names it (e.g. PEP, sanciones)."
+          },
+          "matched_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Matched At",
+            "description": "When the consumer wrote the report, UTC (right after the decision)."
+          },
+          "notified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notified At",
+            "description": "When the compliance summary e-mail included it, UTC; null until the next run of the alerts task."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "case_id",
+          "transaction_id",
+          "account_id",
+          "document",
+          "list_type",
+          "matched_at",
+          "notified_at"
+        ],
+        "title": "RestrictedListReport",
+        "description": "RN-06: one listed document of a transaction (a compliance_reports row)."
+      },
+      "RestrictedListReportPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RestrictedListReport"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "The reports of the page, newest first."
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Reports in the period, all pages."
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page",
+            "description": "Page number, from 1."
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size",
+            "description": "Reports per page."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "size"
+        ],
+        "title": "RestrictedListReportPage"
+      },
+      "SuspiciousCase": {
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Case Id",
+            "description": "The case."
+          },
+          "transaction_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Transaction Id",
+            "description": "The transaction that opened it."
+          },
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Account Id",
+            "description": "The main account: the source; in a top-up, the destination."
+          },
+          "pattern": {
+            "type": "string",
+            "title": "Pattern",
+            "description": "The rules that fired, joined by \"+\" (e.g. mule, splitting+velocity)."
+          },
+          "amount": {
+            "type": "string",
+            "title": "Amount",
+            "description": "Amount in the original currency, as a decimal string with its decimals (JPY: none)."
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "description": "The original currency (COP, USD, EUR, JPY)."
+          },
+          "amount_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Usd",
+            "description": "The engine's amount in USD (RN-11), as a decimal string; null for decisions older than Sprint 4."
+          },
+          "usd_rate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usd Rate",
+            "description": "Units of the currency per 1 USD the engine used for amount_usd (1 for USD), as a decimal string (RN-11, HU-43); null for decisions older than Sprint 5."
+          },
+          "rate_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Date",
+            "description": "Day of that rate: the transaction's day in UTC, or the last earlier day with a rate; null for decisions older than Sprint 5."
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "OPEN, ESCALATED or RESOLVED."
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome",
+            "description": "FRAUD or LEGITIMATE once resolved; null before."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the case was opened, UTC."
+          }
+        },
+        "type": "object",
+        "required": [
+          "case_id",
+          "transaction_id",
+          "account_id",
+          "pattern",
+          "amount",
+          "currency",
+          "status",
+          "created_at"
+        ],
+        "title": "SuspiciousCase",
+        "description": "One compliance case of the period (RN-03, RN-05, RN-06)."
+      },
+      "SuspiciousReport": {
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date",
+            "title": "From",
+            "description": "First day of the period (inclusive), UTC."
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "title": "To",
+            "description": "Last day of the period (inclusive), UTC."
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SuspiciousCase"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "The cases opened in the period, oldest first."
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Cases in the period."
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message",
+            "description": "\"No compliance cases in the period.\" when it is empty; null otherwise."
+          }
+        },
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "items",
+          "total"
+        ],
+        "title": "SuspiciousReport"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

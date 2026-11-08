@@ -1,0 +1,33 @@
+meta {
+  name: Update with invalid thresholds (400)
+  type: http
+  seq: 7
+}
+
+put {
+  url: {{rules}}/rules/velocity
+  body: json
+  auth: none
+}
+
+headers {
+  X-User: {{user}}
+}
+
+body:json {
+  {
+    "action": "HOLD",
+    "params": {
+      "window_minutes": 10,
+      "limit": 0
+    }
+  }
+}
+
+assert {
+  res.status: eq 400
+}
+
+docs {
+  limit must be above 0. Nothing is written.
+}

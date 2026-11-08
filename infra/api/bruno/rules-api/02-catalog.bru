@@ -1,0 +1,19 @@
+meta {
+  name: Current catalog (happy)
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{rules}}/rules
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Every rule with its version.
+}

@@ -1,0 +1,19 @@
+meta {
+  name: Differences by age (happy)
+  type: http
+  seq: 14
+}
+
+get {
+  url: {{cases}}/reconciliation/differences/aging
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  HU-41.
+}

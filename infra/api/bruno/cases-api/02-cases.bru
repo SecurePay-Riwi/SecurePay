@@ -1,0 +1,19 @@
+meta {
+  name: Case inbox (happy)
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{cases}}/cases
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Pending cases by risk, then due time (RN-09).
+}

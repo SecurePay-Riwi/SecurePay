@@ -1,0 +1,26 @@
+meta {
+  name: Resolve a case that does not exist (404)
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{cases}}/cases/00000000-0000-0000-0000-000000000000/resolution
+  body: json
+  auth: none
+}
+
+headers {
+  X-User: {{user}}
+}
+
+body:json {
+  {
+    "outcome": "FRAUD",
+    "note": "Checked with the customer."
+  }
+}
+
+assert {
+  res.status: eq 404
+}

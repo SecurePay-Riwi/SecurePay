@@ -1,0 +1,25 @@
+meta {
+  name: Assign without X-User (400)
+  type: http
+  seq: 6
+}
+
+put {
+  url: {{cases}}/cases/00000000-0000-0000-0000-000000000000/assignee
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "assignee": "{{user}}"
+  }
+}
+
+assert {
+  res.status: eq 400
+}
+
+docs {
+  Changing a case needs who does it.
+}

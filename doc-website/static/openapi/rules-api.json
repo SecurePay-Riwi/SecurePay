@@ -1,0 +1,2181 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SecurePay rules API",
+    "description": "Creates, changes, enables and disables the antifraud rules of the decision engine. Every change is a new catalog version, stored in PostgreSQL and never modified, and published to Valkey, where the engine picks it up in about a second without a restart.\n\nSend `X-User` with your name: it is the author of the version (`anonymous` when missing).",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Check that the API and its database are up",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Up.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                },
+                "example": {
+                  "status": "ok"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "detail": "The rule catalog database is not available."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules": {
+      "get": {
+        "tags": [
+          "Rules"
+        ],
+        "summary": "Get the active catalog",
+        "description": "The latest version with every rule, the disabled ones included.",
+        "operationId": "get_catalog_rules_get",
+        "responses": {
+          "200": {
+            "description": "The latest catalog version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSnapshot"
+                },
+                "example": {
+                  "version": 2,
+                  "created_at": "2026-10-24T12:00:00Z",
+                  "author": "Yulianis",
+                  "rules": [
+                    {
+                      "code": "restricted_list",
+                      "type": "restricted_list",
+                      "rn": "RN-06",
+                      "description": "Account owner is on a restricted list.",
+                      "enabled": true,
+                      "action": "REJECT",
+                      "opens_case": true,
+                      "score": 0,
+                      "params": {},
+                      "rule_version": 1
+                    },
+                    {
+                      "code": "velocity",
+                      "type": "velocity",
+                      "rn": "RN-02",
+                      "description": "",
+                      "enabled": true,
+                      "action": "HOLD",
+                      "opens_case": false,
+                      "score": 0,
+                      "params": {
+                        "window_minutes": 10,
+                        "limit": 5
+                      },
+                      "rule_version": 1
+                    },
+                    {
+                      "code": "mule",
+                      "type": "mule",
+                      "rn": "RN-03",
+                      "description": "",
+                      "enabled": true,
+                      "action": "HOLD",
+                      "opens_case": true,
+                      "score": 0,
+                      "params": {
+                        "window_minutes": 30,
+                        "min_senders": 3,
+                        "withdrawn_pct": "80"
+                      },
+                      "rule_version": 1
+                    },
+                    {
+                      "code": "shared_device",
+                      "type": "shared_device",
+                      "rn": "RN-04",
+                      "description": "",
+                      "enabled": true,
+                      "action": "APPROVE",
+                      "opens_case": false,
+                      "score": 30,
+                      "params": {
+                        "window_days": 30,
+                        "max_accounts": 3
+                      },
+                      "rule_version": 1
+                    },
+                    {
+                      "code": "splitting",
+                      "type": "splitting",
+                      "rn": "RN-05",
+                      "description": "",
+                      "enabled": true,
+                      "action": "HOLD",
+                      "opens_case": true,
+                      "score": 40,
+                      "params": {
+                        "window_hours": 24,
+                        "min_transactions": 3,
+                        "daily_limit_usd": "10000"
+                      },
+                      "rule_version": 1
+                    },
+                    {
+                      "code": "account_takeover",
+                      "type": "account_takeover",
+                      "rn": "RN-07",
+                      "description": "",
+                      "enabled": true,
+                      "action": "HOLD",
+                      "opens_case": false,
+                      "score": 0,
+                      "params": {
+                        "window_minutes": 60,
+                        "min_amount_usd": "200"
+                      },
+                      "rule_version": 1
+                    },
+                    {
+                      "code": "default_timeout",
+                      "type": "default_timeout",
+                      "rn": "RN-01",
+                      "description": "",
+                      "enabled": true,
+                      "action": "HOLD",
+                      "opens_case": false,
+                      "score": 0,
+                      "params": {
+                        "limit_usd": "50"
+                      },
+                      "rule_version": 1
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The rule catalog database is not available."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Rules"
+        ],
+        "summary": "Create a rule",
+        "description": "A new rule with an existing `type` and its own `params`; the engine evaluates it from the next catalog version. It starts at `rule_version` 1. `versions` and `publish` are not valid codes, and there is only one `default_timeout` rule.",
+        "operationId": "create_rule_rules_post",
+        "parameters": [
+          {
+            "name": "x-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "anonymous",
+              "title": "X-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created. A new catalog version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleChange"
+                },
+                "example": {
+                  "rule": {
+                    "code": "velocity_1h",
+                    "type": "velocity",
+                    "rn": "RN-02",
+                    "description": "More than 20 transfers in one hour.",
+                    "enabled": true,
+                    "action": "HOLD",
+                    "opens_case": false,
+                    "score": 0,
+                    "params": {
+                      "window_minutes": 60,
+                      "limit": 20
+                    },
+                    "rule_version": 1
+                  },
+                  "catalog_version": 3
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body, header or parameters.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The request contains invalid rule data.",
+                  "errors": [
+                    {
+                      "type": "greater_than",
+                      "loc": [
+                        "window_minutes"
+                      ],
+                      "msg": "Input should be greater than 0",
+                      "input": 0
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A rule with that code exists.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Rule 'velocity' already exists."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The rule catalog database is not available."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules/versions": {
+      "get": {
+        "tags": [
+          "Versions"
+        ],
+        "summary": "List the catalog versions",
+        "description": "Newest first, with who made each change and the rule before and after.",
+        "operationId": "list_versions_rules_versions_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of versions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionPage"
+                },
+                "example": {
+                  "total": 2,
+                  "versions": [
+                    {
+                      "version": 2,
+                      "created_at": "2026-10-24T12:00:00Z",
+                      "author": "Yulianis",
+                      "change": {
+                        "operation": "update",
+                        "code": "velocity",
+                        "before": {
+                          "code": "velocity",
+                          "type": "velocity",
+                          "rn": "RN-02",
+                          "description": "",
+                          "enabled": true,
+                          "action": "HOLD",
+                          "opens_case": false,
+                          "score": 0,
+                          "params": {
+                            "window_minutes": 10,
+                            "limit": 5
+                          },
+                          "rule_version": 1
+                        },
+                        "after": {
+                          "code": "velocity",
+                          "type": "velocity",
+                          "rn": "RN-02",
+                          "description": "",
+                          "enabled": true,
+                          "action": "HOLD",
+                          "opens_case": false,
+                          "score": 0,
+                          "params": {
+                            "window_minutes": 10,
+                            "limit": 2
+                          },
+                          "rule_version": 2
+                        }
+                      }
+                    },
+                    {
+                      "version": 1,
+                      "created_at": "2026-10-24T11:00:00Z",
+                      "author": "code",
+                      "change": {
+                        "operation": "seed"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body, header or parameters.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The request contains invalid rule data.",
+                  "errors": [
+                    {
+                      "type": "greater_than",
+                      "loc": [
+                        "window_minutes"
+                      ],
+                      "msg": "Input should be greater than 0",
+                      "input": 0
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The rule catalog database is not available."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules/versions/{version}": {
+      "get": {
+        "tags": [
+          "Versions"
+        ],
+        "summary": "Get one catalog version",
+        "operationId": "get_version_rules_versions__version__get",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The whole catalog of that version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSnapshot"
+                },
+                "example": {
+                  "version": 2,
+                  "created_at": "2026-10-24T12:00:00Z",
+                  "author": "Yulianis",
+                  "rules": [
+                    {
+                      "code": "restricted_list",
+                      "type": "restricted_list",
+                      "rn": "RN-06",
+                      "description": "Account owner is on a restricted list.",
+                      "enabled": true,
+                      "action": "REJECT",
+                      "opens_case": true,
+                      "score": 0,
+                      "params": {},
+                      "rule_version": 1
+                    },
+                    {
+                      "code": "velocity",
+                      "type": "velocity",
+                      "rn": "RN-02",
+                      "description": "",
+                      "enabled": true,
+                      "action": "HOLD",
+                      "opens_case": false,
+                      "score": 0,
+                      "params": {
+                        "window_minutes": 10,
+                        "limit": 5
+                      },
+                      "rule_version": 1
+                    },
+                    {
+                      "code": "mule",
+                      "type": "mule",
+                      "rn": "RN-03",
+                      "description": "",
+                      "enabled": true,
+                      "action": "HOLD",
+                      "opens_case": true,
+                      "score": 0,
+                      "params": {
+                        "window_minutes": 30,
+                        "min_senders": 3,
+                        "withdrawn_pct": "80"
+                      },
+                      "rule_version": 1
+                    },
+                    {
+                      "code": "shared_device",
+                      "type": "shared_device",
+                      "rn": "RN-04",
+                      "description": "",
+                      "enabled": true,
+                      "action": "APPROVE",
+                      "opens_case": false,
+                      "score": 30,
+                      "params": {
+                        "window_days": 30,
+                        "max_accounts": 3
+                      },
+                      "rule_version": 1
+                    },
+                    {
+                      "code": "splitting",
+                      "type": "splitting",
+                      "rn": "RN-05",
+                      "description": "",
+                      "enabled": true,
+                      "action": "HOLD",
+                      "opens_case": true,
+                      "score": 40,
+                      "params": {
+                        "window_hours": 24,
+                        "min_transactions": 3,
+                        "daily_limit_usd": "10000"
+                      },
+                      "rule_version": 1
+                    },
+                    {
+                      "code": "account_takeover",
+                      "type": "account_takeover",
+                      "rn": "RN-07",
+                      "description": "",
+                      "enabled": true,
+                      "action": "HOLD",
+                      "opens_case": false,
+                      "score": 0,
+                      "params": {
+                        "window_minutes": 60,
+                        "min_amount_usd": "200"
+                      },
+                      "rule_version": 1
+                    },
+                    {
+                      "code": "default_timeout",
+                      "type": "default_timeout",
+                      "rn": "RN-01",
+                      "description": "",
+                      "enabled": true,
+                      "action": "HOLD",
+                      "opens_case": false,
+                      "score": 0,
+                      "params": {
+                        "limit_usd": "50"
+                      },
+                      "rule_version": 1
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body, header or parameters.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The request contains invalid rule data.",
+                  "errors": [
+                    {
+                      "type": "greater_than",
+                      "loc": [
+                        "window_minutes"
+                      ],
+                      "msg": "Input should be greater than 0",
+                      "input": 0
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No catalog version with that number.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Catalog version 999 does not exist."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The rule catalog database is not available."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules/versions/{version}/activate": {
+      "post": {
+        "tags": [
+          "Versions"
+        ],
+        "summary": "Go back to an old version",
+        "description": "Creates a new version whose rules are the ones of the old version (history is never rewritten). Rules created after it are disabled. If the catalog is already like that, no version is created.",
+        "operationId": "activate_version_rules_versions__version__activate_post",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Version"
+            }
+          },
+          {
+            "name": "x-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "anonymous",
+              "title": "X-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The catalog now active.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSnapshot"
+                },
+                "example": {
+                  "version": 5,
+                  "created_at": "2026-10-24T12:00:00Z",
+                  "author": "Yulianis",
+                  "rules": [
+                    {
+                      "code": "restricted_list",
+                      "type": "restricted_list",
+                      "rn": "RN-06",
+                      "description": "Account owner is on a restricted list.",
+                      "enabled": true,
+                      "action": "REJECT",
+                      "opens_case": true,
+                      "score": 0,
+                      "params": {},
+                      "rule_version": 1
+                    },
+                    {
+                      "code": "velocity",
+                      "type": "velocity",
+                      "rn": "RN-02",
+                      "description": "",
+                      "enabled": true,
+                      "action": "HOLD",
+                      "opens_case": false,
+                      "score": 0,
+                      "params": {
+                        "window_minutes": 10,
+                        "limit": 5
+                      },
+                      "rule_version": 1
+                    },
+                    {
+                      "code": "mule",
+                      "type": "mule",
+                      "rn": "RN-03",
+                      "description": "",
+                      "enabled": true,
+                      "action": "HOLD",
+                      "opens_case": true,
+                      "score": 0,
+                      "params": {
+                        "window_minutes": 30,
+                        "min_senders": 3,
+                        "withdrawn_pct": "80"
+                      },
+                      "rule_version": 1
+                    },
+                    {
+                      "code": "shared_device",
+                      "type": "shared_device",
+                      "rn": "RN-04",
+                      "description": "",
+                      "enabled": true,
+                      "action": "APPROVE",
+                      "opens_case": false,
+                      "score": 30,
+                      "params": {
+                        "window_days": 30,
+                        "max_accounts": 3
+                      },
+                      "rule_version": 1
+                    },
+                    {
+                      "code": "splitting",
+                      "type": "splitting",
+                      "rn": "RN-05",
+                      "description": "",
+                      "enabled": true,
+                      "action": "HOLD",
+                      "opens_case": true,
+                      "score": 40,
+                      "params": {
+                        "window_hours": 24,
+                        "min_transactions": 3,
+                        "daily_limit_usd": "10000"
+                      },
+                      "rule_version": 1
+                    },
+                    {
+                      "code": "account_takeover",
+                      "type": "account_takeover",
+                      "rn": "RN-07",
+                      "description": "",
+                      "enabled": true,
+                      "action": "HOLD",
+                      "opens_case": false,
+                      "score": 0,
+                      "params": {
+                        "window_minutes": 60,
+                        "min_amount_usd": "200"
+                      },
+                      "rule_version": 1
+                    },
+                    {
+                      "code": "default_timeout",
+                      "type": "default_timeout",
+                      "rn": "RN-01",
+                      "description": "",
+                      "enabled": true,
+                      "action": "HOLD",
+                      "opens_case": false,
+                      "score": 0,
+                      "params": {
+                        "limit_usd": "50"
+                      },
+                      "rule_version": 1
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body, header or parameters.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The request contains invalid rule data.",
+                  "errors": [
+                    {
+                      "type": "greater_than",
+                      "loc": [
+                        "window_minutes"
+                      ],
+                      "msg": "Input should be greater than 0",
+                      "input": 0
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No catalog version with that number.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Catalog version 999 does not exist."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The rule catalog database is not available."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules/publish": {
+      "post": {
+        "tags": [
+          "Versions"
+        ],
+        "summary": "Publish the latest version to Valkey again",
+        "description": "For operations: after Valkey lost its data, or when a publish failed.",
+        "operationId": "publish_latest_rules_publish_post",
+        "responses": {
+          "200": {
+            "description": "Valkey holds the latest version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Published"
+                },
+                "example": {
+                  "version": 2,
+                  "published": true
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Valkey or PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "detail": "Valkey is not available."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules/simulations": {
+      "post": {
+        "tags": [
+          "Simulations"
+        ],
+        "summary": "Simulate a catalog over one day of the history",
+        "description": "Replays the transactions of `day` (and the day before, so the 24-hour history starts full) with the engine's own rules, once with `candidate` and once with the current catalog (or `against_version`), and compares them: decisions, cases, the rule metrics against the labels, how many transactions change and how much money the candidate would let through (`released_usd`). `candidate` is a whole catalog or its list of rules. Nothing is written: no rule, no catalog version, nothing published to Valkey. One day at a time (D5): a range gives 422. The transactions come from the lake's `raw/decisiones` (`ANALYTICS_DATA_DIR`); device and password changes are not there, so `account_takeover` does not fire in a simulation.",
+        "operationId": "simulate_catalog_rules_simulations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationRequest"
+              },
+              "example": {
+                "day": "2026-10-05",
+                "candidate": [
+                  {
+                    "code": "restricted_list",
+                    "type": "restricted_list",
+                    "rn": "RN-06",
+                    "description": "Account owner is on a restricted list.",
+                    "enabled": true,
+                    "action": "REJECT",
+                    "opens_case": true,
+                    "score": 0,
+                    "params": {},
+                    "rule_version": 1
+                  },
+                  {
+                    "code": "velocity",
+                    "type": "velocity",
+                    "rn": "RN-02",
+                    "description": "",
+                    "enabled": true,
+                    "action": "HOLD",
+                    "opens_case": false,
+                    "score": 0,
+                    "params": {
+                      "window_minutes": 10,
+                      "limit": 5
+                    },
+                    "rule_version": 1
+                  },
+                  {
+                    "code": "mule",
+                    "type": "mule",
+                    "rn": "RN-03",
+                    "description": "",
+                    "enabled": true,
+                    "action": "HOLD",
+                    "opens_case": true,
+                    "score": 0,
+                    "params": {
+                      "window_minutes": 30,
+                      "min_senders": 3,
+                      "withdrawn_pct": "80"
+                    },
+                    "rule_version": 1
+                  },
+                  {
+                    "code": "shared_device",
+                    "type": "shared_device",
+                    "rn": "RN-04",
+                    "description": "",
+                    "enabled": true,
+                    "action": "APPROVE",
+                    "opens_case": false,
+                    "score": 30,
+                    "params": {
+                      "window_days": 30,
+                      "max_accounts": 3
+                    },
+                    "rule_version": 1
+                  },
+                  {
+                    "code": "splitting",
+                    "type": "splitting",
+                    "rn": "RN-05",
+                    "description": "",
+                    "enabled": true,
+                    "action": "APPROVE",
+                    "opens_case": true,
+                    "score": 40,
+                    "params": {
+                      "window_hours": 24,
+                      "min_transactions": 3,
+                      "daily_limit_usd": "10000"
+                    },
+                    "rule_version": 1
+                  },
+                  {
+                    "code": "account_takeover",
+                    "type": "account_takeover",
+                    "rn": "RN-07",
+                    "description": "",
+                    "enabled": true,
+                    "action": "HOLD",
+                    "opens_case": false,
+                    "score": 0,
+                    "params": {
+                      "window_minutes": 60,
+                      "min_amount_usd": "200"
+                    },
+                    "rule_version": 1
+                  },
+                  {
+                    "code": "default_timeout",
+                    "type": "default_timeout",
+                    "rn": "RN-01",
+                    "description": "",
+                    "enabled": true,
+                    "action": "HOLD",
+                    "opens_case": false,
+                    "score": 0,
+                    "params": {
+                      "limit_usd": "50"
+                    },
+                    "rule_version": 1
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Both catalogs over the day, and what changes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Simulation"
+                },
+                "example": {
+                  "day": "2026-10-05",
+                  "transactions": 34,
+                  "current": {
+                    "rules_version": "1",
+                    "decisions": {
+                      "APPROVE": 27,
+                      "HOLD": 5,
+                      "REJECT": 2
+                    },
+                    "cases": 5,
+                    "amount_usd": {
+                      "APPROVE": "15914.27",
+                      "HOLD": "8355.70",
+                      "REJECT": "75.07"
+                    },
+                    "metrics": [
+                      {
+                        "rule": "splitting",
+                        "label_source": "generator",
+                        "hits": 2,
+                        "true_positives": 2,
+                        "false_positives": 0,
+                        "precision": "1.0000",
+                        "false_positive_rate": "0.0000",
+                        "rule_version": 1,
+                        "rules_version": "1"
+                      }
+                    ]
+                  },
+                  "candidate": {
+                    "rules_version": "candidate",
+                    "decisions": {
+                      "APPROVE": 29,
+                      "HOLD": 3,
+                      "REJECT": 2
+                    },
+                    "cases": 5,
+                    "amount_usd": {
+                      "APPROVE": "23238.94",
+                      "HOLD": "1031.03",
+                      "REJECT": "75.07"
+                    },
+                    "metrics": []
+                  },
+                  "changed": 2,
+                  "changes": {
+                    "HOLD->APPROVE": 2
+                  },
+                  "released_usd": "7324.67",
+                  "stopped_usd": "0.00",
+                  "examples": [
+                    {
+                      "transaction_id": "6143631e-facf-5849-903d-367643704736",
+                      "type": "RETIRO",
+                      "amount": "3700.00",
+                      "currency": "USD",
+                      "amount_usd": "3700.00",
+                      "current": {
+                        "decision": "HOLD",
+                        "rules_triggered": [
+                          "splitting"
+                        ],
+                        "opens_case": true,
+                        "risk_score": 40
+                      },
+                      "candidate": {
+                        "decision": "APPROVE",
+                        "rules_triggered": [
+                          "splitting"
+                        ],
+                        "opens_case": true,
+                        "risk_score": 40
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body, header or parameters.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "example": {
+                  "detail": "The request contains invalid rule data.",
+                  "errors": [
+                    {
+                      "type": "greater_than",
+                      "loc": [
+                        "window_minutes"
+                      ],
+                      "msg": "Input should be greater than 0",
+                      "input": 0
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No catalog version with that number.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "detail": "Catalog version 999 does not exist."
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A range instead of one day.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "detail": "A simulation covers one day (D5): send day, not from and to."
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "detail": "The rule catalog database is not available."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules/{code}": {
+      "get": {
+        "tags": [
+          "Rules"
+        ],
+        "summary": "Get one rule",
+        "operationId": "get_rule_rules__code__get",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The rule as the latest version has it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleEntry"
+                },
+                "example": {
+                  "code": "velocity",
+                  "type": "velocity",
+                  "rn": "RN-02",
+                  "description": "",
+                  "enabled": true,
+                  "action": "HOLD",
+                  "opens_case": false,
+                  "score": 0,
+                  "params": {
+                    "window_minutes": 10,
+                    "limit": 5
+                  },
+                  "rule_version": 1
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No rule with that code.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Rule 'velocity_2h' does not exist."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The rule catalog database is not available."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Rules"
+        ],
+        "summary": "Change a rule",
+        "description": "Replaces `description`, `action`, `opens_case`, `score` and `params`; `code` and `type` never change. `rule_version` goes up by one. If the body is invalid the rule keeps working as before. A body equal to the rule creates no version.",
+        "operationId": "update_rule_rules__code__put",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Code"
+            }
+          },
+          {
+            "name": "x-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "anonymous",
+              "title": "X-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Changed, or already like that.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleChange"
+                },
+                "example": {
+                  "rule": {
+                    "code": "velocity",
+                    "type": "velocity",
+                    "rn": "RN-02",
+                    "description": "",
+                    "enabled": true,
+                    "action": "HOLD",
+                    "opens_case": false,
+                    "score": 0,
+                    "params": {
+                      "window_minutes": 10,
+                      "limit": 2
+                    },
+                    "rule_version": 2
+                  },
+                  "catalog_version": 2
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body, header or parameters.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The request contains invalid rule data.",
+                  "errors": [
+                    {
+                      "type": "greater_than",
+                      "loc": [
+                        "window_minutes"
+                      ],
+                      "msg": "Input should be greater than 0",
+                      "input": 0
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No rule with that code.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Rule 'velocity_2h' does not exist."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The rule catalog database is not available."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules/{code}/enable": {
+      "post": {
+        "tags": [
+          "Rules"
+        ],
+        "summary": "Enable a rule",
+        "description": "If it is already enabled, nothing changes and no version is created.",
+        "operationId": "enable_rule_rules__code__enable_post",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Code"
+            }
+          },
+          {
+            "name": "x-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "anonymous",
+              "title": "X-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Enabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleChange"
+                },
+                "example": {
+                  "rule": {
+                    "code": "velocity",
+                    "type": "velocity",
+                    "rn": "RN-02",
+                    "description": "",
+                    "enabled": true,
+                    "action": "HOLD",
+                    "opens_case": false,
+                    "score": 0,
+                    "params": {
+                      "window_minutes": 10,
+                      "limit": 5
+                    },
+                    "rule_version": 3
+                  },
+                  "catalog_version": 4
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body, header or parameters.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The request contains invalid rule data.",
+                  "errors": [
+                    {
+                      "type": "greater_than",
+                      "loc": [
+                        "window_minutes"
+                      ],
+                      "msg": "Input should be greater than 0",
+                      "input": 0
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No rule with that code.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Rule 'velocity_2h' does not exist."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The rule catalog database is not available."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules/{code}/disable": {
+      "post": {
+        "tags": [
+          "Rules"
+        ],
+        "summary": "Disable a rule",
+        "description": "The engine stops evaluating it from the next version; its history keeps being recorded, so it works right away when enabled again. If it is already disabled, no version is created.",
+        "operationId": "disable_rule_rules__code__disable_post",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Code"
+            }
+          },
+          {
+            "name": "x-user",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "anonymous",
+              "title": "X-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleChange"
+                },
+                "example": {
+                  "rule": {
+                    "code": "velocity",
+                    "type": "velocity",
+                    "rn": "RN-02",
+                    "description": "",
+                    "enabled": false,
+                    "action": "HOLD",
+                    "opens_case": false,
+                    "score": 0,
+                    "params": {
+                      "window_minutes": 10,
+                      "limit": 5
+                    },
+                    "rule_version": 2
+                  },
+                  "catalog_version": 3
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body, header or parameters.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The request contains invalid rule data.",
+                  "errors": [
+                    {
+                      "type": "greater_than",
+                      "loc": [
+                        "window_minutes"
+                      ],
+                      "msg": "Input should be greater than 0",
+                      "input": 0
+                    }
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No rule with that code.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Rule 'velocity_2h' does not exist."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The default decision cannot be disabled.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Rule 'default_timeout' must stay enabled."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The rule catalog database is not available."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CatalogSnapshot": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Version"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "author": {
+            "type": "string",
+            "title": "Author"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/RuleEntry"
+            },
+            "type": "array",
+            "title": "Rules"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "created_at",
+          "author",
+          "rules"
+        ],
+        "title": "CatalogSnapshot",
+        "description": "The whole catalog at one version. Immutable once published."
+      },
+      "Error": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "What went wrong."
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "Error"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Health": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "Health"
+      },
+      "Published": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "published": {
+            "type": "boolean",
+            "title": "Published",
+            "description": "True when Valkey now holds this version."
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "published"
+        ],
+        "title": "Published"
+      },
+      "RuleChange": {
+        "properties": {
+          "rule": {
+            "$ref": "#/components/schemas/RuleEntry"
+          },
+          "catalog_version": {
+            "type": "integer",
+            "title": "Catalog Version",
+            "description": "Catalog version after the request. The same as before when nothing changed."
+          }
+        },
+        "type": "object",
+        "required": [
+          "rule",
+          "catalog_version"
+        ],
+        "title": "RuleChange"
+      },
+      "RuleCreate": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Name in rules_triggered: English snake_case, 3 to 50 characters."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "restricted_list",
+              "velocity",
+              "mule",
+              "shared_device",
+              "splitting",
+              "account_takeover",
+              "default_timeout"
+            ],
+            "title": "Type",
+            "description": "Which implementation runs it. Several rules can share a type with other params."
+          },
+          "rn": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rn",
+            "description": "Business rule it implements, e.g. RN-02."
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "APPROVE",
+              "HOLD",
+              "REJECT"
+            ],
+            "title": "Action",
+            "description": "Decision when the rule fires."
+          },
+          "opens_case": {
+            "type": "boolean",
+            "title": "Opens Case",
+            "default": false
+          },
+          "score": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "description": "Adds to risk_score when the rule fires.",
+            "default": 0
+          },
+          "params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params",
+            "description": "Thresholds, validated against the rule type."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "code",
+          "type",
+          "action"
+        ],
+        "title": "RuleCreate",
+        "description": "A new rule. It always starts at rule_version 1."
+      },
+      "RuleEntry": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{2,49}$",
+            "title": "Code"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "restricted_list",
+              "velocity",
+              "mule",
+              "shared_device",
+              "splitting",
+              "account_takeover",
+              "default_timeout"
+            ],
+            "title": "Type"
+          },
+          "rn": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rn"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "APPROVE",
+              "HOLD",
+              "REJECT"
+            ],
+            "title": "Action"
+          },
+          "opens_case": {
+            "type": "boolean",
+            "title": "Opens Case",
+            "default": false
+          },
+          "score": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "default": 0
+          },
+          "params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params"
+          },
+          "rule_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Rule Version",
+            "default": 1
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "code",
+          "type",
+          "action"
+        ],
+        "title": "RuleEntry",
+        "description": "One rule of the catalog: which implementation (type) runs, with\nwhich parameters, and what it decides when it fires."
+      },
+      "RuleUpdate": {
+        "properties": {
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "APPROVE",
+              "HOLD",
+              "REJECT"
+            ],
+            "title": "Action"
+          },
+          "opens_case": {
+            "type": "boolean",
+            "title": "Opens Case",
+            "default": false
+          },
+          "score": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "default": 0
+          },
+          "params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "RuleUpdate",
+        "description": "Replaces what a rule decides and its thresholds. The code and the\ntype never change: create another rule instead."
+      },
+      "Simulation": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "transactions": {
+            "type": "integer",
+            "title": "Transactions",
+            "description": "Transactions of the day replayed."
+          },
+          "current": {
+            "$ref": "#/components/schemas/SimulationSide"
+          },
+          "candidate": {
+            "$ref": "#/components/schemas/SimulationSide"
+          },
+          "changed": {
+            "type": "integer",
+            "title": "Changed",
+            "description": "Transactions whose decision changes."
+          },
+          "changes": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Changes",
+            "description": "E.g. {\"HOLD->APPROVE\": 2}."
+          },
+          "released_usd": {
+            "type": "string",
+            "title": "Released Usd",
+            "description": "USD the candidate approves that the current catalog held or rejected."
+          },
+          "stopped_usd": {
+            "type": "string",
+            "title": "Stopped Usd",
+            "description": "USD the candidate holds or rejects that the current catalog approved."
+          },
+          "examples": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Examples",
+            "description": "Up to 10 transactions that change, largest amount first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "day",
+          "transactions",
+          "current",
+          "candidate",
+          "changed",
+          "changes",
+          "released_usd",
+          "stopped_usd",
+          "examples"
+        ],
+        "title": "Simulation"
+      },
+      "SimulationRequest": {
+        "properties": {
+          "day": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day",
+            "description": "The day replayed (UTC). One day at a time (D5)."
+          },
+          "from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From",
+            "description": "Not accepted: a range gives 422."
+          },
+          "to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To",
+            "description": "Not accepted: a range gives 422."
+          },
+          "candidate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CatalogSnapshot"
+              },
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RuleEntry"
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Candidate",
+            "description": "The catalog to try: a whole CatalogSnapshot or its list of rules."
+          },
+          "against_version": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Against Version",
+            "description": "Catalog version to compare with; the latest when missing."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "candidate"
+        ],
+        "title": "SimulationRequest",
+        "description": "A candidate catalog replayed over one day of the history (HU-24)."
+      },
+      "SimulationSide": {
+        "properties": {
+          "rules_version": {
+            "type": "string",
+            "title": "Rules Version",
+            "description": "The catalog version, or \"candidate\"."
+          },
+          "decisions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Decisions",
+            "description": "APPROVE, HOLD and REJECT of the day."
+          },
+          "cases": {
+            "type": "integer",
+            "title": "Cases",
+            "description": "Decisions with opens_case."
+          },
+          "amount_usd": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Amount Usd",
+            "description": "USD decided per decision."
+          },
+          "metrics": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Metrics",
+            "description": "rule_metrics against the labels of the lake (HU-44)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "rules_version",
+          "decisions",
+          "cases",
+          "amount_usd",
+          "metrics"
+        ],
+        "title": "SimulationSide"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VersionPage": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Number of versions stored."
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/VersionSummary"
+            },
+            "type": "array",
+            "title": "Versions",
+            "description": "Newest first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "versions"
+        ],
+        "title": "VersionPage"
+      },
+      "VersionSummary": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "author": {
+            "type": "string",
+            "title": "Author"
+          },
+          "change": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Change",
+            "description": "{\"operation\", \"code\", \"before\", \"after\"}; before and after are the whole rule."
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "created_at",
+          "author",
+          "change"
+        ],
+        "title": "VersionSummary"
+      }
+    }
+  }
+}

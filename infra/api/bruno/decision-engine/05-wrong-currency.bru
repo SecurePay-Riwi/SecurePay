@@ -1,0 +1,38 @@
+meta {
+  name: Currency is not the account's (422)
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{engine}}/transactions
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "id": "1b6a4f3e-2c7d-4e8a-9f10-3a4b5c6d7e02",
+    "type": "P2P",
+    "channel": "APP",
+    "source_account_id": "a8d456b7-ae6a-5481-9a4b-64deb0d295f7",
+    "destination_account_id": "3e1a0cdb-e3c9-5dba-b7b1-7ac28a50254a",
+    "merchant_id": null,
+    "amount": "25.00",
+    "currency": "USD",
+    "source_balance_before": "1999.97",
+    "source_balance_after": "1974.97",
+    "destination_balance_before": "1142.70",
+    "destination_balance_after": "1167.70",
+    "device_id": "f8692d53-a16a-595f-b796-dfde37f5f4b0",
+    "transaction_date": "2026-10-01T08:15:00+00:00"
+  }
+}
+
+assert {
+  res.status: eq 422
+}
+
+docs {
+  The source account is in EUR; the engine refuses a USD transaction from it.
+}

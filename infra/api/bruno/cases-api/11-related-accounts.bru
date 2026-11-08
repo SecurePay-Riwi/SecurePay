@@ -1,0 +1,19 @@
+meta {
+  name: Accounts related through a device (happy)
+  type: http
+  seq: 11
+}
+
+get {
+  url: {{cases}}/accounts/a8d456b7-ae6a-5481-9a4b-64deb0d295f7/related-accounts?days=30
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  HU-29.
+}

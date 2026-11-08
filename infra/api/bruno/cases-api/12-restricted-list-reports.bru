@@ -1,0 +1,19 @@
+meta {
+  name: Restricted list reports (happy)
+  type: http
+  seq: 12
+}
+
+get {
+  url: {{cases}}/compliance/restricted-list-reports
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  RN-06.
+}

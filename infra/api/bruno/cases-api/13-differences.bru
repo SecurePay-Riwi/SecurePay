@@ -1,0 +1,19 @@
+meta {
+  name: Reconciliation differences (happy)
+  type: http
+  seq: 13
+}
+
+get {
+  url: {{cases}}/reconciliation/differences
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  HU-38 to HU-40.
+}
