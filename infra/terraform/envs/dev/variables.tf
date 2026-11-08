@@ -184,3 +184,9 @@ variable "cache_max_ecpu_per_second" {
   type        = number
   default     = 20000
 }
+
+variable "cache_node_type" {
+  description = "null (default): ElastiCache Serverless. A node type such as cache.m7g.large: a node-based Valkey cluster (load test run 8, HU-60)."
+  type        = string
+  default     = null
+}
