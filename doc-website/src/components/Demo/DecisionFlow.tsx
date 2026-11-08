@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import DecisionBadge from './DecisionBadge';
 import RiskGauge from './RiskGauge';
 import RuleCard, {type RuleStatus} from './RuleCard';
+import TransactionMap from './TransactionMap';
 import {
   type CatalogRule,
   type DemoData,
@@ -18,11 +19,12 @@ import styles from './styles.module.css';
 const DEFAULT_RULE = 'default_timeout';
 const SEVERITY = {APPROVE: 0, HOLD: 1, REJECT: 2};
 
-// Milliseconds before each stage: the transaction enters, the cache
-// answers, each rule, the result. About 3.5 s in total.
-const ENTER_MS = 450;
+// Milliseconds before each stage: the transaction travels to the engine,
+// the cache answers, each rule, the result. About 3.5 s, then the map
+// shows the answer going back and the published copies (TransactionMap).
+const ENTER_MS = 900;
 const CACHE_MS = 650;
-const RULE_MS = 380;
+const RULE_MS = 330;
 
 type Props = {data: DemoData; scenario: Scenario};
 
@@ -107,6 +109,17 @@ export default function DecisionFlow({data, scenario}: Props) {
           ↻ Replay
         </button>
       </div>
+
+      <TransactionMap
+        stage={stage}
+        finalStage={finalStage}
+        enterMs={ENTER_MS}
+        cacheMs={CACHE_MS}
+        decision={decision}
+        amount={tx.amount}
+        currency={tx.currency}
+        reduced={reduced}
+      />
 
       <div className={styles.txCard}>
         <span className={styles.txKind}>

@@ -166,7 +166,7 @@ export default function AfterTimeline({scenario}: Props) {
               <strong>{item.title}</strong>
               {item.rn && <span className={styles.ruleRn}>{item.rn}</span>}
               <Link className={styles.afterDoc} to={item.doc}>
-                Docs →
+                Docs
               </Link>
             </div>
             <div className={styles.afterBody}>{item.body}</div>

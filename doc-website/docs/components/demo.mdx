@@ -10,6 +10,8 @@ description: The interactive demo of the decision engine, where its data comes f
 
 The demo shows, in one click, how the engine decides a transaction: pick a story (a mule account, a velocity burst, an account takeover…) and watch the transaction go through the cache lookup and each rule of the catalog until the decision comes out.
 
+The map at the top of the decision is the real path in AWS, from the wallet core through the load balancer to the engine on Fargate and its cache, then the decisions topic, the three queues, their consumers and where each one writes. **Show the whole system** adds, dashed, the pieces that do not touch that transaction (rules API, list loader, exchange rates, dead-letter queues, cases API, alerts, evidence, nightly jobs, Power BI). Every station says what it does when it is selected; the stations and their texts are in `src/components/Demo/mapData.ts`.
+
 ## Where the data comes from
 
 The page never calls an API and never decides anything. Everything it shows is in `doc-website/static/demo/scenarios.json`, written by `services/analytics/demo.py`:

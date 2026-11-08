@@ -21,7 +21,7 @@ type Props = {
 function params(rule: CatalogRule): string {
   return Object.entries(rule.params)
     .map(([key, value]) => `${key.replace(/_/g, ' ')}: ${value}`)
-    .join(' · ');
+    .join(', ');
 }
 
 function effect(rule: CatalogRule): string {
