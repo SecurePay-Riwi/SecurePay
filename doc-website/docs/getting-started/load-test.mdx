@@ -90,7 +90,7 @@ Locust's numbers say what a client sees, and they are the ones to look at for er
 
 ### From inside the VPC (EC2)
 
-The recommended way for the measured run. The client is an EC2 machine in an application subnet (`modules/load_runner`, topic 6 of the brief): Amazon Linux 2023, `c7i-flex.large` (2 vCPU, allowed on AWS's free account plan, about USD 0.10 an hour). It has no SSH, no key and no inbound rule: Systems Manager runs the test, and the CSV files go to the artifacts bucket under `load-tests/`. With it, your computer's CPU and the internet no longer count in Locust's numbers.
+The recommended way for the measured run. The client is an EC2 machine in an application subnet (`modules/load_runner`, topic 6 of the brief): Amazon Linux 2023, `c7i-flex.large` (2 vCPU, allowed on AWS's free account plan, USD 0.0848 an hour on demand). It has no SSH, no key and no inbound rule: Systems Manager runs the test, and the CSV files go to the artifacts bucket under `load-tests/`. With it, your computer's CPU and the internet no longer count in Locust's numbers.
 
 1. Add `load_runner = true` to `terraform.tfvars` and apply. It must say `7 to add`: the role, its two policies, the instance profile, the security group, its HTTPS rule and the machine. The machine clones `main` (`load_runner_git_ref` changes the branch) and installs Locust by itself in about 3 minutes:
 
@@ -135,9 +135,11 @@ aws ssm send-command --instance-ids $VM --document-name AWS-RunShellScript --par
 - **Default decisions above 1 %** (alarm 2) mean the rules or the cache did not answer in `DECISION_TIMEOUT_MS`. That is a failure of the test even if the latency looks good.
 - After the test, the engine's history in Valkey keeps these accounts' activity for 24 hours (`out:{account}`), and the cases consumer has opened cases for the restricted accounts. Dev is disposable; do not run this against data that matters.
 
-**Cost.** 15 minutes with up to about 12 tasks is a few cents of Fargate. The Lambdas, the queues and the NAT data of 165,000 decisions add a few more. Dev itself is about USD 0.15 an hour.
+**Cost.** The 15 minutes of load cost about USD 0.10 with 10 tasks; each step is in [Cost of a run](#cost). Dev itself is about USD 0.15 an hour more.
 
 ## Result
+
+**Where it stands (November 8, 2026).** RNF-01 and CA-09 ask for a p99 of 200 ms or less at 300 tx/s. With 10 tasks of 0.5 vCPU **it is not met end to end**: at 300 tx/s the load balancer's p99 goes above 200 ms in some minutes of every run (run 5: 229 ms over the step; runs 7 and 8: 205 to 215 ms in some minutes). It is met at 50 and 150 tx/s, at 300 tx/s in most minutes and on Locust's p99 (140 to 180 ms in runs 7 and 8), and with 20 tasks (run 4: 129 ms). The cause is a pause of 100 to 300 ms about once a minute, not the load or the CPU. It is a known issue, open, to be fixed after the delivery: see [Known issue: p99 at 300 tx/s](#known-issue).
 
 Run 5 (November 5, 2026, 21:28 UTC), from the EC2 machine, 10 tasks at 0.5 vCPU that never scaled out, the cache limited to 20,000 ECPU/s:
 
@@ -147,7 +149,7 @@ Run 5 (November 5, 2026, 21:28 UTC), from the EC2 machine, 10 tasks at 0.5 vCPU 
 | 150 tx/s | 44,723 | 22 / 36 / 85 | 0.07 % | 1 | 13.1 / 16.7 % |
 | 300 tx/s | 89,796 | 32 / 106 / **229** | 0.40 % | 2 | 26.6 / 40.8 % |
 
-At the client (Locust, every step): p50 29 ms, p99 170 ms, 4 `HTTP 502` in 149,486 requests (the load balancer's 5XX, none from the engine). The cache never throttled (peak 14,430 ECPU/s; read p99 3.6 ms). The limit holds at 50 and 150 tx/s; at 300 tx/s the p99 per minute was under 200 ms in 2 of the 5 minutes (184 and 125 ms) and above in 3 (207, 290 and 267 ms). Of the 389 default decisions, 298 fell in the first 5 seconds of a minute: something stalls once a minute, not the load. The `late_decision` line (above) is there to find it in the next run.
+At the client (Locust, every step): p50 29 ms, p99 170 ms, 4 `HTTP 502` in 149,486 requests (the load balancer's 5XX, none from the engine). The cache never throttled (peak 14,430 ECPU/s; read p99 3.6 ms). The limit is met at 50 and 150 tx/s, not at 300 tx/s: the p99 per minute was under 200 ms in 2 of the 5 minutes (184 and 125 ms) and above in 3 (207, 290 and 267 ms). Of the 389 default decisions, 298 fell in the first 5 seconds of a minute: something stalls once a minute, not the load. The `late_decision` line (above) is there to find it in the next run.
 
 Every run of the day, at 300 tx/s:
 
@@ -164,14 +166,14 @@ Every run of the day, at 300 tx/s:
 
 Run 6 (November 7, 2026, 20:43 UTC) repeated run 5 with the `late_decision` line, to find the once-a-minute stall:
 
-- **The limit holds at 300 tx/s with 10 tasks.** The load balancer's p99 per minute stayed at about 150 to 160 ms, except in the minute of the step from 150 to 300 tx/s (about 250 ms at 20:54). In that minute the cache was scaling itself: its maximum write latency rose to about 50 ms, and for a few seconds the accounts' lookup took 200 to 650 ms. The engine's CPU stayed under 25 %.
-- **The stall at second :02 is not the cache and not the client.** Of the 342 default decisions, 260 fell in the first 5 seconds of a minute, most of them at :01 to :03. In those decisions `lookup_ms` and `history_ms` both grow (50 to 180 ms each) while `rules_ms` stays near 0 and `queue_ms` mostly under 50 ms. The cache's own maximum latency per minute (`SuccessfulReadRequestLatency`, `SuccessfulWriteRequestLatency`) stayed at a few milliseconds outside 20:54, and the decisions that reach the engine at :02 are as many as in any other second (171 to 173, the busiest second had 181). The time is lost between the engine and the cache (the network, ElastiCache Serverless's proxy or the client's connections), on 10 to 20 decisions a minute, under 1 %: it does not move the p99.
+- **At 300 tx/s the limit was met in every minute but one.** The load balancer's p99 per minute stayed at about 150 to 160 ms, except in the minute of the step from 150 to 300 tx/s (about 250 ms at 20:54), so the run still does not meet it end to end. In that minute the cache was scaling itself: its maximum write latency rose to about 50 ms, and for a few seconds the accounts' lookup took 200 to 650 ms. The engine's CPU stayed under 25 %.
+- **The stall at second :02 is not the cache and not the client.** Of the 342 default decisions, 260 fell in the first 5 seconds of a minute, most of them at :01 to :03. In those decisions `lookup_ms` and `history_ms` both grow (50 to 180 ms each) while `rules_ms` stays near 0 and `queue_ms` mostly under 50 ms. The cache's own maximum latency per minute (`SuccessfulReadRequestLatency`, `SuccessfulWriteRequestLatency`) stayed at a few milliseconds outside 20:54, and the decisions that reach the engine at :02 are as many as in any other second (171 to 173, the busiest second had 181). The time is lost between the engine and the cache (the network, ElastiCache Serverless's proxy or the client's connections), on 10 to 20 decisions a minute, under 1 %. Runs 7 and 8 later showed it is not the cache either (see below), and it does push the p99 above 200 ms in some minutes.
 
-Run 7 (November 7, 2026, 23:42 UTC) repeated run 6 with explicit socket timeouts and keepalive on the Valkey client (PR #125) and two counters on the `late_decision` line. Locust: 149,340 requests, 2 failures, p50 29 ms, p99 180 ms over every step, 0.2 % default decisions. The load balancer's p99 at 300 tx/s was about 200 to 215 ms per minute. The stall at seconds :01 and :02 stayed, on all 10 tasks in the same second, and no task reconnected or reloaded the cluster's map in it (`cache_refreshes` always 0, `cache_connections` only grew at 23:52, while the cache scaled for 300 tx/s). The time is lost inside ElastiCache Serverless's own layer, which its latency metrics do not count. Run 8 compares it with a node-based cluster: `cache_node_type = "cache.m7g.large"` in `terraform.tfvars` (one shard, a primary and a replica in the other zone); without it the cache stays Serverless.
+Run 7 (November 7, 2026, 23:42 UTC) repeated run 6 with explicit socket timeouts and keepalive on the Valkey client (PR #125) and two counters on the `late_decision` line. Locust: 149,340 requests, 2 failures, p50 29 ms, p99 180 ms over every step, 0.2 % default decisions. The load balancer's p99 at 300 tx/s was about 200 to 215 ms per minute. The stall at seconds :01 and :02 stayed, on all 10 tasks in the same second, and no task reconnected or reloaded the cluster's map in it (`cache_refreshes` always 0, `cache_connections` only grew at 23:52, while the cache scaled for 300 tx/s). The conclusion then was that the time is lost inside ElastiCache Serverless's own layer; run 8 ruled it out. Run 8 compares it with a node-based cluster: `cache_node_type = "cache.m7g.large"` in `terraform.tfvars` (one shard, a primary and a replica in the other zone); without it the cache stays Serverless.
 
-Run 8 (November 8, 2026, 03:26 UTC) repeated run 7 with a node-based cluster instead of Serverless. Locust: 149,339 requests, 5 failures, p50 25 ms, p99 140 ms, 147 default decisions (307 in run 7). The stall at seconds :01 to :03 stayed, mostly on one task and again without reconnections, so it was not the Serverless layer. **Known issue, open:** something pauses an engine task about once a minute for 100 to 300 ms. The likeliest cause, not proven, is the log output: every HOLD writes a line (about a quarter of the traffic at 300 tx/s), and a slow delivery to CloudWatch makes the process wait. The way to check it is a run with `decision_line()` limited to REJECT and default decisions. The limit holds on the client's p99 and in most minutes at the load balancer.
+Run 8 (November 8, 2026, 03:26 UTC) repeated run 7 with a node-based cluster instead of Serverless. Locust: 149,339 requests, 5 failures, p50 25 ms, p99 140 ms, 147 default decisions (307 in run 7). The stall at seconds :01 to :03 stayed, mostly on one task and again without reconnections, so it was not the Serverless layer. **Known issue, open:** something pauses an engine task about once a minute for 100 to 300 ms. The likeliest cause, not proven, is the log output: every HOLD writes a line (about a quarter of the traffic at 300 tx/s), and a slow delivery to CloudWatch makes the process wait. The way to check it is in [Known issue: p99 at 300 tx/s](#known-issue). The limit is met on the client's p99 and in most minutes at the load balancer, but not in every minute: see [Known issue: p99 at 300 tx/s](#known-issue).
 
-In run 2 the cache throttled about 72,000 commands a minute. In runs 3 to 5 it throttled none, and the CPU stayed under 41 %: what is left is once a minute, between the engine and the cache (run 6). The autoscaling did not add tasks in run 5 because 300 tx/s over 10 tasks is exactly its target of 1,800 requests per task per minute.
+In run 2 the cache throttled about 72,000 commands a minute. In runs 3 to 5 it throttled none, and the CPU stayed under 41 %: what is left is the pause once a minute (runs 6 to 8, [known issue](#known-issue)). The autoscaling did not add tasks in run 5 because 300 tx/s over 10 tasks is exactly its target of 1,800 requests per task per minute.
 
 With the numbers:
 - check alarm 1 (p99 > 180 ms) and alarm 7 (fewer than 2 healthy tasks per zone), and adjust `latency_p99_seconds` or `min_healthy_tasks_per_zone` of `modules/monitoring` if they fired with the engine healthy;
@@ -191,3 +193,50 @@ The cause was the test, and a weakness it uncovered. 98 accounts took about 700 
 | Scaling on requests per task, not only CPU | `aws_appautoscaling_policy.engine_requests` | Checked in AWS in the next run |
 
 The table above is filled in with the next run.
+
+## Known issue: p99 at 300 tx/s {/* #known-issue */}
+
+**Status: open.** The team decided on November 8, 2026 not to optimize the engine further before the delivery ([Team decisions](../architecture/team-decisions.mdx#no-more-engine-optimization)). It has to be fixed afterwards.
+
+| Item | Detail |
+| :--- | :--- |
+| Requirement | RNF-01 / CA-09: decision p99 ≤ 200 ms at 300 tx/s in the load test |
+| Met | At 50 and 150 tx/s (run 5: p99 50 and 85 ms). At 300 tx/s: in most minutes at the load balancer, on Locust's p99 (140 to 180 ms in runs 7 and 8) and with 20 tasks (run 4, 129 ms) |
+| Not met | At 300 tx/s with 10 tasks, end to end at the load balancer: run 5, 229 ms over the step; run 6, about 250 ms in one minute; run 7, about 200 to 215 ms per minute; run 8, 205 to 215 ms in two minutes |
+| Not the cause | The CPU (under 41 %), the cache's capacity (no throttled commands), ElastiCache Serverless (run 8 with nodes kept the pause), the client's connections to the cache (no reconnections, run 7) |
+| Symptom | An engine task pauses 100 to 300 ms at seconds :01 to :03 of each minute, sometimes one task, sometimes all of them. The default decisions gather there |
+| Hypotheses, not proven | 1. The log output: every HOLD writes a line, and a slow delivery to CloudWatch blocks the process. 2. Python's garbage collector pausing the process |
+| Next check | One run with the `awslogs` driver in non-blocking mode (`mode = non-blocking` and a `max-buffer-size`) and `uvicorn --no-access-log`; in the same run, measure the GC pauses (`gc.callbacks`, logged once a minute). If the pause goes away with the first, the fix is the log; if not, the second says whether it is GC |
+| Workaround today | 20 tasks meet the limit, but the team does not accept 20 fixed tasks for a pause the CPU does not explain |
+
+## Cost of a run (E-15) {/* #cost */}
+
+E-15 asks for the cost of each step. These are the resources the load adds, for run 5 (the reference: 10 tasks the whole time, ElastiCache Serverless, the requests of its table above). Rates for `us-east-2`, on demand:
+
+| Resource | Rate | Source |
+| :--- | :--- | :--- |
+| Fargate, 10 tasks of 0.5 vCPU / 1 GB | $0.04048 per vCPU-hour + $0.004445 per GB-hour: $0.0247 an hour per task | [AWS services and costs](../architecture/aws-services-and-costs.mdx#pricing-calculator) |
+| ElastiCache Serverless (Valkey) | $0.0023 per million ECPUs; $0.084 per GB-hour, at least 100 MB billed | Same page; the [ElastiCache pricing page](https://aws.amazon.com/elasticache/pricing/) gives the same rates (its example is N. Virginia) |
+| Application Load Balancer | $0.0225 an hour + $0.008 per LCU-hour | Same page |
+| EC2 `c7i-flex.large` (Locust) | $0.0848 an hour | On-demand Linux price for Ohio from [aws-pricing.com](https://aws-pricing.com/c7i-flex.large.html) (not an AWS page), November 8, 2026 |
+
+Assumptions:
+- 10 tasks for the whole 15 minutes (autoscaling did not add any in run 5).
+- About 33 ECPUs per decision ([Terraform](../architecture/terraform.mdx)), so about 9,900 ECPU/s at 300 tx/s. The measured peaks were higher (12,200 to 14,430 ECPU/s, up to about 48 per decision); with 48 the cache column grows by about 40 %, half a cent for the run.
+- Cache storage billed at the 100 MB minimum. It was not measured: the idempotency keys of 150,000 decisions may take it to a few hundred MB, which adds under half a cent for the run.
+- Load balancer: Locust keeps its connections open, so the capacity units come from processed bytes, about 2 KB per request and answer: about 0.35 LCU at 50 tx/s, 1 at 150 and 2 at 300.
+- The EC2 machine runs the whole test.
+
+| Step | tx/s | Requests | Fargate | Cache | ALB | EC2 runner | Total (USD) |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 (5 min) | 50 | 14,967 | 0.021 | 0.002 | 0.002 | 0.007 | **0.032** |
+| 2 (5 min) | 150 | 44,723 | 0.021 | 0.004 | 0.003 | 0.007 | **0.034** |
+| 3 (5 min) | 300 | 89,796 | 0.021 | 0.008 | 0.003 | 0.007 | **0.038** |
+| **Run (15 min)** | | **149,486** | **0.062** | **0.013** | **0.008** | **0.021** | **0.104** |
+
+Per million decisions: about USD 0.70 over the whole run, and USD 0.43 in the 300 tx/s step. Fargate is about 60 % of it: it is paid per task, not per decision, so the cost per decision falls as the load rises.
+
+Not in the table:
+- **The rest of dev** (NAT Gateways, RDS, public addresses, CloudWatch) runs whether there is a test or not: about USD 0.15 an hour, USD 0.04 for these 15 minutes. It is in [AWS services and costs](../architecture/aws-services-and-costs.mdx#pricing-calculator).
+- **What the decisions trigger afterwards**: SNS, the three SQS queues, the consumers' Lambdas and the S3 files for 150,000 decisions. A few cents.
+- **Run 8's node-based cache** (`cache.m7g.large`, a primary and a replica) costs a fixed USD 0.126 an hour per node: USD 0.021 per step and USD 0.063 for the run instead of the Serverless column, whatever the load. That rate is the Redis OSS price of the node ($0.158, N. Virginia) less 20 %, the discount AWS's ElastiCache pricing page gives Valkey nodes.
