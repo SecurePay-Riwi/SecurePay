@@ -415,10 +415,8 @@
 }
 
 .facts dt {
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--demo-muted);
 }
 
@@ -687,4 +685,112 @@
 .variantChanged {
   border-color: var(--ifm-color-primary) !important;
   background: color-mix(in srgb, var(--ifm-color-primary) 7%, var(--demo-surface));
+}
+
+/* Transaction map: the real path, drawn like a transit map */
+
+.map {
+  margin: 0 0 1rem;
+}
+
+.map svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.mapNarrow svg {
+  max-width: 20rem;
+  margin: 0 auto;
+}
+
+.mapLine {
+  stroke: var(--ifm-color-emphasis-300);
+  stroke-width: 5;
+  stroke-linecap: round;
+  transition: stroke 0.3s;
+}
+
+.mapLineLit {
+  stroke: var(--ifm-color-primary-lighter);
+}
+
+.mapStation circle {
+  fill: var(--demo-surface);
+  stroke: var(--ifm-color-emphasis-500);
+  stroke-width: 3;
+  transition: fill 0.3s, stroke 0.3s;
+}
+
+.mapStation text {
+  font-size: 13px;
+  font-weight: 500;
+  fill: var(--ifm-font-color-base);
+}
+
+.mapStationBusy circle {
+  stroke: var(--ifm-color-primary);
+  animation: busy 0.66s ease-in-out infinite;
+}
+
+.mapStationMiss circle {
+  stroke: var(--demo-hold);
+  fill: var(--demo-hold-bg);
+}
+
+.mapStationReached circle {
+  stroke: var(--ifm-color-primary);
+  fill: var(--ifm-color-primary);
+}
+
+.mapStationIdle circle {
+  stroke-dasharray: 3 3;
+}
+
+.mapStationIdle text {
+  fill: var(--demo-muted);
+}
+
+.mapToken rect,
+.mapToken circle {
+  fill: var(--ifm-color-primary);
+}
+
+.mapToken circle {
+  stroke: var(--demo-surface);
+  stroke-width: 2;
+}
+
+.mapToken text {
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  fill: var(--demo-surface);
+}
+
+.mapTokenDecided rect,
+.mapTokenDecided circle,
+.mapCopy {
+  fill: var(--tone);
+}
+
+.mapProbe {
+  fill: var(--ifm-color-primary);
+}
+
+@keyframes busy {
+  50% {
+    stroke-width: 7;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mapStationBusy circle {
+    animation: none;
+  }
+  .mapLine,
+  .mapStation circle {
+    transition: none;
+  }
 }
