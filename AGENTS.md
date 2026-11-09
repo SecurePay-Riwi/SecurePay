@@ -53,6 +53,7 @@ SecurePay/                  ← this repo: the product (engine, consumers, infra
 │                             messaging, S3 buckets and the exchange-rates DynamoDB
 │                             table; add the service to SERVICES in Compose), Docker Compose
 │   ├── api/                ← API contract (E-05): openapi.py exports doc-website/static/openapi/*.json; bruno/ collection against Compose
+│   ├── docker/             ← image size comparison (topic 3): Dockerfile.baseline and measure-image-sizes.ps1
 │   ├── load/               ← load test of the engine (HU-60): locustfile.py, transactions.py, accounts.json
 │   ├── k8s/                ← the engine on Kubernetes, only for the HU-58 comparison: kustomize base/ and
 │                             overlays/kind, overlays/eks (eksctl cluster.yaml); latency.py
@@ -837,6 +838,7 @@ Read these before changing the design, not to work on the code:
 ## Docker images and local ecosystem (MAG-31 / MAG-32)
 
 - Dockerfile builds the product image with Python 3.12 and uv; the same image runs the decision engine and consumers with different commands. It installs only the main dependencies (`--no-default-groups`): no pytest, no pyspark.
+- Image size before and after (topic 3): `infra/docker/measure-image-sizes.ps1` builds every repository with `infra/docker/Dockerfile.baseline` (full Python image, every dependency group, no `.dockerignore` beyond secrets) and with its own `Dockerfile`; the table is in `local-setup.mdx#image-size`. Measure again after changing a `Dockerfile`, a `.dockerignore` or the dependency groups.
 - docker-compose.yml orchestrates the local stack. Satellite repositories must be cloned beside this repository because Compose builds from sibling directories.
 - Use service hostnames inside containers (postgres, valkey, localstack, decision-engine); localhost inside a container is not another service.
 - Which PostgreSQL: the containers always use Compose's (`postgres:5432` inside the network). What runs on your machine with `uv run` (pytest, the seed) uses `DATABASE_URL` from `.env`: port 5432 for an installed PostgreSQL (the `.env.example` default) or 5433 for Compose's. With both installed, pytest talks to the one in `DATABASE_URL`, not to the one the stack writes to.

@@ -1,0 +1,7 @@
+# Only secrets stay out, so no image ever holds a password.
+.env
+**/.env
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfvars
+**/.terraform/

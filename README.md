@@ -729,6 +729,8 @@ Un solo `terraform apply` construye y sube las imágenes del motor, del seed y d
 
 **Kubernetes (HU-58).** `infra/k8s/` runs the same engine on kind (local, free) and on EKS (one session in dev, deleted the same day) to compare it with Fargate (ADR-06): `kind create cluster --name securepay --config infra/k8s/overlays/kind/kind.yaml`, `kubectl apply -k infra/k8s/overlays/kind` and `uv run python infra/k8s/latency.py http://localhost:8000 http://localhost:8080`. Steps: `doc-website/docs/getting-started/kubernetes.mdx`.
 
+**Image size (topic 3).** `infra/docker/measure-image-sizes.ps1` builds the five images with and without the optimizations; the result (68 % to 92 % smaller) is in `doc-website/docs/getting-started/local-setup.mdx`.
+
 **API contract (E-05).** `uv run python -m infra.api.openapi` exports the OpenAPI of the engine, the rules API and the cases API to `doc-website/static/openapi/`; `infra/api/bruno/` is a Bruno collection with the happy and error cases against the local stack (`bru run --env local`). Steps: `doc-website/docs/getting-started/testing.mdx`.
 
 **Load test (HU-60).** `uv sync --group load`, then `uv run --group load locust -f infra/load/locustfile.py --headless --host https://<ALB>`: 50, 150 and 300 tx/s against the engine in dev, 5 minutes each. Steps and how to read the result: `doc-website/docs/getting-started/load-test.mdx`.
