@@ -167,6 +167,24 @@ variable "load_demo_day" {
   default     = true
 }
 
+variable "load_kaggle" {
+  description = "During the apply, upload PaySim and fraudTest from securepay-csv's clone (data/kaggle) to raw/kaggle/ and load their sample into RDS with the seed's Kaggle ETL, so the nightly run fills views q2 and q3 for them (MAG-312). Skipped when the CSVs are not there."
+  type        = bool
+  default     = true
+}
+
+variable "kaggle_dir" {
+  description = "Folder with PS_20174392719_1491204439457_log.csv and fraudTest.csv. Null: ../securepay-csv/data/kaggle beside SecurePay."
+  type        = string
+  default     = null
+}
+
+variable "powerbi_profile" {
+  description = "AWS CLI profile where the apply writes the access key of the powerbi user, the one Power BI's DSN reads (deploy-aws-terraform.mdx, \"Power BI over Athena\"). Null: no key; create it by hand."
+  type        = string
+  default     = "securepay-powerbi"
+}
+
 variable "load_runner" {
   description = "Create the EC2 machine that runs the load test from inside the VPC (HU-60, load-test.mdx). About USD 0.10 an hour: only for that session."
   type        = bool

@@ -167,6 +167,7 @@ def test_the_reconciliation_path_ends_by_telling_treasury():
         "MatchWithSpark",
         "SaveDifferences",
         "ExportAnalytics",
+        "MeasureKaggle",
         "BuildAnalytics",
         "ListViews",
         "RefreshViews",
@@ -202,6 +203,16 @@ def test_an_analytics_error_warns_ops_and_still_tells_treasury():
     warn = states["WarnAnalyticsFailed"]
     assert warn["Parameters"]["TopicArn"] == "arn:ops"
     assert warn["Next"] == _catch_all(warn)["Next"] == "NotifyTreasury"
+
+
+def test_the_kaggle_metrics_never_stop_the_analytics():
+    """MAG-312: the analytics-export Lambda with its kaggle_metrics job;
+    a failure goes on to BuildAnalytics, which keeps the last Kaggle rows."""
+    state = render({"analytics_export_arn": "arn:export"})["States"]["MeasureKaggle"]
+    assert state["Parameters"]["FunctionName"] == "arn:export"
+    assert state["Parameters"]["Payload"] == {"job": "kaggle_metrics"}
+    assert _catch_all(state)["Next"] == state["Next"] == "BuildAnalytics"
+    assert _catch_all(state)["ResultPath"] == "$.kaggle_error"
 
 
 def _view_queries() -> list[str]:

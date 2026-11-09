@@ -4,7 +4,8 @@ contract C6).
     uv run python -m services.analytics.export --day 2026-10-05
 
 In AWS, handler() is the Lambda securepay-<env>-analytics-export, a step
-of the nightly state machine after the reconciliation's store.
+of the nightly state machine after the reconciliation's store, and with
+{"job": "kaggle_metrics"} the step after it (metrics.kaggle_metrics()).
 """
 
 import argparse
@@ -144,8 +145,18 @@ def export_day(
 
 def handler(event, context=None) -> dict:  # Lambda securepay-<env>-analytics-export
     """event {"day": "YYYY-MM-DD"} (absent: yesterday in Bogota) -> export_day.
+    event {"job": "kaggle_metrics"} -> the Kaggle replay's metrics to
+    raw/metrics/kaggle/ (MAG-312), the state machine's next step.
     Only reads PostgreSQL: the tables belong to the services that write them."""
     event = event or {}
+    if event.get("job") == "kaggle_metrics":
+        # Imported here: the export does not need the engine's rules.
+        from services.analytics.metrics import kaggle_metrics
+
+        with SessionLocal() as session:
+            done = kaggle_metrics(session, ANALYTICS_DATA_DIR)
+        done.pop("result", None)
+        return done
     day = (
         date.fromisoformat(event["day"])
         if event.get("day")

@@ -7,8 +7,12 @@ Terraform calls this file, never a person:
     push      builds an image and pushes it to ECR, unless the tag is
               already there (ECR tags are immutable)
     run-task  runs a Fargate task and fails if its container fails (the
-              seed)
+              seed; with --kaggle-raw-dir, the seed's Kaggle ETL)
     start-day starts the nightly state machine for the demo day
+    aws-profile
+              writes the Power BI user's access key to an AWS CLI profile
+              (the key comes in POWERBI_ACCESS_KEY_ID and
+              POWERBI_SECRET_ACCESS_KEY, never in the command line)
 
 Only the standard library and the docker and aws commands: it runs with
 `uv run --no-project python`, outside the project's environment, on
@@ -108,6 +112,7 @@ def run_task(
     security_group: str,
     region: str,
     timeout_minutes: int,
+    kaggle_raw_dir: str | None = None,
 ) -> None:
     network = (
         f"awsvpcConfiguration={{subnets=[{subnets}],"
@@ -117,6 +122,7 @@ def run_task(
     task = _run(
         *aws, "run-task", "--cluster", cluster, "--launch-type", "FARGATE",
         "--task-definition", task_definition, "--network-configuration", network,
+        *_overrides(kaggle_raw_dir),
         "--query", "tasks[0].taskArn", "--output", "text",
     )  # fmt: skip
     print(f"started {task}")
@@ -143,6 +149,20 @@ def run_task(
     print(f"{task_definition} ended with exit code 0")
 
 
+def _overrides(kaggle_raw_dir: str | None) -> tuple[str, ...]:
+    """The same admin image runs the seed's Kaggle ETL instead of the seed
+    (MAG-312): it downloads PaySim and fraudTest from `kaggle_raw_dir`
+    (s3://<datalake>/raw/kaggle) and loads its sample into RDS."""
+    if not kaggle_raw_dir:
+        return ()
+    container = {
+        "name": "admin",
+        "command": ["python", "-m", "securepay_seed.kaggle_etl.etl"],
+        "environment": [{"name": "HIST_RAW_DIR", "value": kaggle_raw_dir}],
+    }
+    return ("--overrides", json.dumps({"containerOverrides": [container]}))
+
+
 def start_day(state_machine: str, day: str, region: str) -> None:
     """Starts the nightly state machine for one day and returns: the run
     takes several minutes and the apply does not wait for it."""
@@ -152,6 +172,21 @@ def start_day(state_machine: str, day: str, region: str) -> None:
         "--query", "executionArn", "--output", "text",
     )  # fmt: skip
     print(f"started {execution}; follow it in Step Functions")
+
+
+def aws_profile(profile: str, region: str) -> None:
+    """The key Terraform just created into `profile` of ~/.aws/credentials,
+    with `aws configure set`, which keeps the rest of the file. Power BI's
+    DSN reads it from there (AwsProfile), so nobody copies it by hand."""
+    values = {
+        "aws_access_key_id": os.environ["POWERBI_ACCESS_KEY_ID"],
+        "aws_secret_access_key": os.environ["POWERBI_SECRET_ACCESS_KEY"],
+        "region": region,
+        "output": "json",
+    }
+    for name, value in values.items():
+        _run("aws", "configure", "set", name, value, "--profile", profile)
+    print(f"wrote the AWS CLI profile {profile}")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -174,11 +209,16 @@ def main(argv: list[str] | None = None) -> None:
     t.add_argument("--security-group", required=True)
     t.add_argument("--region", required=True)
     t.add_argument("--timeout-minutes", type=int, default=20)
+    t.add_argument("--kaggle-raw-dir")
 
     d = commands.add_parser("start-day")
     d.add_argument("--state-machine", required=True)
     d.add_argument("--day", required=True)
     d.add_argument("--region", required=True)
+
+    a = commands.add_parser("aws-profile")
+    a.add_argument("--profile", required=True)
+    a.add_argument("--region", required=True)
 
     args = parser.parse_args(argv)
     if args.command == "tags":
@@ -187,6 +227,8 @@ def main(argv: list[str] | None = None) -> None:
         if not args.context:
             parser.error("push needs --context or DEV_UP_CONTEXT")
         push(args.repository, args.tag, args.context, args.region)
+    elif args.command == "aws-profile":
+        aws_profile(args.profile, args.region)
     elif args.command == "start-day":
         start_day(args.state_machine, args.day, args.region)
     else:
@@ -197,6 +239,7 @@ def main(argv: list[str] | None = None) -> None:
             args.security_group,
             args.region,
             args.timeout_minutes,
+            args.kaggle_raw_dir,
         )
 
 

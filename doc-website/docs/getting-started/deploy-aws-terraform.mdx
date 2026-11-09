@@ -86,6 +86,8 @@ The user must end with exactly these two: `PowerUserAccess` and `securepay-terra
 5. It writes the fixed rates of 2026-10-01, the day of the test transactions, so the fixed-rates alarm stays quiet.
 6. It creates the Cognito users of `api_users` (by default `analista@example.com` and `gerente@example.com`, one per group) with a generated password: `terraform output -json api_user_passwords`.
 7. With `load_demo_day` (default `true`), it uploads the fixture day 2026-10-05 to the Data Lake (the reconciliation's partner files and decisions, the analytics' decisions and labels) and starts the nightly state machine for that day. The apply does not wait for that run: it ends `Succeeded` 5 to 10 minutes later and e-mails treasury `Differences of the day: 19 (new: 19)` (see [step 8](#8-run-the-nightly-reconciliation)).
+8. With `load_kaggle` (default `true`) and PaySim and fraudTest in `../securepay-csv/data/kaggle` (run `uv run python -m securepay_csv.kaggle_datasets` there once; `kaggle_dir` for another folder), it uploads both CSVs (about 640 MB) to `raw/kaggle/` and runs the seed's Kaggle ETL in the admin task (5 to 15 minutes), before the demo day's run. That run then measures the rules against them, and q2 and q3 show `paysim` and `fraudtest` next to the generator. Without the CSVs this step is skipped and the rest of the apply is the same.
+9. With `powerbi_profile` (default `securepay-powerbi`), it creates the access key of the `securepay-dev-powerbi` user and writes it to that AWS CLI profile, the one Power BI's DSN reads ([Power BI over Athena](#power-bi-over-athena)). A Terraform user made before November 9, 2026 needs the whole [`terraform-user-policy.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/terraform-user-policy.json) pasted again in its inline policy (step 2.3): it now allows `iam:CreateAccessKey` on the `securepay-*` users.
 
 This needs, on the computer that applies:
 
@@ -488,10 +490,11 @@ The match runs on AWS Glue, not EMR Serverless: on AWS's free account plan EMR i
 After `SaveDifferences` the same execution builds the analytics of the day, before the treasury e-mail:
 
 5. **ExportAnalytics**: the Lambda `securepay-dev-analytics-export` (`services/analytics/export.py`, read-only database user `analytics_export`) writes the cases and the reconciliation of the last 30 days to `raw/cases/` and `raw/reconciliation/` (with `matched.jsonl`).
-6. **BuildAnalytics**: the Glue job `securepay-dev-analytics` (`infra/spark/analytics_job.py`) runs every builder (`raw` → `curated/decisiones` → `analytics/<table>/`) and then the [data quality checks](../components/analytics.mdx#data-quality-hu-66); a failed check fails the job.
-7. **RefreshViews**: `CREATE OR REPLACE VIEW` of q1..q6 (`services/analytics/sql/`) in the Athena workgroup `securepay-dev-powerbi`, database `securepay_dev_analytics`.
+6. **MeasureKaggle**: the same Lambda with `{"job": "kaggle_metrics"}` replays the Kaggle rows of RDS with the current catalog and writes `raw/metrics/kaggle/` (MAG-312). With no Kaggle rows it writes nothing; if it fails, the execution goes on.
+7. **BuildAnalytics**: the Glue job `securepay-dev-analytics` (`infra/spark/analytics_job.py`) runs every builder (`raw` → `curated/decisiones` → `analytics/<table>/`) and then the [data quality checks](../components/analytics.mdx#data-quality-hu-66); a failed check fails the job.
+8. **RefreshViews**: `CREATE OR REPLACE VIEW` of q1..q6 (`services/analytics/sql/`) in the Athena workgroup `securepay-dev-powerbi`, database `securepay_dev_analytics`.
 
-If any of the three fails, the day is still reconciled: the execution sends `Analytics of <day> failed` with the cause to `-ops-alarms`, then the treasury e-mail, and ends `Succeeded`. The Glue catalog (13 tables with partition projection) and the workgroup exist from the first apply; the views appear after the first execution.
+If ExportAnalytics, BuildAnalytics or RefreshViews fails, the day is still reconciled: the execution sends `Analytics of <day> failed` with the cause to `-ops-alarms`, then the treasury e-mail, and ends `Succeeded`. The Glue catalog (13 tables with partition projection) and the workgroup exist from the first apply; the views appear after the first execution.
 
 1. Apply once more after pulling the change: it adds the catalog, the workgroup, the `analytics-export` role and Lambda, the database user's password, the analytics job and its file, and updates the state machine and the roles. `db-bootstrap` runs again by itself and creates the `analytics_export` user.
 
@@ -527,11 +530,11 @@ If any of the three fails, the day is still reconciled: the execution sends `Ana
 
 **What you need, from zero.** Power BI Desktop (Windows), the [AWS CLI v2](#1-install-the-aws-cli-and-terraform), Git with SecurePay cloned (the report is `services/analytics/powerbi/securepay.pbix`) and dev up with its demo day: someone with the Terraform user runs `terraform apply` ([the short path](#the-short-path); `load_demo_day` is on by default) and waits for the treasury e-mail, about 10 minutes after the apply. To bring dev up yourself, do steps 1 to 4 first. You never need Terraform for the report itself, only the `securepay-dev-powerbi` key and `terraform output -json bucket_names` (or the data lake's bucket name, `securepay-dev-datalake-<account id>`, from the S3 console).
 
-The `.pbix` reads the views through the Athena ODBC driver 2.x, with the key of the `securepay-dev-powerbi` IAM user. Create that key by hand (**IAM → Users → securepay-dev-powerbi → Security credentials → Create access key**) and hand it over privately: never in the repository, a chat or a screenshot. This is how it was connected on Windows on November 5, 2026:
+The `.pbix` reads the views through the Athena ODBC driver 2.x, with the key of the `securepay-dev-powerbi` IAM user. With `powerbi_profile` (default `securepay-powerbi`) the apply creates that key and writes it to that AWS CLI profile of the computer that applies (`~\.aws\credentials`), so on that computer step 2 is already done and, once the DSN exists, **Refresh** in Power BI is all the demo needs after each apply. The key is only in the local state and that file: never in the repository, a chat or a screenshot. On another computer, or with `powerbi_profile = null`, create it by hand (**IAM → Users → securepay-dev-powerbi → Security credentials → Create access key**) and hand it over privately. This is how it was connected on Windows on November 5, 2026:
 
 1. Install the [Amazon Athena ODBC driver 2.x](https://docs.aws.amazon.com/athena/latest/ug/odbc-v2-driver.html) (64-bit).
 
-2. Keep the key in an AWS CLI profile, so it lives in `~\.aws\credentials` and not in the DSN (Windows does not save `UID`/`PWD` in a user DSN). Give it the key, region `us-east-2` and format `json`:
+2. Keep the key in an AWS CLI profile, so it lives in `~\.aws\credentials` and not in the DSN (Windows does not save `UID`/`PWD` in a user DSN). On the computer that applied, the apply already wrote it: only check it with the second command. Elsewhere, give it the key, region `us-east-2` and format `json`:
 
    ```powershell
    aws configure --profile securepay-powerbi
@@ -562,18 +565,9 @@ The `.pbix` reads the views through the Athena ODBC driver 2.x, with the key of 
 
 4. In Power BI: **Get data → ODBC**, DSN `securepay-athena`, and **Use Data Source Configuration** for the credentials (if an old attempt is saved, clear it first in **File → Options → Data source settings**). The navigator shows 19 objects: the 13 tables and the views q1..q6.
 
-5. Point the report's queries at Athena. In **Transform data**, open each query that reads a local Parquet folder, then **Advanced Editor**, and replace its whole text with the Athena table or view of the same name (the names and columns are those of [the analytics model](../reference/analytics-model.mdx)):
+5. Point the report at Athena. Every query of the `.pbix` reads its view through the function `LoadView`, which follows the parameter `DataSource`: `Local` (the default) reads the Parquet views under `DataRoot` (`generated/analytics/views`, written by `python -m services.analytics`), and `Athena` runs `SELECT * FROM <view>` on the DSN `securepay-athena` (`q1_transactions`, `q2_rules`, `q3_fraud_detection`, `q4_cases`, `q5_reconciliation`, `q6_risk`). In **Transform data → Manage parameters**, set `DataSource` to `Athena` and **Close & Apply**: every page must show the demo day 2026-10-05 with no errors (Reconciliation counts the 19 differences of the reconciliation and analytics fixtures together; locally it shows 6). Set it back to `Local` before you commit the `.pbix`, so it opens without AWS.
 
-   ```
-   let
-       Source = Odbc.Query("dsn=securepay-athena", "SELECT * FROM q1_transactions")
-   in
-       Source
-   ```
-
-   The views are `q1_transactions`, `q2_rules`, `q3_fraud_detection`, `q4_cases`, `q5_reconciliation` and `q6_risk`; the tables keep their names (`fact_decision`, `dim_rule`, ...). Keep any step after the source (renames, types) if the query had one. **Close & Apply**: every page must show the demo day 2026-10-05 with no errors. Save the `.pbix` and commit it.
-
-6. After the session, delete the key in IAM and the `securepay-powerbi` section of `~\.aws\credentials`. The user has `force_destroy`, so `terraform destroy` removes it even if the key is left.
+6. `terraform destroy` deletes the user with its key (`force_destroy`), whether the apply or a person made it. The profile stays in `~\.aws\credentials` with a dead key until the next apply overwrites it; delete that section by hand on any other computer.
 
 ## 9. Load the daily exchange rates
 
@@ -712,7 +706,7 @@ Once the lock of the last uploaded version has passed, destroy everything and ty
 terraform destroy
 ```
 
-It ends with `Destroy complete! Resources: 337 destroyed` after one `apply` with one budget e-mail. That is 214 of the base, 21 of the engine, 72 of the Lambdas, the rules and cases APIs, the reconciliation and the analytics, 4 of the exchange-rates Lambda, 7 of `up.tf`, 6 of the two Cognito users and 13 of the demo day (12 files and its run); each extra e-mail address is one more. Step by step, without the 7 of `up.tf`, it is 330. The `powerbi` user goes with its access key (`force_destroy`), so there is no need to delete the key first. A Terraform user made before November 5, 2026 needs the whole [`terraform-user-policy.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/terraform-user-policy.json) pasted again in its inline policy: it now allows `iam:DeleteAccessKey` and `iam:DeleteLoginProfile` on the `securepay-*` users and `iam:ListVirtualMFADevices` (statement `ListMfaDevicesOnDestroy`: `force_destroy` lists the user's MFA devices, which IAM only allows on `*`, and always tries to delete its console password; without them the destroy stops with `AccessDenied` on `securepay-dev-powerbi`), and the instance profile and `AmazonSSMManagedInstanceCore` of the load test machine ([Load test](./load-test.mdx#from-inside-the-vpc-ec2)). Fewer if some steps were skipped: it destroys what the state has. The Glue job and its files go with it. The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
+It ends with `Destroy complete! Resources: 342 destroyed` after one `apply` with one budget e-mail. That is 214 of the base, 21 of the engine, 72 of the Lambdas, the rules and cases APIs, the reconciliation and the analytics, 4 of the exchange-rates Lambda, 7 of `up.tf`, 6 of the two Cognito users, 13 of the demo day (12 files and its run) 3 of the Kaggle datasets (2 CSVs and the ETL run; 337 without the CSVs) and 2 of Power BI's key (the key and the profile it writes); each extra e-mail address is one more. Step by step, without the 7 of `up.tf`, it is 330. The `powerbi` user goes with its access key (`force_destroy`), so there is no need to delete the key first. A Terraform user made before November 9, 2026 needs the policy again for `iam:CreateAccessKey` (the apply makes the Power BI key); one made before November 5, 2026 needs the whole [`terraform-user-policy.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/terraform-user-policy.json) pasted again in its inline policy: it now allows `iam:DeleteAccessKey` and `iam:DeleteLoginProfile` on the `securepay-*` users and `iam:ListVirtualMFADevices` (statement `ListMfaDevicesOnDestroy`: `force_destroy` lists the user's MFA devices, which IAM only allows on `*`, and always tries to delete its console password; without them the destroy stops with `AccessDenied` on `securepay-dev-powerbi`), and the instance profile and `AmazonSSMManagedInstanceCore` of the load test machine ([Load test](./load-test.mdx#from-inside-the-vpc-ec2)). Fewer if some steps were skipped: it destroys what the state has. The Glue job and its files go with it. The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
 
 **Check that nothing is left.** This must print nothing:
 

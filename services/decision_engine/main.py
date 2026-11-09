@@ -5,6 +5,7 @@ import valkey
 from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from services.decision_engine import currency, publisher, security_events
@@ -51,6 +52,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(**APP, lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://securepay-riwi.github.io",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
 _default_openapi = app.openapi
 
 

@@ -302,7 +302,7 @@ Sprint 5 added it for the reconciliation, and Sprint 6 removed `rol-emr-jobs`, w
 | :--- | :--- | :--- |
 | `ssm:GetParameter` | parameter `/rds/analytics_export` | Its database password (read-only user) |
 | `s3:ListBucket` (prefix `curated/conciliacion/*`), `s3:GetObject` | `datalake/curated/conciliacion/*` | Count what matched in each run's output (`matched.jsonl`, contract v1.1) |
-| `s3:PutObject` | `datalake/raw/cases/*`, `datalake/raw/reconciliation/*` | Write the export of the day |
+| `s3:PutObject` | `datalake/raw/cases/*`, `datalake/raw/reconciliation/*`, `datalake/raw/metrics/kaggle/*` | Write the export of the day and the Kaggle metrics (`{"job": "kaggle_metrics"}`, MAG-312) |
 | VPC networking | — | It reaches RDS |
 
 **18. `rol-scheduler`** (assumed by EventBridge Scheduler)
@@ -330,6 +330,7 @@ The trust relationship limits the role to schedules in this account (`aws:Source
 | Action | Resource | Purpose |
 | :--- | :--- | :--- |
 | `s3:PutObject` | `pagoseguro-prod-proveedor-listas/lista_restrictiva.jsonl` | Export the restricted list that the list service reads |
+| `s3:GetObject` | `datalake/raw/kaggle/*` | The seed's Kaggle ETL downloads PaySim and fraudTest (MAG-312) |
 
 The migrations and the seed connect to the database with the master password injected by `rol-admin-ejecucion`, not with IAM.
 
@@ -358,7 +359,7 @@ The trust relationship only accepts GitHub tokens for the `SecurePay-Riwi/Secure
 
 The trust relationship only accepts GitHub tokens for `SecurePay-Riwi/securepay-apis` on the `main` branch. It is a separate role so that securepay-apis cannot deploy the engine. Another data-source repository that deploys its own image gets its own role the same way (Terraform variable `source_deployers`).
 
-**23. `usuario-powerbi`** (read only)
+**23. `usuario-powerbi`** (read only). In dev the `apply` creates its access key and writes it to the AWS CLI profile `securepay-powerbi` of the computer that applies (`powerbi_profile`); the key lives one session, like dev. In prod it is created by hand and rotated every 90 days.
 
 | Action | Resource | Purpose |
 | :--- | :--- | :--- |
@@ -544,6 +545,6 @@ The components skip `create_schema()` in AWS (`CREATE_SCHEMA=false`): it runs `A
 | `alerts` | Alerts | `SELECT`, `UPDATE` on `cases`, `compliance_reports`; `SELECT`, `INSERT` on `case_events`; `SELECT`, `DELETE` on `account_transactions` (30-day purge); `SELECT` on `reconciliation_runs`; `USAGE` on the `case_events` sequence |
 | `reconciliation` | Difference writer | `SELECT`, `INSERT`, `UPDATE` on `reconciliation_runs`; `SELECT`, `INSERT` on `reconciliation_differences` |
 | `list_loader` | `list-loader` | `SELECT` on `cuentas`, `usuarios`, `comercios`, `listas_restrictivas` |
-| `analytics_export` | Analytics export (HU-66) | `SELECT` on `cases`, `case_events`, `reconciliation_differences`, `reconciliation_runs` |
+| `analytics_export` | Analytics export (HU-66) and the Kaggle metrics (MAG-312) | `SELECT` on `cases`, `case_events`, `reconciliation_differences`, `reconciliation_runs`, and for the Kaggle replay on `transacciones`, `cuentas`, `usuarios`, `comercios`, `listas_restrictivas`, `rule_catalog_versions` |
 
 `INSERT ... RETURNING` also needs `SELECT`, and `SELECT ... FOR UPDATE` needs `UPDATE`. No user may `DROP`, `TRUNCATE` or `ALTER` a table, delete cases, or change `case_events`. The cases API, the rules API and the rules cache refresh get their users in the pull request that deploys them. The tests in `services/db_bootstrap/tests/` run each component's real code with its own user against PostgreSQL, and check what each user is denied.

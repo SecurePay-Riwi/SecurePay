@@ -14,7 +14,7 @@ The files are in `infra/load/`:
 | :--- | :--- |
 | `locustfile.py` | [Locust](https://locust.io/): each simulated core sends one transaction per second, so users = tx/s. The shape holds each step of `LOAD_STEPS` for `LOAD_STEP_SECONDS` and stops. At the end it prints how the engine answered (`APPROVE`, `HOLD`, `REJECT`, `default`) |
 | `transactions.py` | The requests: P2P 60 %, QR 25 %, RECARGA 10 %, RETIRO 5 %, between the seed's active accounts, each in the payer's currency, with a new id each |
-| `accounts.json` | The seed's 9,820 active accounts with their currency (one per line), and its 20 active merchants. AWS dev is seeded with the same volume (`SEED_MODE=dev`, `SEED_USERS=10000` in `envs/dev`), so these ids exist there. To write it again, seed locally with `SEED_USERS=10000` and run `python -m infra.load.accounts` |
+| `accounts.json` | The seed's 9,820 active accounts with their currency (one per line), active accounts whose owners are on the restricted list, and its 20 active merchants. AWS dev is seeded with the same volume (`SEED_MODE=dev`, `SEED_USERS=10000` in `envs/dev`), so these ids exist there. To write it again, seed locally with `SEED_USERS=10000` and run `python -m infra.load.accounts` |
 
 `services/decision_engine/tests/test_load_transactions.py` checks that every generated transaction is a request the engine accepts.
 

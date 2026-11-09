@@ -151,13 +151,15 @@ resource "aws_iam_role_policy" "source_deploy" {
 }
 
 # Power BI Desktop cannot assume roles: a read-only user, the only
-# long-lived credential. Its access key is created by hand and rotated
-# every 90 days; Terraform never stores it.
+# long-lived credential. In dev the apply creates its access key and writes
+# it to the AWS CLI profile Power BI uses; dev lives one session, so the
+# key does too. Outside dev it is created by hand and rotated every 90 days.
 resource "aws_iam_user" "powerbi" {
   name = "${local.p}-powerbi"
 
-  # The access key is made by hand in the console (never in Terraform):
-  # destroy deletes it with the user instead of failing with DeleteConflict.
+  # In dev the apply creates its access key (envs/dev/up.tf, powerbi_profile);
+  # force_destroy also removes a key made by hand instead of failing with
+  # DeleteConflict.
   force_destroy = true
 }
 

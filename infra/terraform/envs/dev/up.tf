@@ -6,7 +6,13 @@
 #      when that tag is not there yet (terraform_data.image);
 #   3. after db-bootstrap, seeds RDS with the admin task (terraform_data.seed),
 #      loads the cache (list-loader) and today's exchange rates, and writes
-#      the fixed rates of 2026-10-01, the day of the test transactions.
+#      the fixed rates of 2026-10-01, the day of the test transactions;
+#   4. uploads PaySim and fraudTest from the securepay-csv clone to the raw
+#      layer and loads their sample into RDS with the seed's Kaggle ETL
+#      (terraform_data.kaggle_etl), so the nightly run measures the rules
+#      against them (MAG-312);
+#   5. creates the access key of the powerbi user and writes it to the AWS
+#      CLI profile securepay-powerbi of that computer, for Power BI.
 #
 # Set build_images = false to push the images yourself and give their tags
 # in engine_image_tag, admin_image_tag, lambda_image_tag and apis_image_tag
@@ -95,6 +101,47 @@ resource "terraform_data" "seed" {
   depends_on = [module.network]
 }
 
+# The Kaggle datasets (load_kaggle, MAG-312): the CSVs that securepay-csv's
+# loader leaves in its clone (data/kaggle, never committed), uploaded as is
+# to the raw layer with the keys that loader uses, and then the seed's
+# Kaggle ETL in the admin task: it downloads them, checks their SHA-256 and
+# adds its 70,000 rows to `transacciones`. Again after every new seed (the
+# seed empties that table) or new CSV. Nothing happens when the CSVs are
+# not there: run `uv run python -m securepay_csv.kaggle_datasets` once in
+# securepay-csv first.
+locals {
+  kaggle_dir = coalesce(var.kaggle_dir, "${dirname(local.repo_root)}/securepay-csv/data/kaggle")
+  kaggle_csv = {
+    "raw/kaggle/paysim/paysim.csv"               = "${local.kaggle_dir}/PS_20174392719_1491204439457_log.csv"
+    "raw/kaggle/sparkov/fraudtest/fraudTest.csv" = "${local.kaggle_dir}/fraudTest.csv"
+  }
+  load_kaggle = var.load_kaggle && local.load_data && alltrue([for file in values(local.kaggle_csv) : fileexists(file)])
+}
+
+resource "aws_s3_object" "kaggle" {
+  for_each = local.load_kaggle ? local.kaggle_csv : {}
+
+  bucket = module.storage.bucket_names["datalake"]
+  key    = each.key
+  source = each.value
+  # Not etag: the AWS provider uploads files this size in parts, and the
+  # etag of a multipart object is not the file's MD5.
+  source_hash = filemd5(each.value)
+}
+
+resource "terraform_data" "kaggle_etl" {
+  count = local.load_kaggle ? 1 : 0
+
+  triggers_replace = concat([terraform_data.seed[0].id], [for key in sort(keys(local.kaggle_csv)) : aws_s3_object.kaggle[key].source_hash])
+
+  provisioner "local-exec" {
+    working_dir = local.scripts_dir
+    command     = "${local.dev_up} run-task --cluster ${module.ecs.cluster_name} --task-definition ${module.ecs.admin_task_family}:${module.ecs.admin_task_revision} --subnets ${join(",", module.network.app_subnet_ids)} --security-group ${module.security_groups.ids["admin"]} --region ${var.region} --timeout-minutes 40 --kaggle-raw-dir s3://${module.storage.bucket_names["datalake"]}/raw/kaggle"
+  }
+
+  depends_on = [module.network]
+}
+
 # Accounts, merchants and the restricted list into the cache now, instead
 # of at 01:00 Bogota; again after a new seed or a new cache.
 resource "aws_lambda_invocation" "list_loader" {
@@ -173,6 +220,35 @@ resource "terraform_data" "demo_day_run" {
     command     = "${local.dev_up} start-day --state-machine ${module.reconciliation.state_machine_arn} --day 2026-10-05 --region ${var.region}"
   }
 
-  # The seed and the cache first: the run's store and export read RDS.
-  depends_on = [terraform_data.seed]
+  # The seed and the Kaggle rows first: the run's store, export and
+  # Kaggle metrics read RDS.
+  depends_on = [terraform_data.seed, terraform_data.kaggle_etl]
+}
+
+# Power BI's key (powerbi_profile). The access key of the powerbi user,
+# written to that profile of ~/.aws/credentials on the computer that
+# applies, which Power BI's DSN reads (AwsProfile): after the apply,
+# Refresh in Power BI is enough. The secret is in the local state, like the
+# database passwords; it goes to the script in environment variables, never
+# in the command line or the output. Destroy deletes the key; the profile
+# stays until the next apply overwrites it.
+resource "aws_iam_access_key" "powerbi" {
+  count = var.powerbi_profile != null ? 1 : 0
+
+  user = module.iam.powerbi_user
+}
+
+resource "terraform_data" "powerbi_profile" {
+  count = var.powerbi_profile != null ? 1 : 0
+
+  triggers_replace = [aws_iam_access_key.powerbi[0].id, var.powerbi_profile]
+
+  provisioner "local-exec" {
+    working_dir = local.scripts_dir
+    command     = "${local.dev_up} aws-profile --profile ${var.powerbi_profile} --region ${var.region}"
+    environment = {
+      POWERBI_ACCESS_KEY_ID     = aws_iam_access_key.powerbi[0].id
+      POWERBI_SECRET_ACCESS_KEY = aws_iam_access_key.powerbi[0].secret
+    }
+  }
 }
