@@ -147,7 +147,7 @@ def _task(status: str, code: int | None = None) -> str:
     )
 
 
-def _run_seed(monkeypatch, *states: str):
+def _run_seed(monkeypatch, *states: str, kaggle_raw_dir: str | None = None):
     answers = iter(states)
     commands = Commands({"aws ecs --region us-east-2 run-task": {"stdout": "arn:task"}})
 
@@ -161,7 +161,7 @@ def _run_seed(monkeypatch, *states: str):
     monkeypatch.setattr(dev_up.time, "sleep", lambda seconds: None)
     dev_up.run_task(
         "securepay-dev", "securepay-dev-admin:3", "subnet-a,subnet-b", "sg-1",
-        "us-east-2", 20,
+        "us-east-2", 20, kaggle_raw_dir,
     )  # fmt: skip
     return commands
 
@@ -174,6 +174,29 @@ def test_the_seed_waits_for_its_task_to_stop(monkeypatch, capsys):
     assert "assignPublicIp=DISABLED" in " ".join(start)
     assert len(commands.ran("aws ecs --region us-east-2 describe-tasks")) == 2
     assert "exit code 0" in capsys.readouterr().out
+
+
+def test_the_seed_runs_the_image_as_it_is(monkeypatch):
+    commands = _run_seed(monkeypatch, _task("STOPPED", 0))
+    assert (
+        "--overrides" not in commands.ran("aws ecs --region us-east-2 run-task")[0][0]
+    )
+
+
+def test_the_kaggle_etl_runs_in_the_admin_image(monkeypatch):
+    commands = _run_seed(
+        monkeypatch, _task("STOPPED", 0), kaggle_raw_dir="s3://lake/raw/kaggle"
+    )
+
+    start = commands.ran("aws ecs --region us-east-2 run-task")[0][0]
+    container = json.loads(start[start.index("--overrides") + 1])["containerOverrides"][
+        0
+    ]
+    assert container["name"] == "admin"
+    assert container["command"] == ["python", "-m", "securepay_seed.kaggle_etl.etl"]
+    assert container["environment"] == [
+        {"name": "HIST_RAW_DIR", "value": "s3://lake/raw/kaggle"}
+    ]
 
 
 def test_a_failed_seed_fails_the_apply(monkeypatch):
@@ -226,7 +249,7 @@ def test_terraform_runs_the_script_without_quotes_or_paths():
     assert commands
     for command in commands:
         assert '\\"' not in command, command
-    assert up.count("working_dir = local.scripts_dir") == 3
+    assert up.count("working_dir = local.scripts_dir") == 4
 
 
 def test_the_engine_image_never_takes_the_terraform_state():

@@ -332,6 +332,75 @@ def test_current_catalog_without_the_rules_api_is_the_code_defaults():
     assert snapshot.rules  # the latest version, or the code defaults
 
 
+def _fake_kaggle(monkeypatch, transactions, labels):
+    """kaggle_metrics() without PostgreSQL: the rows and the reference data
+    come from the fixtures."""
+    from services.analytics import labels as lb
+
+    monkeypatch.setattr(
+        lb, "kaggle_transactions", lambda session, limit=None: (transactions, labels)
+    )
+    monkeypatch.setattr(
+        ReferenceData,
+        "from_database",
+        classmethod(lambda cls, session: ReferenceData.from_fixtures(FIXTURES)),
+    )
+
+
+def test_kaggle_metrics_writes_the_raw_layer(monkeypatch, tmp_path):
+    """MAG-312: the state machine's step writes what build_metrics reads."""
+    events, day = _fixture_history()
+    transactions = [TransactionRequest(**e["transaction"]) for e in events.values()]
+    day_labels = [
+        lb for lb in generator_labels(str(LABELS)) if lb.transaction_id in day
+    ]
+    _fake_kaggle(monkeypatch, transactions, day_labels)
+
+    done = metrics.kaggle_metrics(None, str(tmp_path), catalog=default_catalog())
+
+    assert done["transactions"] == len(events)
+    assert done["labeled"] == len(day_labels)
+    assert done["rules_version"] == "0"
+    folder = tmp_path / "raw" / "metrics" / "kaggle"
+    assert set(done["written"]) == set(metrics.RAW_METRICS_FILES)
+    rows = (folder / "rule_metrics.jsonl").read_text().splitlines()
+    assert len(rows) == len(done["result"]["rule_metrics"])
+
+
+def test_kaggle_metrics_without_kaggle_rows_writes_nothing(monkeypatch, tmp_path):
+    _fake_kaggle(monkeypatch, [], [])
+
+    done = metrics.kaggle_metrics(None, str(tmp_path), catalog=default_catalog())
+
+    assert done == {"rules_version": "0", "transactions": 0, "written": {}}
+    assert not (tmp_path / "raw").exists()
+
+
+def test_the_export_lambda_runs_the_kaggle_job(monkeypatch):
+    from services.analytics import export
+
+    class Session:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+    seen = {}
+
+    def fake(session, root, limit=None, catalog=None):
+        seen["root"] = root
+        return {"transactions": 3, "written": {}, "result": {"big": True}}
+
+    monkeypatch.setattr(export, "SessionLocal", Session)
+    monkeypatch.setattr(metrics, "kaggle_metrics", fake)
+
+    answer = export.handler({"job": "kaggle_metrics"})
+
+    assert answer == {"transactions": 3, "written": {}}  # small payload
+    assert seen["root"] == export.ANALYTICS_DATA_DIR
+
+
 def test_write_raw_leaves_the_rows_for_the_etl(tmp_path):
     rows = metrics.rule_metrics(
         [decision("a", "HOLD", ["velocity"])], [label("a", True, source="paysim")]

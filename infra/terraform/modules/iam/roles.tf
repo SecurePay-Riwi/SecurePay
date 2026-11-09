@@ -173,14 +173,15 @@ locals {
 
     # The PostgreSQL export of the cases and the reconciliation (HU-66, C6):
     # reads its tables with its own user, counts what matched in the match
-    # output (matched.jsonl, contract v1.1) and writes the raw layer.
+    # output (matched.jsonl, contract v1.1) and writes the raw layer. Its
+    # kaggle_metrics job writes the Kaggle replay's metrics (MAG-312).
     analytics-export = {
       service = "lambda.amazonaws.com"
       statements = [
         { Sid = "DatabasePassword", Effect = "Allow", Action = "ssm:GetParameter", Resource = "${local.arn.parameter}/rds/analytics_export" },
         { Sid = "FindMatchFiles", Effect = "Allow", Action = "s3:ListBucket", Resource = local.bucket.datalake, Condition = { StringLike = { "s3:prefix" = ["curated/conciliacion/*"] } } },
         { Sid = "ReadMatchFiles", Effect = "Allow", Action = "s3:GetObject", Resource = "${local.bucket.datalake}/curated/conciliacion/*" },
-        { Sid = "WriteRawExport", Effect = "Allow", Action = "s3:PutObject", Resource = ["${local.bucket.datalake}/raw/cases/*", "${local.bucket.datalake}/raw/reconciliation/*"] },
+        { Sid = "WriteRawExport", Effect = "Allow", Action = "s3:PutObject", Resource = ["${local.bucket.datalake}/raw/cases/*", "${local.bucket.datalake}/raw/reconciliation/*", "${local.bucket.datalake}/raw/metrics/kaggle/*"] },
       ]
     }
 
@@ -220,6 +221,8 @@ locals {
       service = "ecs-tasks.amazonaws.com"
       statements = [
         { Sid = "ExportRestrictedList", Effect = "Allow", Action = "s3:PutObject", Resource = "${local.bucket.list_provider}/lista_restrictiva.jsonl" },
+        # The seed's Kaggle ETL reads PaySim and fraudTest from the raw layer (MAG-312).
+        { Sid = "ReadKaggleCsv", Effect = "Allow", Action = "s3:GetObject", Resource = "${local.bucket.datalake}/raw/kaggle/*" },
       ]
     }
   }

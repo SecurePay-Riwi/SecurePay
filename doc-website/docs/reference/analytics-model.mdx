@@ -17,7 +17,7 @@ engine ──SNS──► analytics consumer ──► raw/decisiones/fecha=<arr
 generator labels.jsonl ──(services.analytics.labels)──► raw/labels/fecha=<day>/  ──┤
 PostgreSQL cases ──(export.py, C6)──► raw/cases/fecha=<day>/                       ──┤
 PostgreSQL reconciliation ──(export.py, C6)──► raw/reconciliation/fecha=<day>/     ──┤
-Kaggle rows ──(python -m services.analytics.metrics --kaggle)──► raw/metrics/kaggle/ ──┤
+Kaggle rows ──(metrics --kaggle; in AWS MeasureKaggle)──► raw/metrics/kaggle/ ──┤
                                                                                    ▼
                         build_decisions ──► curated/decisiones/fecha=<day>/ (Parquet, one row per transaction)
                                                                                    ▼

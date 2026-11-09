@@ -47,7 +47,7 @@ RNF-01 and CA-09 ask for a decision p99 of 200 ms or less at 300 tx/s. The load 
 
 ## 🟡 Where the Kaggle history lives in production
 
-Today the PaySim and Sparkov sample linked to the seed users is in the PostgreSQL `transacciones` table (loaded once, never edited), and the full CSVs are in `raw/kaggle/` in S3. Still to decide whether in production the sample also moves to S3 (and DynamoDB), so that all the history is in one place. Jorge sees S3 as the more feasible option (2026-10-19); for now it stays as it is.
+In dev (MAG-312) the full CSVs are in `raw/kaggle/` and the seed's Kaggle ETL reads them from there, so AWS no longer needs a local copy. Today the PaySim and Sparkov sample linked to the seed users is in the PostgreSQL `transacciones` table (loaded once, never edited), and the full CSVs are in `raw/kaggle/` in S3. Still to decide whether in production the sample also moves to S3 (and DynamoDB), so that all the history is in one place. Jorge sees S3 as the more feasible option (2026-10-19); for now it stays as it is.
 
 ## Other open items
 
