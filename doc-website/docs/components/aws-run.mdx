@@ -30,7 +30,7 @@ The script:
 3. **Resolves the mule's case** as `LEGITIMATE`, reads its `evidence_key` and checks the object's Object Lock mode and date in S3 (RN-12).
 4. **Reads CloudWatch** for the minutes of the run: the load balancer's `TargetResponseTime` (p50, p95, p99) and requests, default decisions (`FallbackDecisions`), messages read per queue and each Lambda's invocations and errors.
 
-The restricted-list story needs an account whose owner is on the list; give it with `--listed-account <id>`, or the page says it was not in the run.
+The restricted-list story needs an account whose owner is on the list; give it with `--listed-account <id>`, or the page says it was not in the run. `infra/load/accounts.json` now includes the active listed account ids as well as the unlisted accounts and merchants.
 
 The times on the page come from AWS's clocks: "Case opened +1.5 s" is the case's `created_at` minus the engine's `processed_at`. The milliseconds "at the client" are measured by the script and include the network to AWS.
 

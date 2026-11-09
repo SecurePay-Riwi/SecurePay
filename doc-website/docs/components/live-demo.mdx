@@ -1,0 +1,50 @@
+---
+sidebar_position: 12
+title: Live AWS demo
+description: Send fresh, real requests from the browser to the deployed SecurePay engine.
+---
+
+# Live AWS demo
+
+**Page:** [/live-demo](/live-demo) · **Folders:** `services/analytics/live_demo.py`, `doc-website/src/pages/live-demo.tsx`, `doc-website/static/live-demo/` · **Run:** `uv run python -m services.analytics.live_demo`
+
+Unlike the [simulated demo](./demo.mdx) and the [AWS recording](./aws-run.mdx), this page sends requests from the user's browser to the engine. It does not show a decision until it receives the engine's response. Each scenario shows its exact request JSON and the actual response JSON, including the decision reason when a transaction is evaluated.
+
+## Connect
+
+1. Deploy the decision engine with this CORS middleware. It permits only `https://securepay-riwi.github.io`, `http://localhost:3000` and `http://127.0.0.1:3000`; `Content-Type` is the only allowed request header, and credentials are not enabled. Deploy the updated engine image before expecting the hosted site to connect.
+2. Configure `domain_name` in the Terraform environment with a DNS name whose public ACM certificate is issued and trusted by the browser. The development load balancer's default self-signed certificate is not usable by browser `fetch`; accepting it for `curl -k` does not make it trusted by the page.
+3. Read the load balancer name with `terraform -chdir=infra/terraform/envs/dev output -raw alb_dns_name`, prefix it with `https://`, and paste that base URL into the page.
+4. Choose a story, inspect its requests and click **Send this scenario**. The steps are sent in timestamp order, one at a time. On the first HTTP or network error, the page displays the response/error and stops the sequence.
+
+CORS is a browser policy, not authentication. The engine endpoints are public and the page sends synthetic demo transactions only; do not enter credentials or real customer data. A browser TLS or CORS error is shown as a failed request, not as a decision.
+
+## Stories
+
+The page prepares fresh transaction IDs, event IDs, device IDs and recent timestamps each time. It randomly selects active, unlisted accounts from `infra/load/accounts.json`, assigning different accounts to separate stories; the restricted-list story uses an active seed account whose owner is listed. `infra/load/accounts.py` exports these restricted account IDs by comparing normalized owner documents with `listas_restrictivas`. Dev is seeded with the same 10,000 users as the committed fixture.
+
+| Story | Requests | Expected with the code-default rules |
+| :--- | :--- | :--- |
+| Everyday transfer | One P2P | APPROVE |
+| Default decision | P2P from an account absent from the reference-data cache | HOLD |
+| Restricted list | P2P to a listed owner | REJECT |
+| Velocity | Six P2P transfers in under ten minutes | HOLD |
+| Mule account | Three inbound P2P transfers, then an 85% withdrawal | HOLD |
+| Shared device | Four QR payments from one device | APPROVE with risk score 30 |
+| Splitting | Three withdrawals whose total exceeds the daily limit | HOLD |
+| Account takeover | Device and password events, then a USD 350 P2P transfer | HOLD |
+| Other currency | COP P2P transfer | APPROVE |
+
+These are expectations for the default catalog, not substituted results. A different deployed rule catalog can decide differently; the page always presents the response it received.
+
+## Regenerate seed data
+
+After changing or reseeding the accounts fixture, run:
+
+```powershell
+uv run python -m infra.load.accounts
+uv run python -m services.analytics.live_demo
+uv run pytest services/analytics/tests/test_live_demo.py
+```
+
+The first command requires the seed database. The second writes a compact browser fixture with active accounts grouped by currency, merchants and one active restricted USD account. It excludes every listed account from the random pool.
