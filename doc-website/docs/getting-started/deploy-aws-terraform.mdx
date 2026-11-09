@@ -562,16 +562,7 @@ The `.pbix` reads the views through the Athena ODBC driver 2.x, with the key of 
 
 4. In Power BI: **Get data → ODBC**, DSN `securepay-athena`, and **Use Data Source Configuration** for the credentials (if an old attempt is saved, clear it first in **File → Options → Data source settings**). The navigator shows 19 objects: the 13 tables and the views q1..q6.
 
-5. Point the report's queries at Athena. In **Transform data**, open each query that reads a local Parquet folder, then **Advanced Editor**, and replace its whole text with the Athena table or view of the same name (the names and columns are those of [the analytics model](../reference/analytics-model.mdx)):
-
-   ```
-   let
-       Source = Odbc.Query("dsn=securepay-athena", "SELECT * FROM q1_transactions")
-   in
-       Source
-   ```
-
-   The views are `q1_transactions`, `q2_rules`, `q3_fraud_detection`, `q4_cases`, `q5_reconciliation` and `q6_risk`; the tables keep their names (`fact_decision`, `dim_rule`, ...). Keep any step after the source (renames, types) if the query had one. **Close & Apply**: every page must show the demo day 2026-10-05 with no errors. Save the `.pbix` and commit it.
+5. Point the report at Athena. Every query of the `.pbix` reads its view through the function `LoadView`, which follows the parameter `DataSource`: `Local` (the default) reads the Parquet views under `DataRoot` (`generated/analytics/views`, written by `python -m services.analytics`), and `Athena` runs `SELECT * FROM <view>` on the DSN `securepay-athena` (`q1_transactions`, `q2_rules`, `q3_fraud_detection`, `q4_cases`, `q5_reconciliation`, `q6_risk`). In **Transform data → Manage parameters**, set `DataSource` to `Athena` and **Close & Apply**: every page must show the demo day 2026-10-05 with no errors (Reconciliation counts the 19 differences of the reconciliation and analytics fixtures together; locally it shows 6). Set it back to `Local` before you commit the `.pbix`, so it opens without AWS.
 
 6. After the session, delete the key in IAM and the `securepay-powerbi` section of `~\.aws\credentials`. The user has `force_destroy`, so `terraform destroy` removes it even if the key is left.
 
