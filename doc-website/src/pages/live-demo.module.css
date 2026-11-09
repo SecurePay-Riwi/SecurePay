@@ -1,0 +1,266 @@
+.page {
+  width: 100%;
+  max-width: 76rem;
+  margin: 0 auto;
+  padding: 2.5rem 1rem 4rem;
+}
+
+.hero h1 {
+  margin: 0.25rem 0 0.75rem;
+  font-size: clamp(1.7rem, 4vw, 2.4rem);
+  letter-spacing: -0.02em;
+}
+
+.hero > p:last-child {
+  max-width: 48rem;
+  margin: 0;
+  color: var(--ifm-color-emphasis-800);
+  font-size: 1.05rem;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--ifm-color-primary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.connection,
+.scenario {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 1rem;
+  background: var(--ifm-background-surface-color);
+}
+
+.connection h2,
+.scenarioHeading h2 {
+  margin: 0 0 1rem;
+  font-size: 1.25rem;
+}
+
+.connection label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-weight: 600;
+}
+
+.connectionRow {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.connectionRow input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--ifm-color-emphasis-400);
+  border-radius: 0.5rem;
+  background: var(--ifm-background-color);
+  color: var(--ifm-font-color-base);
+  font: inherit;
+}
+
+.connectionRow button,
+.secondaryButton {
+  padding: 0.65rem 0.9rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: var(--ifm-color-primary);
+  color: white;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.connectionRow button:disabled,
+.secondaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.help,
+.warning,
+.sequenceNote {
+  margin: 0.65rem 0 0;
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.9rem;
+}
+
+.warning {
+  padding: 0.75rem;
+  border-left: 3px solid var(--ifm-color-warning);
+  background: var(--ifm-color-warning-contrast-background);
+}
+
+.error {
+  color: var(--ifm-color-danger);
+}
+
+.scenarioHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.scenarioHeading h2 {
+  margin-bottom: 0;
+}
+
+.secondaryButton {
+  border: 1px solid var(--ifm-color-emphasis-300);
+  background: transparent;
+  color: var(--ifm-font-color-base);
+}
+
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding: 0.75rem 0;
+}
+
+.tabs button {
+  flex: 0 0 auto;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ifm-font-color-base);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tabs .activeTab {
+  border-color: var(--ifm-color-primary);
+  background: var(--ifm-color-primary);
+  color: white;
+}
+
+.scenario {
+  margin-top: 0.25rem;
+}
+
+.scenarioTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.scenarioTitle h2 {
+  margin: 0.15rem 0 0.5rem;
+  font-size: 1.35rem;
+}
+
+.decision {
+  flex: 0 0 auto;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+.approved {
+  background: #d7f5e4;
+  color: #155d36;
+}
+
+.rejected {
+  background: #ffe0e0;
+  color: #8d1d1d;
+}
+
+.held {
+  background: #fff0c2;
+  color: #684c00;
+}
+
+.steps {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.steps details {
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.steps summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.stepMeta {
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.82rem;
+  font-weight: 400;
+}
+
+.payloads {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+  gap: 1rem;
+  padding: 0 0.85rem 0.85rem;
+}
+
+.payloads h3 {
+  margin: 0.4rem 0;
+  font-size: 0.95rem;
+}
+
+.payloads pre {
+  max-height: 28rem;
+  overflow: auto;
+  margin: 0;
+  padding: 0.8rem;
+  border-radius: 0.5rem;
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.reason {
+  margin: 0.6rem 0 0;
+  font-weight: 600;
+}
+
+.loading,
+.note {
+  margin-top: 2rem;
+  color: var(--ifm-color-emphasis-700);
+}
+
+.note {
+  padding-top: 1rem;
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding-top: 1.5rem;
+  }
+
+  .connectionRow,
+  .scenarioHeading,
+  .steps summary {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .scenarioTitle {
+    align-items: flex-start;
+  }
+}

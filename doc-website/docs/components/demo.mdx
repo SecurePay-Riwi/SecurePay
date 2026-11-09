@@ -22,6 +22,8 @@ The page never calls an API and never decides anything. Everything it shows is i
 
 `services/analytics/tests/test_demo.py` fails when the committed `scenarios.json` is not what the engine gives today, so a change to a rule that changes a decision also changes the demo, in the same PR.
 
+To send requests to a deployed engine instead, use the separate [Live AWS demo](/live-demo). It uses fresh seed accounts, IDs and recent timestamps, then displays the actual API request and response. The simulated page above remains available and does not send requests.
+
 | Story | Rule | Decision |
 | :--- | :--- | :--- |
 | Everyday transfer | RN-01 | APPROVE, no rule fires |

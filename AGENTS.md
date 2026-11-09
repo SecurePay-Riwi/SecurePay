@@ -44,7 +44,7 @@ SecurePay/                  ← this repo: the product (engine, consumers, infra
 │   ├── reconciliation/     ← nightly reconciliation: ingest, match (Spark), store (Sprint 5)
 │   ├── cache_loader/       ← loads accounts, merchants and the restricted list into Valkey (HU-67)
 │   ├── db_bootstrap/       ← AWS only: creates the tables, one database user per component and its grants (MAG-361)
-│   ├── analytics/          ← analytics ETL (Spark), views q1..q6, labels, replay, metrics and the web demo's data (demo.py)
+│   ├── analytics/          ← analytics ETL (Spark), views q1..q6, labels, replay, metrics and web demo data (demo.py, live_demo.py)
 │   └── consumers/          ← SNS/SQS consumers and analytics
 ├── tests/                  ← end-to-end tests that run more than one service
 │                             (test_rule_catalog_e2e.py: rules API + engine)
