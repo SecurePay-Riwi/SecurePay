@@ -9,6 +9,10 @@ Terraform calls this file, never a person:
     run-task  runs a Fargate task and fails if its container fails (the
               seed; with --kaggle-raw-dir, the seed's Kaggle ETL)
     start-day starts the nightly state machine for the demo day
+    aws-profile
+              writes the Power BI user's access key to an AWS CLI profile
+              (the key comes in POWERBI_ACCESS_KEY_ID and
+              POWERBI_SECRET_ACCESS_KEY, never in the command line)
 
 Only the standard library and the docker and aws commands: it runs with
 `uv run --no-project python`, outside the project's environment, on
@@ -170,6 +174,21 @@ def start_day(state_machine: str, day: str, region: str) -> None:
     print(f"started {execution}; follow it in Step Functions")
 
 
+def aws_profile(profile: str, region: str) -> None:
+    """The key Terraform just created into `profile` of ~/.aws/credentials,
+    with `aws configure set`, which keeps the rest of the file. Power BI's
+    DSN reads it from there (AwsProfile), so nobody copies it by hand."""
+    values = {
+        "aws_access_key_id": os.environ["POWERBI_ACCESS_KEY_ID"],
+        "aws_secret_access_key": os.environ["POWERBI_SECRET_ACCESS_KEY"],
+        "region": region,
+        "output": "json",
+    }
+    for name, value in values.items():
+        _run("aws", "configure", "set", name, value, "--profile", profile)
+    print(f"wrote the AWS CLI profile {profile}")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
@@ -197,6 +216,10 @@ def main(argv: list[str] | None = None) -> None:
     d.add_argument("--day", required=True)
     d.add_argument("--region", required=True)
 
+    a = commands.add_parser("aws-profile")
+    a.add_argument("--profile", required=True)
+    a.add_argument("--region", required=True)
+
     args = parser.parse_args(argv)
     if args.command == "tags":
         print(json.dumps(tags(json.load(sys.stdin))))
@@ -204,6 +227,8 @@ def main(argv: list[str] | None = None) -> None:
         if not args.context:
             parser.error("push needs --context or DEV_UP_CONTEXT")
         push(args.repository, args.tag, args.context, args.region)
+    elif args.command == "aws-profile":
+        aws_profile(args.profile, args.region)
     elif args.command == "start-day":
         start_day(args.state_machine, args.day, args.region)
     else:

@@ -359,7 +359,7 @@ The trust relationship only accepts GitHub tokens for the `SecurePay-Riwi/Secure
 
 The trust relationship only accepts GitHub tokens for `SecurePay-Riwi/securepay-apis` on the `main` branch. It is a separate role so that securepay-apis cannot deploy the engine. Another data-source repository that deploys its own image gets its own role the same way (Terraform variable `source_deployers`).
 
-**23. `usuario-powerbi`** (read only)
+**23. `usuario-powerbi`** (read only). In dev the `apply` creates its access key and writes it to the AWS CLI profile `securepay-powerbi` of the computer that applies (`powerbi_profile`); the key lives one session, like dev. In prod it is created by hand and rotated every 90 days.
 
 | Action | Resource | Purpose |
 | :--- | :--- | :--- |

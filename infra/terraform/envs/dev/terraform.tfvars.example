@@ -48,3 +48,4 @@ budget_emails = ["you@example.com"]
 # load_kaggle        = false   # do not upload PaySim and fraudTest nor run the Kaggle ETL
 # kaggle_dir         = "C:/datasets/kaggle"   # the two CSVs, if not in ../securepay-csv/data/kaggle
 # api_users          = {}      # create the Cognito users by hand
+# powerbi_profile    = null    # no Power BI key: create it by hand in IAM
