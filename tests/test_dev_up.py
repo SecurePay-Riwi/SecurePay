@@ -249,7 +249,7 @@ def test_terraform_runs_the_script_without_quotes_or_paths():
     assert commands
     for command in commands:
         assert '\\"' not in command, command
-    assert up.count("working_dir = local.scripts_dir") == 4
+    assert up.count("working_dir = local.scripts_dir") == 5
 
 
 def test_the_engine_image_never_takes_the_terraform_state():
@@ -263,3 +263,34 @@ def test_the_engine_image_never_takes_the_terraform_state():
         "**/*.tfvars",
     ):
         assert pattern in ignored
+
+
+def test_the_powerbi_key_goes_to_its_profile_and_never_to_the_output(
+    monkeypatch, capsys
+):
+    commands = Commands({})
+    monkeypatch.setattr(subprocess, "run", commands)
+    monkeypatch.setenv("POWERBI_ACCESS_KEY_ID", "AKIAEXAMPLE")
+    monkeypatch.setenv("POWERBI_SECRET_ACCESS_KEY", "s3cr3t")
+
+    dev_up.main(
+        ["aws-profile", "--profile", "securepay-powerbi", "--region", "us-east-2"]
+    )
+
+    written = {args[3]: args[4] for args, _ in commands.ran("aws configure set")}
+    assert written == {
+        "aws_access_key_id": "AKIAEXAMPLE",
+        "aws_secret_access_key": "s3cr3t",
+        "region": "us-east-2",
+        "output": "json",
+    }
+    for args, _ in commands.ran("aws configure set"):
+        assert args[-2:] == ["--profile", "securepay-powerbi"]
+    assert "s3cr3t" not in capsys.readouterr().out
+
+
+def test_the_powerbi_key_never_reaches_the_command_line():
+    up = (SCRIPT.parents[1] / "envs" / "dev" / "up.tf").read_text()
+    profile = up[up.index('resource "terraform_data" "powerbi_profile"') :]
+    command = next(line for line in profile.splitlines() if "command" in line)
+    assert "secret" not in command and "aws_iam_access_key" not in command

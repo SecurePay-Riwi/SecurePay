@@ -10,7 +10,9 @@
 #   4. uploads PaySim and fraudTest from the securepay-csv clone to the raw
 #      layer and loads their sample into RDS with the seed's Kaggle ETL
 #      (terraform_data.kaggle_etl), so the nightly run measures the rules
-#      against them (MAG-312).
+#      against them (MAG-312);
+#   5. creates the access key of the powerbi user and writes it to the AWS
+#      CLI profile securepay-powerbi of that computer, for Power BI.
 #
 # Set build_images = false to push the images yourself and give their tags
 # in engine_image_tag, admin_image_tag, lambda_image_tag and apis_image_tag
@@ -221,4 +223,32 @@ resource "terraform_data" "demo_day_run" {
   # The seed and the Kaggle rows first: the run's store, export and
   # Kaggle metrics read RDS.
   depends_on = [terraform_data.seed, terraform_data.kaggle_etl]
+}
+
+# Power BI's key (powerbi_profile). The access key of the powerbi user,
+# written to that profile of ~/.aws/credentials on the computer that
+# applies, which Power BI's DSN reads (AwsProfile): after the apply,
+# Refresh in Power BI is enough. The secret is in the local state, like the
+# database passwords; it goes to the script in environment variables, never
+# in the command line or the output. Destroy deletes the key; the profile
+# stays until the next apply overwrites it.
+resource "aws_iam_access_key" "powerbi" {
+  count = var.powerbi_profile != null ? 1 : 0
+
+  user = module.iam.powerbi_user
+}
+
+resource "terraform_data" "powerbi_profile" {
+  count = var.powerbi_profile != null ? 1 : 0
+
+  triggers_replace = [aws_iam_access_key.powerbi[0].id, var.powerbi_profile]
+
+  provisioner "local-exec" {
+    working_dir = local.scripts_dir
+    command     = "${local.dev_up} aws-profile --profile ${var.powerbi_profile} --region ${var.region}"
+    environment = {
+      POWERBI_ACCESS_KEY_ID     = aws_iam_access_key.powerbi[0].id
+      POWERBI_SECRET_ACCESS_KEY = aws_iam_access_key.powerbi[0].secret
+    }
+  }
 }

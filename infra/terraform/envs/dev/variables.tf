@@ -179,6 +179,12 @@ variable "kaggle_dir" {
   default     = null
 }
 
+variable "powerbi_profile" {
+  description = "AWS CLI profile where the apply writes the access key of the powerbi user, the one Power BI's DSN reads (deploy-aws-terraform.mdx, \"Power BI over Athena\"). Null: no key; create it by hand."
+  type        = string
+  default     = "securepay-powerbi"
+}
+
 variable "load_runner" {
   description = "Create the EC2 machine that runs the load test from inside the VPC (HU-60, load-test.mdx). About USD 0.10 an hour: only for that session."
   type        = bool
