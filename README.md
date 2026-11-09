@@ -28,6 +28,81 @@ SecurePay-Riwi/
 └── securepay-apis/
 ```
 
+## From zero to AWS
+
+Everything runs in AWS (dev, region `us-east-2`) from one command. On a Windows computer you install only:
+
+- **Git** and **Docker Desktop** (running). Terraform, the AWS CLI and uv come inside the `deployer` container (`compose.aws.yml`, `infra/deployer/`), so you do not install them.
+- **Power BI Desktop** and the [Amazon Athena ODBC driver 2.x](https://docs.aws.amazon.com/athena/latest/ug/odbc-v2-driver.html) (64-bit), only for the dashboard. They are Windows programs, so they cannot run in a container.
+
+Run the commands in PowerShell.
+
+**1. AWS user (once, in the console).** Sign in to the [AWS console](https://console.aws.amazon.com/) and go to **IAM → Users → Create user**. Name it `<your-name>-terraform`, attach **`PowerUserAccess`**, then add an inline policy named `securepay-terraform-iam` with the whole [`infra/terraform/terraform-user-policy.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/terraform-user-policy.json). In **Security credentials → Create access key → Command Line Interface**, create a key. Each step in detail: [Deploy to AWS, steps 2 and 3](https://securepay-riwi.github.io/SecurePay/docs/getting-started/deploy-aws-terraform#2-create-an-iam-user-for-terraform).
+
+**2. Clone the four repositories side by side.**
+
+```powershell
+mkdir SecurePay-Riwi; cd SecurePay-Riwi
+git clone https://github.com/SecurePay-Riwi/SecurePay.git
+git clone https://github.com/SecurePay-Riwi/securepay-seed.git
+git clone https://github.com/SecurePay-Riwi/securepay-apis.git
+git clone https://github.com/SecurePay-Riwi/securepay-csv.git
+cd SecurePay
+```
+
+**3. Give the container your AWS key.** Answer with the key of step 1, region `us-east-2` and format `json`. It is saved in `~\.aws\credentials`, never in the repository. Then check that everything is in place:
+
+```powershell
+docker compose -f compose.aws.yml run --rm deployer aws configure
+docker compose -f compose.aws.yml run --rm deployer check
+```
+
+**4. The Kaggle datasets (optional).** These are PaySim and fraudTest, so that the rule metrics (views q2 and q3) also measure them. Without them, the rest works the same. With a [Kaggle API token](https://www.kaggle.com/settings) in `securepay-csv\.env` (`KAGGLE_API_TOKEN=...`; copy `.env.example` first):
+
+```powershell
+docker compose -f compose.aws.yml run --rm deployer kaggle
+```
+
+Or download [PaySim](https://www.kaggle.com/datasets/ealaxi/paysim1) and [fraudTest](https://www.kaggle.com/datasets/kartik2112/fraud-detection) from the web into `securepay-csv\data\kaggle\`. Keep the names `PS_20174392719_1491204439457_log.csv` and `fraudTest.csv`.
+
+**5. Your settings.** Copy the example and set `owner` (your name) and `budget_emails` (your e-mail):
+
+```powershell
+copy infra\terraform\envs\dev\terraform.tfvars.example infra\terraform\envs\dev\terraform.tfvars
+notepad infra\terraform\envs\dev\terraform.tfvars
+```
+
+**6. Bring it up.** Answer `yes`. About 342 resources (339 without the Kaggle CSVs); it takes a while. The apply does all of this:
+
+- builds and pushes the images;
+- creates the network, the engine, the Lambdas, the APIs with their Cognito users, the database, the cache, the data lake, Glue and Athena;
+- seeds the database and loads the Kaggle sample;
+- reconciles the demo day 2026-10-05;
+- writes Power BI's key to the AWS profile `securepay-powerbi`.
+
+```powershell
+docker compose -f compose.aws.yml run --rm deployer apply
+```
+
+Then click **Confirm subscription** in each e-mail from AWS Notifications. AWS requires that click, and nothing can do it for you. The API users' passwords: `docker compose -f compose.aws.yml run --rm deployer output -json api_user_passwords`.
+
+**7. Power BI.** Create the DSN once per computer:
+
+```powershell
+$bucket = (docker compose -f compose.aws.yml run --rm -T deployer output -json bucket_names | ConvertFrom-Json).datalake
+Add-OdbcDsn -Name "securepay-athena" -DriverName "Amazon Athena ODBC (x64)" -DsnType "User" -Platform "64-bit" -SetPropertyValue @("AwsRegion=us-east-2", "Catalog=AwsDataCatalog", "Schema=securepay_dev_analytics", "Workgroup=securepay-dev-powerbi", "OutputLocation=s3://$bucket/athena-results/powerbi/", "AuthenticationType=Default Credentials", "AwsProfile=securepay-powerbi")
+```
+
+Open `services\analytics\powerbi\securepay.pbix`. In **Transform data → Manage parameters**, set `DataSource` to `Athena`, then **Close & Apply**. About 10 minutes after the apply, once the treasury e-mail of 2026-10-05 has arrived, **Refresh** shows the six pages from Athena. Details: [Power BI over Athena](https://securepay-riwi.github.io/SecurePay/docs/getting-started/deploy-aws-terraform#power-bi-over-athena).
+
+**8. Take it down.** Run this after every session: the NAT Gateways and the database cost money even when idle. Answer `yes`.
+
+```powershell
+docker compose -f compose.aws.yml run --rm deployer destroy
+```
+
+The Terraform state stays in `infra\terraform\envs\dev\terraform.tfstate` on this computer. Apply and destroy always from the same computer, and never share that file: it holds the database passwords. To work without the container (Terraform, the AWS CLI and uv installed), the same steps are in [Deploy to AWS](https://securepay-riwi.github.io/SecurePay/docs/getting-started/deploy-aws-terraform).
+
 ### Librería común: `securepay-shared`
 
 `shared/` se publica en PyPI como

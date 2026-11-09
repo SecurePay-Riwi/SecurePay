@@ -14,11 +14,11 @@ The commands are for PowerShell on Windows. Run them one at a time.
 
 ## The short path
 
-Once the tools and the IAM user exist (steps 1 to 3), a whole session is one command up and one down:
+Once the tools and the IAM user exist (steps 1 to 3), a whole session is one command up and one down. Without installing the AWS CLI, Terraform or uv, the same session runs in the `deployer` container with only Git and Docker Desktop: `docker compose -f compose.aws.yml run --rm deployer apply` (and `aws configure`, `kaggle`, `output`, `destroy`); see [From zero to AWS](../intro.mdx#8-from-zero-to-aws).
 
 1. In `infra\terraform\envs\dev`, with Docker Desktop running and `securepay-seed` and `securepay-apis` cloned and up to date beside SecurePay: `terraform init -upgrade` and `terraform apply` ([step 4](#4-create-the-environment)). It builds and pushes the images, seeds RDS, loads the cache and the exchange rates, creates two Cognito users and uploads and reconciles the demo day.
 2. Click **Confirm subscription** in each SNS e-mail. AWS requires one click per subscription; nothing can do it for you.
-3. Use it: the engine ([step 6](#6-deploy-the-engine-on-fargate)), the APIs with the users of `terraform output -json api_user_passwords` ([the APIs](#the-rules-and-cases-apis)), the reconciliation e-mail and the views ([step 8](#8-run-the-nightly-reconciliation)), Power BI ([its key is created by hand](#power-bi-over-athena), so it never lands in the state) and the load test ([Load test](./load-test.mdx)).
+3. Use it: the engine ([step 6](#6-deploy-the-engine-on-fargate)), the APIs with the users of `terraform output -json api_user_passwords` ([the APIs](#the-rules-and-cases-apis)), the reconciliation e-mail and the views ([step 8](#8-run-the-nightly-reconciliation)), Power BI ([its key is already in the profile `securepay-powerbi`](#power-bi-over-athena)) and the load test ([Load test](./load-test.mdx)).
 4. `terraform destroy` ([step 12](#12-destroy-it)).
 
 Steps 6 to 9 below also say how to do each part by hand (`build_images = false`, `load_data_on_apply = false`, `load_demo_day = false`, `api_users = {}`) and what each one checks.
