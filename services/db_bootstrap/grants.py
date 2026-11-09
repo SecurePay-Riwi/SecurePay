@@ -44,12 +44,20 @@ TABLES: dict[str, dict[str, tuple[str, ...]]] = {
         "reconciliation_differences": ("SELECT", "INSERT"),
     },
     # services/analytics/export.py: the current state of the cases and the
-    # reconciliation of the export window, read only (HU-66, C6).
+    # reconciliation of the export window, read only (HU-66, C6); with
+    # {"job": "kaggle_metrics"} the Kaggle replay (metrics.kaggle_metrics,
+    # MAG-312): the Kaggle rows, the reference data and the latest catalog.
     "analytics_export": {
         "cases": READ,
         "case_events": READ,
         "reconciliation_differences": READ,
         "reconciliation_runs": READ,
+        "transacciones": READ,
+        "cuentas": READ,
+        "usuarios": READ,
+        "comercios": READ,
+        "listas_restrictivas": READ,
+        "rule_catalog_versions": READ,
     },
     # services/rules_api/store.py: the catalog (rules is the current state,
     # rule_catalog_versions is append-only by trigger). The simulation

@@ -85,10 +85,10 @@ uv run python -m services.analytics.quality --day 2026-10-05 --output generated/
 
 ## In AWS (HU-66)
 
-The nightly state machine `securepay-<env>-reconciliation` builds the day after it saves the differences, before the treasury e-mail: the Lambda `-analytics-export` (`export.handler`, read-only database user `analytics_export`) → the Glue job `-analytics` (AWS Glue 6.0: builders and quality checks) → `CREATE OR REPLACE VIEW` of q1..q6 in Athena. A failure in any of the three e-mails `-ops-alarms` and the reconciliation still ends; run the job again with `--day` once the cause is fixed. Terraform: `infra/terraform/modules/analytics`.
+The nightly state machine `securepay-<env>-reconciliation` builds the day after it saves the differences, before the treasury e-mail: the Lambda `-analytics-export` (`export.handler`, read-only database user `analytics_export`) → the same Lambda with `{"job": "kaggle_metrics"}` (the Kaggle replay below, MAG-312) → the Glue job `-analytics` (AWS Glue 6.0: builders and quality checks) → `CREATE OR REPLACE VIEW` of q1..q6 in Athena. A failure in any of the three e-mails `-ops-alarms` and the reconciliation still ends; run the job again with `--day` once the cause is fixed. Terraform: `infra/terraform/modules/analytics`.
 
 - **Catalog.** The Glue database `GLUE_DATABASE` (`securepay_<env>_analytics`) has one Parquet table per entry of `TABLES`, built from `infra/terraform/modules/analytics/tables.json`. After a change to `shared/analytics.py`, run `uv run python -m services.analytics.catalog` and commit the file (`test_glue_job.py` fails until you do). Daily tables have the partition key `fecha` with partition projection, so Athena reads `fecha=<day>/` without a crawler or `MSCK REPAIR`; the views filter by `day`, the column inside the files.
-- **Views.** Terraform passes the six `sql/q*.sql` (without comments) to the state machine, which recreates them every night in the workgroup `ATHENA_WORKGROUP` (`securepay-<env>-powerbi`, results in `athena-results/powerbi/`, at most 1 GB per query). Power BI reads them there with the `powerbi` IAM user, whose key Habith creates by hand.
+- **Views.** Terraform passes the six `sql/q*.sql` (without comments) to the state machine, which recreates them every night in the workgroup `ATHENA_WORKGROUP` (`securepay-<env>-powerbi`, results in `athena-results/powerbi/`, at most 1 GB per query). Power BI reads them there with the `powerbi` IAM user.
 - **Code.** Both Spark jobs share one zip (`services/reconciliation`, `services/analytics`, `shared`), which Terraform builds and the Deploy workflow uploads again on every merge (`infra/spark/package.py`). Glue installs SQLAlchemy, python-dotenv and pydantic at the versions of `uv.lock` (`python_modules` of the module; `test_glue_job.py` checks them).
 
 The step by step and the test with the fixture day: [Deploy to AWS, step 8](../getting-started/deploy-aws-terraform.mdx#the-analytics-after-the-reconciliation-hu-66).
@@ -145,6 +145,8 @@ uv run python -m services.analytics.metrics \
 ```
 
 Both need PostgreSQL with the seed (the reference data); `--catalog file.json` replays another `CatalogSnapshot`.
+
+**In AWS the Kaggle replay runs by itself** (MAG-312). The apply uploads PaySim and fraudTest from `../securepay-csv/data/kaggle` to `raw/kaggle/` and runs the seed's Kaggle ETL in the admin task (`HIST_RAW_DIR=s3://<datalake>/raw/kaggle`), which loads its 70,000 rows into RDS. Every night the state machine's `MeasureKaggle` step invokes `-analytics-export` with `{"job": "kaggle_metrics"}` (`metrics.kaggle_metrics()`: the same replay as `--kaggle`, written to `s3://<datalake>/raw/metrics/kaggle/`), and the Glue job adds those rows to q2 and q3. Without Kaggle rows it writes nothing; if it fails, the step only records the error and the analytics go on. The step by step: [Deploy to AWS](../getting-started/deploy-aws-terraform.mdx#the-analytics-after-the-reconciliation-hu-66).
 
 ### Results (E-16)
 

@@ -338,6 +338,36 @@ def write_raw(result: dict, root: str, name: str) -> dict[str, str]:
     return written
 
 
+def kaggle_metrics(session, root: str, limit: int | None = None, catalog=None) -> dict:
+    """Replays the Kaggle rows of transacciones with the current catalog (or
+    `catalog`) and writes raw/metrics/kaggle/ under `root`, local or s3://.
+    In AWS the nightly state machine runs it in the analytics-export Lambda
+    before the analytics job ({"job": "kaggle_metrics"}, MAG-312), so q2
+    and q3 always measure the Kaggle history with the latest catalog.
+    Without Kaggle rows (the ETL never ran) it writes nothing."""
+    from services.analytics import labels as lb
+    from services.analytics.replay import ReferenceData
+
+    snapshot = catalog or current_catalog(session)
+    reference = ReferenceData.from_database(session)
+    transactions, labels = lb.kaggle_transactions(session, limit)
+    if not transactions:
+        log.warning("no Kaggle rows in transacciones: nothing measured")
+        return {
+            "rules_version": str(snapshot.version),
+            "transactions": 0,
+            "written": {},
+        }
+    result = measure(snapshot, transactions, labels, reference)
+    return {
+        "rules_version": result["rules_version"],
+        "transactions": result["transactions"],
+        "labeled": result["labeled"],
+        "written": write_raw(result, root, "kaggle"),
+        "result": result,
+    }
+
+
 def _printable(result: dict) -> dict:
     out = dict(result)
     for table in RAW_METRICS_FILES:
@@ -369,24 +399,23 @@ def main(argv=None) -> None:
         parser.error("--events needs --labels")
 
     with SessionLocal() as session:
+        snapshot = None
         if args.catalog:
             with open(args.catalog, encoding="utf-8") as f:
                 snapshot = CatalogSnapshot.model_validate_json(f.read())
-        else:
-            snapshot = current_catalog(session)
-        reference = ReferenceData.from_database(session)
         if args.kaggle:
-            transactions, labels = lb.kaggle_transactions(session, args.limit)
-            security = ()
-        else:
-            transactions, security = lb.generator_events(args.events)
-            labels = lb.generator_labels(args.labels)
+            done = kaggle_metrics(session, args.root, args.limit, snapshot)
+            out = _printable(done.pop("result")) if "result" in done else {}
+            out.update(done)
+            print(json.dumps(out, indent=2, default=str))
+            return
+        snapshot = snapshot or current_catalog(session)
+        reference = ReferenceData.from_database(session)
+        transactions, security = lb.generator_events(args.events)
+        labels = lb.generator_labels(args.labels)
 
     result = measure(snapshot, transactions, labels, reference, security)
-    out = _printable(result)
-    if args.kaggle:
-        out["written"] = write_raw(result, args.root, "kaggle")
-    print(json.dumps(out, indent=2, default=str))
+    print(json.dumps(_printable(result), indent=2, default=str))
 
 
 if __name__ == "__main__":

@@ -134,6 +134,13 @@ locals {
     }
   }
 
+  # More than var.memory_mb / var.timeout_seconds. analytics-export: its
+  # kaggle_metrics job replays about 70,000 Kaggle rows in memory (MAG-312),
+  # about 300 MB and seconds locally, more on Lambda's CPU.
+  sizes = {
+    analytics-export = { memory_mb = 1024, timeout_seconds = 300 }
+  }
+
   deployed  = local.deploy ? local.functions : {}
   consumers = { for name, f in local.deployed : name => f if f.queue != null }
 
@@ -161,8 +168,8 @@ resource "aws_lambda_function" "this" {
   package_type  = "Image"
   image_uri     = "${var.repository_url}:${var.image_tag}"
   architectures = ["x86_64"]
-  memory_size   = var.memory_mb
-  timeout       = var.timeout_seconds
+  memory_size   = try(local.sizes[each.key].memory_mb, var.memory_mb)
+  timeout       = try(local.sizes[each.key].timeout_seconds, var.timeout_seconds)
 
   image_config {
     entry_point       = ["python", "-m", "awslambdaric"]

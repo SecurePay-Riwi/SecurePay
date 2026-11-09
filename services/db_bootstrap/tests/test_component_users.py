@@ -346,6 +346,18 @@ def test_analytics_export_writes_the_raw_layer(admin, as_user, monkeypatch, tmp_
     assert (tmp_path / "raw" / "cases" / "fecha=2026-10-05" / "cases.jsonl").exists()
 
 
+def test_analytics_export_reads_what_the_kaggle_replay_needs(admin, as_user, tmp_path):
+    """MAG-312: the Kaggle rows, the reference data and the catalog."""
+    from services.analytics import metrics
+
+    with as_user("analytics_export")() as session:
+        done = metrics.kaggle_metrics(session, str(tmp_path))
+
+    # db-bootstrap stored version 1; the seed of this schema has no Kaggle rows.
+    assert done["rules_version"] == "1"
+    assert done["transactions"] == 0
+
+
 def test_rules_api_changes_the_catalog_with_its_user(admin, as_user, monkeypatch):
     from services.rules_api import store as rules_store
 
@@ -433,8 +445,9 @@ def test_no_user_can_drop_change_or_create_tables(admin, as_user, user):
         ("reconciliation", "DELETE FROM reconciliation_differences"),
         ("list_loader", "INSERT INTO listas_restrictivas (documento) VALUES ('1')"),
         ("list_loader", "SELECT count(*) FROM cases"),
-        ("analytics_export", "SELECT count(*) FROM usuarios"),
+        ("analytics_export", "SELECT count(*) FROM compliance_reports"),
         ("analytics_export", "SELECT count(*) FROM account_transactions"),
+        ("analytics_export", "UPDATE transacciones SET is_fraud = true"),
         ("analytics_export", "UPDATE cases SET status = 'RESOLVED'"),
         ("rules_api", "DELETE FROM rules"),
         ("rules_api", "SELECT count(*) FROM cases"),

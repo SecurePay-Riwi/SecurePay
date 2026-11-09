@@ -7,7 +7,7 @@ Terraform calls this file, never a person:
     push      builds an image and pushes it to ECR, unless the tag is
               already there (ECR tags are immutable)
     run-task  runs a Fargate task and fails if its container fails (the
-              seed)
+              seed; with --kaggle-raw-dir, the seed's Kaggle ETL)
     start-day starts the nightly state machine for the demo day
 
 Only the standard library and the docker and aws commands: it runs with
@@ -108,6 +108,7 @@ def run_task(
     security_group: str,
     region: str,
     timeout_minutes: int,
+    kaggle_raw_dir: str | None = None,
 ) -> None:
     network = (
         f"awsvpcConfiguration={{subnets=[{subnets}],"
@@ -117,6 +118,7 @@ def run_task(
     task = _run(
         *aws, "run-task", "--cluster", cluster, "--launch-type", "FARGATE",
         "--task-definition", task_definition, "--network-configuration", network,
+        *_overrides(kaggle_raw_dir),
         "--query", "tasks[0].taskArn", "--output", "text",
     )  # fmt: skip
     print(f"started {task}")
@@ -141,6 +143,20 @@ def run_task(
             f"its log: aws logs tail /ecs/{task_definition}"
         )
     print(f"{task_definition} ended with exit code 0")
+
+
+def _overrides(kaggle_raw_dir: str | None) -> tuple[str, ...]:
+    """The same admin image runs the seed's Kaggle ETL instead of the seed
+    (MAG-312): it downloads PaySim and fraudTest from `kaggle_raw_dir`
+    (s3://<datalake>/raw/kaggle) and loads its sample into RDS."""
+    if not kaggle_raw_dir:
+        return ()
+    container = {
+        "name": "admin",
+        "command": ["python", "-m", "securepay_seed.kaggle_etl.etl"],
+        "environment": [{"name": "HIST_RAW_DIR", "value": kaggle_raw_dir}],
+    }
+    return ("--overrides", json.dumps({"containerOverrides": [container]}))
 
 
 def start_day(state_machine: str, day: str, region: str) -> None:
@@ -174,6 +190,7 @@ def main(argv: list[str] | None = None) -> None:
     t.add_argument("--security-group", required=True)
     t.add_argument("--region", required=True)
     t.add_argument("--timeout-minutes", type=int, default=20)
+    t.add_argument("--kaggle-raw-dir")
 
     d = commands.add_parser("start-day")
     d.add_argument("--state-machine", required=True)
@@ -197,6 +214,7 @@ def main(argv: list[str] | None = None) -> None:
             args.security_group,
             args.region,
             args.timeout_minutes,
+            args.kaggle_raw_dir,
         )
 
 

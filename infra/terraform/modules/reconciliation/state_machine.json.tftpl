@@ -109,6 +109,32 @@
         }
       ],
       "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.analytics_error", "Next": "WarnAnalyticsFailed" }],
+      "Next": "MeasureKaggle"
+    },
+    "MeasureKaggle": {
+      "Comment": "MAG-312: the Kaggle history (PaySim, Sparkov) replayed with the latest catalog -> raw/metrics/kaggle, which BuildAnalytics adds to q2 and q3. A failure only leaves the Kaggle rows of the last run: the analytics go on.",
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${analytics_export_arn}",
+        "Payload": {
+          "job": "kaggle_metrics"
+        }
+      },
+      "ResultSelector": {
+        "transactions.$": "$.Payload.transactions",
+        "rules_version.$": "$.Payload.rules_version"
+      },
+      "ResultPath": "$.kaggle",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.kaggle_error", "Next": "BuildAnalytics" }],
       "Next": "BuildAnalytics"
     },
     "BuildAnalytics": {

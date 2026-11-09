@@ -86,6 +86,7 @@ The user must end with exactly these two: `PowerUserAccess` and `securepay-terra
 5. It writes the fixed rates of 2026-10-01, the day of the test transactions, so the fixed-rates alarm stays quiet.
 6. It creates the Cognito users of `api_users` (by default `analista@example.com` and `gerente@example.com`, one per group) with a generated password: `terraform output -json api_user_passwords`.
 7. With `load_demo_day` (default `true`), it uploads the fixture day 2026-10-05 to the Data Lake (the reconciliation's partner files and decisions, the analytics' decisions and labels) and starts the nightly state machine for that day. The apply does not wait for that run: it ends `Succeeded` 5 to 10 minutes later and e-mails treasury `Differences of the day: 19 (new: 19)` (see [step 8](#8-run-the-nightly-reconciliation)).
+8. With `load_kaggle` (default `true`) and PaySim and fraudTest in `../securepay-csv/data/kaggle` (run `uv run python -m securepay_csv.kaggle_datasets` there once; `kaggle_dir` for another folder), it uploads both CSVs (about 640 MB) to `raw/kaggle/` and runs the seed's Kaggle ETL in the admin task (5 to 15 minutes), before the demo day's run. That run then measures the rules against them, and q2 and q3 show `paysim` and `fraudtest` next to the generator. Without the CSVs this step is skipped and the rest of the apply is the same.
 
 This needs, on the computer that applies:
 
@@ -488,10 +489,11 @@ The match runs on AWS Glue, not EMR Serverless: on AWS's free account plan EMR i
 After `SaveDifferences` the same execution builds the analytics of the day, before the treasury e-mail:
 
 5. **ExportAnalytics**: the Lambda `securepay-dev-analytics-export` (`services/analytics/export.py`, read-only database user `analytics_export`) writes the cases and the reconciliation of the last 30 days to `raw/cases/` and `raw/reconciliation/` (with `matched.jsonl`).
-6. **BuildAnalytics**: the Glue job `securepay-dev-analytics` (`infra/spark/analytics_job.py`) runs every builder (`raw` → `curated/decisiones` → `analytics/<table>/`) and then the [data quality checks](../components/analytics.mdx#data-quality-hu-66); a failed check fails the job.
-7. **RefreshViews**: `CREATE OR REPLACE VIEW` of q1..q6 (`services/analytics/sql/`) in the Athena workgroup `securepay-dev-powerbi`, database `securepay_dev_analytics`.
+6. **MeasureKaggle**: the same Lambda with `{"job": "kaggle_metrics"}` replays the Kaggle rows of RDS with the current catalog and writes `raw/metrics/kaggle/` (MAG-312). With no Kaggle rows it writes nothing; if it fails, the execution goes on.
+7. **BuildAnalytics**: the Glue job `securepay-dev-analytics` (`infra/spark/analytics_job.py`) runs every builder (`raw` → `curated/decisiones` → `analytics/<table>/`) and then the [data quality checks](../components/analytics.mdx#data-quality-hu-66); a failed check fails the job.
+8. **RefreshViews**: `CREATE OR REPLACE VIEW` of q1..q6 (`services/analytics/sql/`) in the Athena workgroup `securepay-dev-powerbi`, database `securepay_dev_analytics`.
 
-If any of the three fails, the day is still reconciled: the execution sends `Analytics of <day> failed` with the cause to `-ops-alarms`, then the treasury e-mail, and ends `Succeeded`. The Glue catalog (13 tables with partition projection) and the workgroup exist from the first apply; the views appear after the first execution.
+If ExportAnalytics, BuildAnalytics or RefreshViews fails, the day is still reconciled: the execution sends `Analytics of <day> failed` with the cause to `-ops-alarms`, then the treasury e-mail, and ends `Succeeded`. The Glue catalog (13 tables with partition projection) and the workgroup exist from the first apply; the views appear after the first execution.
 
 1. Apply once more after pulling the change: it adds the catalog, the workgroup, the `analytics-export` role and Lambda, the database user's password, the analytics job and its file, and updates the state machine and the roles. `db-bootstrap` runs again by itself and creates the `analytics_export` user.
 
