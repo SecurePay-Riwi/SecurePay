@@ -21,7 +21,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from mangum import Mangum
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
@@ -68,6 +68,16 @@ def openapi() -> dict:
 
 
 app.openapi = openapi
+
+
+@app.middleware("http")
+async def answer_preflight(request, call_next):
+    """The browser's CORS preflight. In AWS the OPTIONS routes of
+    modules/api (no authorizer) send it here; API Gateway adds its CORS
+    headers to the answer, but only a 2xx lets the browser go on."""
+    if request.method == "OPTIONS":
+        return Response(status_code=204)
+    return await call_next(request)
 
 
 @app.exception_handler(RequestValidationError)
