@@ -6,7 +6,7 @@ description: Every AWS service with its purpose and why it was chosen, the resou
 
 # AWS infrastructure
 
-This is the infrastructure that Terraform will create in AWS: which service does each job and why, and the full list of resources. How the code is organized and how to create and destroy an environment is in [Terraform](./terraform.mdx). Network, security groups, IAM, S3 and RDS are already in Terraform and were created in the team's AWS account on 2026-10-23, checked and destroyed; nothing stays deployed. The application pieces built so far run locally on LocalStack (see [Local setup](../getting-started/local-setup.mdx)). The network, security groups, IAM roles and encryption are in [Security](./security.mdx).
+This is the infrastructure that Terraform creates in AWS: which service does each job and why, and the full list of resources. How the code is organized and how to create and destroy an environment is in [Terraform](./terraform.mdx). Everything in the inventory below is built in `infra/terraform/` unless its Status says otherwise; one `terraform apply` creates the whole development environment and `terraform destroy` removes it after every session, so nothing stays deployed. Pieces of the first design that were replaced while building are listed in [Designed but not built](./team-decisions.mdx#designed-but-not-built). The network, security groups, IAM roles and encryption are in [Security](./security.mdx).
 
 The IAM permissions and ports were checked against the official AWS documentation on October 14; the links are at the end of the page.
 
@@ -36,7 +36,7 @@ The general rule: **pay for capacity where volume is high and pay per use where 
 | Decouple what happens afterwards | **SNS + 3 SQS queues** with dead-letter queues | Each consumer fails and recovers alone; the queues absorb the peak | RabbitMQ (we would run it); Kafka/MSK (~$70/month minimum) |
 | Low-volume components (APIs, consumers, tasks) | **Lambda** (12 functions) | Pay per use: ~$41 against ~$108 with containers always on | Everything on Fargate |
 | Business data: users, rules, cases, reconciliation | **RDS PostgreSQL** `db.t3.micro`, Multi-AZ | Relational, automatic failover; it does not store transactions, so the smallest instance is enough | Aurora (~3 times the cost); self-managed PostgreSQL on EC2 |
-| Durable, infrequent data | **DynamoDB** | Device-account pairs with automatic 30-day expiry, and the daily rates | |
+| Durable, infrequent data | **DynamoDB** | The daily exchange rates, read by the engine at startup | |
 | Data Lake and evidence | **S3** in three layers (raw, curated, analytics); the analytics queue sends batches of up to 1,000 decisions, one file each | Cheap storage; large batches avoid millions of small files (~$0.65 against ~$65/month) without Firehose, which is not on AWS's free plan | |
 | Immutable evidence for 10 years | **S3 Object Lock** in COMPLIANCE mode, Glacier Instant Retrieval class | Nobody can delete it, not even the account administrator; ~83% cheaper than S3 Standard | Locking in the application |
 | Batch jobs with Spark | **AWS Glue 6.0** | Managed Spark, paid per second of use (1-minute minimum); EMR Serverless was the first choice but is not on AWS's free account plan ([ADR-05](./decisions.mdx#adr-05)) | Spark on our own containers; EMR Serverless |
@@ -60,90 +60,90 @@ This is the inventory of what Terraform must create, not of what exists today. D
 
 ![SecurePay network on AWS: VPC, two zones, subnets, NAT Gateways, load balancer and cache at VPC level, gateway endpoints and the services outside the VPC](/img/network-diagram.png)
 
-*The network that Terraform creates in `infra/terraform/envs/dev`, with the English names it uses in AWS (see [Terraform](./terraform.mdx#names-in-aws)). Dashed cards are planned for later sprints.* <a href={require('@site/static/img/network-diagram.png').default} target="_blank">Open full size</a>.
+*The network that Terraform creates in `infra/terraform/envs/dev`, with the English names it uses in AWS (see [Terraform](./terraform.mdx#names-in-aws)). Dashed cards were added in later sprints and are built now.* <a href={require('@site/static/img/network-diagram.png').default} target="_blank">Open full size</a>.
 
 | Resource | Name | Qty. | Configuration | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| VPC | `pagoseguro-prod-vpc` | 1 | `10.0.0.0/16`, DNS enabled | Decided |
-| Subnets | `publica-a/b`, `app-a/b`, `datos-a/b` | 6 | /24, one of each tier per zone (see [Network](./security.mdx#network)) | Decided |
-| Internet Gateway | `pagoseguro-prod-igw` | 1 | | Decided |
-| NAT Gateway | `pagoseguro-prod-nat-a/b` | 2 | One per zone, each with its Elastic IP | Decided ([ADR-08](./decisions.mdx#adr-08)) |
-| Route tables | | 4 | 1 public, 2 application (one per zone), 1 data | Decided |
-| Gateway VPC endpoints | S3 and DynamoDB | 2 | Associated with the three private tables | Decided |
-| Security groups | `sg-alb`, `sg-motor`, `sg-lambda`, `sg-admin`, `sg-rds`, `sg-cache` | 6 | See [Security groups](./security.mdx#security-groups) | Decided |
+| VPC | `pagoseguro-prod-vpc` | 1 | `10.0.0.0/16`, DNS enabled | Built in dev |
+| Subnets | `publica-a/b`, `app-a/b`, `datos-a/b` | 6 | /24, one of each tier per zone (see [Network](./security.mdx#network)) | Built in dev |
+| Internet Gateway | `pagoseguro-prod-igw` | 1 | | Built in dev |
+| NAT Gateway | `pagoseguro-prod-nat-a/b` | 2 | One per zone, each with its Elastic IP | Built in dev ([ADR-08](./decisions.mdx#adr-08)) |
+| Route tables | | 4 | 1 public, 2 application (one per zone), 1 data | Built in dev |
+| Gateway VPC endpoints | S3 and DynamoDB | 2 | Associated with the three private tables | Built in dev |
+| Security groups | `sg-alb`, `sg-motor`, `sg-lambda`, `sg-admin`, `sg-rds`, `sg-cache` | 6 | See [Security groups](./security.mdx#security-groups) | Built in dev |
 
 ### Compute and ingress
 
 | Resource | Name | Qty. | Configuration | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| ACM certificate | | 1 | For the load balancer; free | Decided |
-| Application Load Balancer | `pagoseguro-prod-alb` | 1 | Public, in the two public subnets. Listener on 443 with TLS; one target group on port 8080 with a health check on `/health` | Decided |
-| ECS cluster | `pagoseguro-prod` | 1 | Fargate only | Decided |
-| ECS service for the engine | `motor` | 1 | 0.5 vCPU / 1 GB per task; minimum 4, maximum 24, spread across the two zones; scales at 25 requests per task on the load balancer; deployment circuit breaker with automatic rollback | Minimum and maximum calculated; the 25 is not confirmed yet (see [Estimated figures](#estimates)) |
-| Task definitions | `motor`, `admin` | 2 | Image tagged with the commit, never just `latest`. `admin` runs migrations and seed on demand | Decided |
-| ECR repositories | `motor`, `generador`, `admin` | 3 | Image scanning on push; lifecycle rule that keeps the last 10 | Decided |
-| Lambda functions | see the next table | 12 | Python 3.12, 512 MB and 30 s by default | 512 MB expected (see [Estimated figures](#estimates)) |
-| Queue-to-Lambda mappings | | 3 | Batches of 10, failure reporting per message | Decided |
-| API Gateway (HTTP API) | `pagoseguro-prod-api` | 1 | Rules and cases routes with a Cognito JWT authorizer; list service routes (`GET /lista`, `GET /lista/{documento}`, `/health`) without an authorizer; request limit per route | Built in dev as `securepay-<env>-api` (rules and cases routes, `GET /health` without an authorizer, one request limit for the stage); the list service is not behind it |
+| ACM certificate | | 1 | For the load balancer; free. Self-signed in dev unless `domain_name` is set | Built in dev |
+| Application Load Balancer | `pagoseguro-prod-alb` | 1 | Public, in the two public subnets. Listener on 443 with TLS; one target group on port 8080 with a health check on `/health` | Built in dev |
+| ECS cluster | `pagoseguro-prod` | 1 | Fargate only | Built in dev |
+| ECS service for the engine | `motor` | 1 | 0.5 vCPU / 1 GB per task; minimum 4, maximum 24 in prod (dev: 2 and 4 by default, `engine_min_tasks` / `engine_max_tasks`), spread across the two zones; scales on CPU (60 %) and on requests per task on the load balancer (`engine_requests_per_task`, 1,800 a minute = 30 per second); deployment circuit breaker with automatic rollback | Built in dev; the requests per task were measured in the [load test](../getting-started/load-test.mdx#result) |
+| Task definitions | `motor`, `admin` | 2 | Image tagged with the commit, never just `latest`. `admin` is the seed image: it seeds RDS and loads the Kaggle sample on demand | Built in dev |
+| ECR repositories | `engine`, `admin` (the seed), `apis` (securepay-apis), `generator` | 4 | Image scanning on push; lifecycle rule that keeps the last 10 | Built in dev |
+| Lambda functions | see the next table | 12 | Python 3.12; 512 MB and 60 s except where the table says otherwise | Built in dev |
+| Queue-to-Lambda mappings | | 3 | Batches of 10, failure reporting per message; analytics batches up to 1,000 messages or 60 seconds | Built in dev |
+| API Gateway (HTTP API) | `pagoseguro-prod-api` | 1 | Rules and cases routes with a Cognito JWT authorizer; `GET /health` and one `OPTIONS` route per route (CORS preflight) without it; one request limit for the stage | Built in dev as `securepay-<env>-api` |
 | Cognito user pool | `pagoseguro-prod-usuarios` | 1 | Groups `analista` and `gerente`, one app client, MFA | Built in dev as `securepay-<env>-users`, MFA off (`mfa` variable of `modules/api`) |
 | Glue jobs | `securepay-<env>-reconciliation-match`, `securepay-<env>-analytics` | 2 | Spark 4.1.1, two G.1X workers each, no VPC, one code zip for both | Built (HU-36, HU-66) |
 | EC2 instance | `securepay-<env>-load-runner` | 0 (1 during the load test) | Locust inside the VPC, `c7i-flex.large`, Systems Manager instead of SSH | Built in dev for HU-60 (`load_runner = true`); not in prod |
-| Step Functions state machine | `conciliacion` | 1 | Standard: reads statements (Lambda), reconciles (Spark, `.sync`), writes differences (Lambda); retries per step | Decided |
+| Step Functions state machine | `conciliacion` | 1 | Standard: reads statements (Lambda), reconciles (Spark, `.sync`), writes differences (Lambda), then the analytics: export (Lambda), Kaggle metrics, the Spark ETL and the Athena views; retries per step | Built in dev as `securepay-<env>-reconciliation` |
 
-**The 12 Lambdas.** In dev, Sprint 5 (HU-68) deploys the first four: the three queue consumers and `alertas`, with the names of [Terraform](./terraform.mdx#names-in-aws) (`securepay-dev-cases-consumer`, ...). The analytics consumer writes to `raw/decisiones/` directly, one file per batch of up to 1,000 decisions (no Firehose: it is not on AWS's free plan).
+**The 12 Lambdas.** Every one runs the engine image with its own handler, except `exchange-rates`, which runs the securepay-apis image. Names in dev are `securepay-<env>-<name>` ([Terraform](./terraform.mdx#names-in-aws)). The analytics consumer writes to `raw/decisiones/` directly, one file per batch of up to 1,000 decisions (no Firehose: it is not on AWS's free plan).
 
 | Lambda | Trigger | In the VPC | Memory and timeout | Role |
 | :--- | :--- | :--- | :--- | :--- |
-| `consumidor-casos` | Queue `casos` | Yes | 512 MB, 60 s | 3 |
-| `consumidor-historial` | Queue `historial` | Yes | 512 MB, 60 s | 4 |
-| `consumidor-analitica` | Queue `analitica` | No | 512 MB, 60 s | 5 |
-| `api-reglas` | API Gateway | Yes | 512 MB, 30 s | 7 |
-| `api-casos` | API Gateway | Yes | 512 MB, 30 s | 8 |
-| `servicio-listas` | API Gateway | No | 512 MB, 30 s (the simulated latency reaches 3 s) | 13 |
-| `actualiza-reglas-cache` | Topic `regla-cambiada` | Yes | 512 MB, 30 s | 9 (not built: the rules API publishes the catalog to Valkey itself, team decision 2026-11-05) |
-| `alertas` | Scheduler, every 5 min | Yes | 512 MB, 60 s | 10 |
-| `tasas` | Scheduler, daily | No | 512 MB, 30 s | 11 |
-| `carga-lista` | Scheduler, daily | Yes | 512 MB, 60 s (the full list weighs ~4 MB) | 12 |
-| `lee-extractos` | Step Functions | No | 512 MB, 60 s | 14 |
-| `escribe-diferencias` | Step Functions | Yes | 512 MB, 60 s | 15 |
+| `cases-consumer` | Queue `casos` | Yes | 512 MB, 60 s | 3 |
+| `history-consumer` | Queue `historial` | Yes | 512 MB, 60 s | 4 |
+| `analytics-consumer` | Queue `analitica` | No | 512 MB, 60 s | 5 |
+| `rules-api` | API Gateway | Yes | 512 MB, 60 s | 7 |
+| `cases-api` | API Gateway | Yes | 512 MB, 60 s | 8 |
+| `alerts` | Scheduler, every 5 min; 06:30 Bogotá reconciliation check | Yes | 512 MB, 60 s | 10 |
+| `exchange-rates` | Scheduler, daily at 11:00 Bogotá | No | 256 MB, 60 s | 11 |
+| `list-loader` | Scheduler, daily at 01:00 Bogotá (accounts, merchants, restricted list) | Yes | 512 MB, 60 s | 12 |
+| `statement-reader` | Step Functions | No | 512 MB, 60 s | 14 |
+| `difference-writer` | Step Functions | Yes | 512 MB, 60 s | 15 |
+| `analytics-export` | Step Functions | Yes | 1,024 MB, 300 s | 25 |
+| `db-bootstrap` | Terraform (`aws_lambda_invocation`) and the Deploy workflow | Yes | 512 MB, 60 s | 24 |
 
 ### Data
 
 | Resource | Name | Qty. | Configuration | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| RDS instance | `pagoseguro-prod-db` | 1 | PostgreSQL `db.t3.micro`, Multi-AZ, 20 GB gp3, in the data subnets; TLS required; one user per component with its password in Parameter Store; 7-day backups | Decided |
+| RDS instance | `pagoseguro-prod-db` | 1 | PostgreSQL `db.t3.micro`, Multi-AZ, 20 GB gp3, in the data subnets; TLS required; one user per component with its password in Parameter Store; 7-day backups (1 day in dev, `database_backup_retention_days`) | Built in dev |
 | Cache | `pagoseguro-prod-cache` | 1 | ElastiCache Serverless for Valkey, in the data subnets, encryption in transit; ports 6379 and 6380 | Memory expected (see [Estimated figures](#estimates)) |
-| DynamoDB tables | `dispositivo-cuenta`, `tasas-cambio` | 2 | On demand; 30-day TTL on the first; point-in-time recovery on both | Decided |
-| Data Lake bucket | `pagoseguro-prod-datalake` | 1 | Prefixes `raw/`, `curated/`, `analytics/`, `athena-results/`; versioning; block public access | Decided |
-| Evidence bucket | `pagoseguro-prod-evidencia` | 1 | Object Lock COMPLIANCE 10 years, Glacier Instant Retrieval, versioning. In development, 1-day retention so it can be destroyed | Decided |
-| List provider bucket | `pagoseguro-prod-proveedor-listas` | 1 | One file, `lista_restrictiva.jsonl`, exported by the seed. Separate from the Data Lake because it is third-party data | Decided |
-| Artifacts bucket | `pagoseguro-prod-artefactos` | 1 | Spark job code | Decided |
-| Terraform state bucket | `pagoseguro-tfstate` | 1 | Outside the main configuration, with versioning and locking, so that `terraform destroy` never deletes it | Decided |
-| Glue database | `pagoseguro` | 1 | Catalog for Athena; the jobs register the tables | Decided |
-| Athena workgroup | `powerbi` | 1 | Results in `athena-results/powerbi/`, limit on data scanned per query | Decided |
+| DynamoDB table | `tasas-cambio` | 1 | On demand; point-in-time recovery | Built in dev as `securepay-<env>-exchange-rates`. The `dispositivo-cuenta` table of the first design was [not built](./team-decisions.mdx#designed-but-not-built) |
+| Data Lake bucket | `pagoseguro-prod-datalake` | 1 | Prefixes `raw/`, `curated/`, `analytics/`, `athena-results/`; versioning; block public access | Built in dev |
+| Evidence bucket | `pagoseguro-prod-evidencia` | 1 | Object Lock COMPLIANCE 10 years, Glacier Instant Retrieval, versioning. In dev, no default retention: each object gets a retain-until date of `EVIDENCE_RETENTION_DAYS` (0.0035 days, about 5 minutes) so the bucket can be destroyed | Built in dev |
+| List provider bucket | `pagoseguro-prod-proveedor-listas` | 1 | One file, `lista_restrictiva.jsonl`, exported by the seed. Separate from the Data Lake because it is third-party data | Built in dev |
+| Artifacts bucket | `pagoseguro-prod-artefactos` | 1 | Spark job code and the load test results | Built in dev |
+| Terraform state bucket | `pagoseguro-tfstate` | 1 | Outside the main configuration, with versioning and locking, so that `terraform destroy` never deletes it | Prod only. Dev keeps its state on the computer that applies it |
+| Glue database | `pagoseguro` | 1 | Catalog for Athena; Terraform creates one table per table of the model (`modules/analytics/tables.json`) with partition projection | Built in dev as `securepay_<env>_analytics` |
+| Athena workgroup | `powerbi` | 1 | Results in `athena-results/powerbi/`, limit on data scanned per query | Built in dev as `securepay-<env>-powerbi` |
 
 ### Messaging and scheduled processes
 
 | Resource | Name | Qty. | Configuration | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| SNS topics | `decisiones`, `regla-cambiada` (not built), `alertas-negocio`, `alarmas-operativas` | 4 | `alertas-negocio` with a filter by recipient (compliance, supervisor, treasury) | Decided |
-| SQS queues | `casos`, `historial`, `analitica` and their `-dlq` | 6 | Raw message delivery from SNS; DLQ after 5 attempts with 14-day retention | Decided |
-| EventBridge Scheduler schedules | | 7 | Reconciliation (02:00), ETL (daily), exchange rates (daily), list load (daily), alerts (every 5 min), rule effectiveness and device network (weekly) | Decided |
+| SNS topics | `decisiones`, `alertas-negocio`, `alarmas-operativas` | 3 | `alertas-negocio` with a filter by recipient (compliance, supervisor, treasury). The `regla-cambiada` topic was [not built](./team-decisions.mdx#designed-but-not-built) | Built in dev |
+| SQS queues | `casos`, `historial`, `analitica` and their `-dlq` | 6 | Raw message delivery from SNS; DLQ after 5 attempts with 14-day retention | Built in dev |
+| EventBridge Scheduler schedules | | 5 | Reconciliation (02:00 Bogotá; the analytics runs in the same state machine), the 06:30 check, alerts (every 5 min), cache load and exchange rates (daily) | Built in dev |
 
 ### Security and operations
 
 | Resource | Qty. | Configuration | Status |
 | :--- | :--- | :--- | :--- |
-| IAM roles | 21 | See [Identity and access](./security.mdx#iam) | Designed |
-| GitHub OIDC provider | 1 | For `rol-despliegue`, with no keys stored in GitHub | Designed |
-| Power BI IAM user | 1 | Read only on the analytics layer; keys rotated every 90 days | Designed |
-| Parameter Store parameters | 8 | Master password, 6 component passwords and the Kaggle token (see [Encryption and secrets](./security.mdx#encryption)) | Designed |
-| Cache users | 5 | `motor`, `historial`, `reglas`, `carga_lista` and the disabled default user, in a user group with IAM authentication | Designed |
-| CloudWatch log groups | 14 | One per Lambda and two for ECS; 14-day retention | Built |
+| IAM roles | 21 | See [Identity and access](./security.mdx#iam) | Built in dev |
+| GitHub OIDC provider | 1 | For `rol-despliegue`, with no keys stored in GitHub | Built in dev |
+| Power BI IAM user | 1 | Read only on the analytics layer; keys rotated every 90 days | Built in dev |
+| Parameter Store parameters | 10 | Master password, master URL and 8 component passwords (see [Encryption and secrets](./security.mdx#encryption)) | Built in dev |
+| Cache users | 0 | Designed: `motor`, `historial`, `reglas`, `carga_lista` with IAM authentication | [Not built](./team-decisions.mdx#designed-but-not-built): only the engine's and the Lambdas' security groups reach the cache, over TLS |
+| CloudWatch log groups | 15 | One per Lambda, two for ECS and one for API Gateway; 14-day retention | Built in dev |
 | Metric filters | 5 | On the engine log: default, held or rejected, and slow decisions, `EVENTO_NO_PUBLICADO`, fixed exchange rates | Built (HU-59) |
 | CloudWatch alarms | 13 kinds | See [Alarms and thresholds](#alarms) | Built (HU-59) |
 | CloudWatch dashboard | 1 | `securepay-<env>`: engine, queues, database, Lambdas, reconciliation | Built (HU-59) |
-| Budgets | 2 | 80 % and 100 % of the credit | Decided |
+| Budgets | 1 | One monthly budget with two alerts: 80 % and 100 % of the credit | Built in dev |
 
 ## Database backup strategy {/* #backups */}
 

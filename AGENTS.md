@@ -158,7 +158,7 @@ stop and ask instead of working around it.
 
 ---
 
-## Sprint state (as of 2026-11-03)
+## Sprint state (as of 2026-11-10)
 
 ### Sprint 1 — Done ✅
 - Seed + generator + Kaggle ETL + partner statements + exchange rates + restricted list API
@@ -206,7 +206,7 @@ stop and ask instead of working around it.
 | HU-31 | MAG-187 | Escalation after 4 hours (RN-09), code and local run | Jorge | #71 |
 | — | — | Windows and full-stack test fixes | Jorge | #70 |
 
-### Sprint 5 — In progress (Reconciliation + FX + CI/CD)
+### Sprint 5 — Closed ✅ (Reconciliation + FX + CI/CD)
 "Step 0" puts the reconciliation contract in the code first
 (`shared/reconciliation.py`, `services/reconciliation/` with the fixture day,
 the empty `routes_reconciliation.py`, `usd_rate` and `rate_date` in the
@@ -215,7 +215,7 @@ HU-58 moved to Sprint 6. Backlog: `doc-website/docs/product-backlog/sprint-backl
 
 | HU | Jira | Description | Owner |
 |----|------|-------------|-------|
-| HU-67 | MAG-352 | Load the restricted list and the account data into the cache; when it closes, remove the temporary `engine_reads_database` rule (`sg-engine` → `sg-rds`) of HU-57 | Habith |
+| HU-67 | MAG-352 | Load the restricted list and the account data into the cache (the temporary `engine_reads_database` rule of HU-57 was removed in MAG-356) | Habith |
 | HU-37 | MAG-237 | Reconcile by reference, amount and date (Spark) | Habith |
 | HU-42, HU-43 | MAG-242, MAG-243 | Exchange rate of the day; keep the original amount, USD and the rate used | Habith |
 | HU-38 → HU-41 | MAG-238..241 | Missing at the partner, missing at PagoSeguro, amount differences; pending differences and age | Yulianis |
@@ -223,7 +223,7 @@ HU-58 moved to Sprint 6. Backlog: `doc-website/docs/product-backlog/sprint-backl
 | HU-36 | MAG-236 | Read the partners' daily files; nightly orchestration (Step Functions at 02:00 Bogotá) | Jorge |
 | HU-65 | MAG-246 | Application CI/CD pipeline | Jorge |
 
-### Sprint 6 — In progress (Analytics + Closure)
+### Sprint 6 — Code closed (Analytics + Closure); left: the runs on AWS (kind/EKS of HU-58, the demo)
 "Step 0" (PR #91) puts the analytics
 contract in the code first: `shared/analytics.py` (C1, C2),
 `services/analytics/` (ETL, the decisions' builder, view `q1`, the empty
@@ -236,10 +236,10 @@ Plan: https://claude.ai/artifact/Xz8cuN9u3epB5Nyt5QXqBY.
 |----|------|-------------|-------|----|
 | HU-44, HU-45, HU-46 | MAG-296..298 | Precision, false positives (view q2) and fraud detected vs missed (view q3) per rule | Habith | #92 |
 | HU-24 | MAG-245 | Simulate a rule version over the history | Habith | #93 |
-| HU-51, HU-52, HU-47 | MAG-303, MAG-304, MAG-299 | Cases (q4), reconciliation (q5), device risk | Yulianis | — |
-| HU-48 → HU-50, HU-53 | MAG-300..302, MAG-305 | Power BI pages (q1, q2, q3, q6) | Yulianis | — |
-| HU-66, HU-58 | MAG-247, MAG-244 | Data CI/CD; EKS vs Fargate | Jorge | — |
-| HU-59, HU-60, HU-61 | MAG-306..308 | Metrics and alarms; load test; final costs and runbook | Jorge | — |
+| HU-51, HU-52, HU-47 | MAG-303, MAG-304, MAG-299 | Cases (q4), reconciliation (q5), device risk | Yulianis | #100 |
+| HU-48 → HU-50, HU-53 | MAG-300..302, MAG-305 | Power BI pages (q1, q2, q3, q6) | Yulianis | #100, #136, #137 |
+| HU-66, HU-58 | MAG-247, MAG-244 | Data CI/CD; EKS vs Fargate | Jorge | #101, #102; #104 |
+| HU-59, HU-60, HU-61 | MAG-306..308 | Metrics and alarms; load test; final costs and runbook | Jorge | #103; #105, #108, #111, #118 to #131; #106, #109, #110, #114, #140 |
 
 ---
 
@@ -829,7 +829,7 @@ Read these before changing the design, not to work on the code:
 - Engine on Fargate (MAG-191): images in ECR tagged with the short git commit (immutable tags, never only `latest`); the engine service and the admin task exist only once their tag is known (built, or `engine_image_tag` / `admin_image_tag`). The admin task is the `securepay-seed` image and seeds RDS on demand (`terraform output -raw admin_run_task_command`). The load balancer listens on 443 with a self-signed certificate unless `domain_name` is set.
 - ElastiCache Serverless only accepts cluster-protocol clients: `shared/cache.py` uses `valkey.ValkeyCluster` when `VALKEY_CLUSTER=true` (set by Terraform in AWS; false locally). New Valkey code must keep one key per command, or keys sharing a hash tag like `{rules}`.
 - The engine never reaches RDS (HU-67): `sg-engine` has no 5432 rule and the engine task gets no `DATABASE_URL`. Accounts, merchants and the restricted list reach it through the cache, loaded once a day (06:00 UTC) by the `list-loader` Lambda (`services.cache_loader.loader.handler`, in `modules/lambdas`); one `apply` invokes it after the seed (`up.tf`); with `load_data_on_apply = false`, invoke it once by hand or the engine answers with default decisions. Exchange rates: DynamoDB `securepay-<env>-exchange-rates` (`modules/storage`), name passed to the engine in `RATES_TABLE`. The temporary `engine_reads_database` variable was removed in MAG-356.
-- Consumers and alerts task as Lambdas (HU-68, MAG-351): `modules/messaging` (topics `decisions`, `business-alerts`, `ops-alarms`; queues `cases`, `history`, `analytics` with DLQs after 5 attempts and 420 s visibility; DLQ alarms; the analytics mapping sends batches of up to 1,000 or 60 s, one S3 file each, because Firehose is not on AWS's free plan) and `modules/lambdas` (created once `lambda_image_tag` is set). Every Lambda runs the engine image with `entry_point = ["python", "-m", "awslambdaric"]` and the existing handler as command; there is no Lambda-only code. **A Lambda is named like its role in `modules/iam`** (`securepay-<env>-cases-consumer`, `-history-consumer`, `-analytics-consumer`, `-alerts`, later `-list-loader`, `-statement-reader`, `-difference-writer`). The cases, history and alerts handlers call `create_schema()` on their first write (`batch.ensure_schema()`, `handler.ensure_schema()`), which does nothing in AWS (`CREATE_SCHEMA=false`): there `db-bootstrap` creates the tables and each Lambda connects with its own database user (see below). Push images with `docker build --provenance=false` (Lambda rejects image indexes).
+- Consumers and alerts task as Lambdas (HU-68, MAG-351): `modules/messaging` (topics `decisions`, `business-alerts`, `ops-alarms`; queues `cases`, `history`, `analytics` with DLQs after 5 attempts and 420 s visibility; DLQ alarms; the analytics mapping sends batches of up to 1,000 or 60 s, one S3 file each, because Firehose is not on AWS's free plan) and `modules/lambdas` (created once `lambda_image_tag` is set). Every Lambda runs the engine image with `entry_point = ["python", "-m", "awslambdaric"]` and the existing handler as command; there is no Lambda-only code. **A Lambda is named like its role in `modules/iam`** (`securepay-<env>-cases-consumer`, `-history-consumer`, `-analytics-consumer`, `-alerts`, `-list-loader`, `-statement-reader`, `-difference-writer`, `-analytics-export`, `-rules-api`, `-cases-api`, `-db-bootstrap`; `-exchange-rates` runs securepay-apis' image). The cases, history and alerts handlers call `create_schema()` on their first write (`batch.ensure_schema()`, `handler.ensure_schema()`), which does nothing in AWS (`CREATE_SCHEMA=false`): there `db-bootstrap` creates the tables and each Lambda connects with its own database user (see below). Push images with `docker build --provenance=false` (Lambda rejects image indexes).
 - Nightly reconciliation (HU-36, MAG-236): `modules/reconciliation` (AWS Glue 6.0 job `-reconciliation-match` = Spark 4.1.1 + Python 3.13, because EMR is not available on AWS's free account plan, the state machine `-reconciliation` ingest → Spark `.sync` → store → SNS `audience = treasury`, `TimeoutSeconds` 4 h 30 min, Scheduler 07:00 UTC, the 06:30 check and the failure alarm). Terraform zips `services/reconciliation` and `shared` (without tests, `archive_file`) for `--extra-py-files` and uploads `infra/spark/match_job.py` as the script; `match_job.py` keeps `--day --records --decisions --output` out of Glue's own arguments and calls `match.main`. Glue brings boto3; what else `match.py` imports goes in `python_modules` of the module (`--additional-python-modules`) at the versions of `uv.lock`, and `services/reconciliation/tests/test_glue_job.py` fails if they differ. The job runs with the `glue-jobs` role. The 06:30 check is `services/alerts/reconciliation_check.py`, run by the alerts handler with `{"job": "reconciliation_check"}`; it publishes to `OPS_ALARMS_TOPIC`.
 - Analytics in AWS (HU-66, MAG-247): `modules/analytics` (Glue database `securepay_<env>_analytics` with one table per entry of `TABLES` and partition projection on `fecha`, Athena workgroup `securepay-<env>-powerbi`, Glue job `-analytics`). Both Spark jobs use one code zip (`jobs/code/securepay-jobs.zip`, `code_folders` of `modules/reconciliation`), which the Deploy workflow uploads again on every merge with `infra/spark/package.py` (`CODE_FOLDERS` must equal `code_folders`). The views are created by the state machine, never by Terraform.
 - Exchange-rates Lambda (HU-42, MAG-359): the only Lambda that does **not** run the engine image. `securepay-<env>-exchange-rates` runs securepay-apis' image (ECR `securepay-<env>-apis`) with `securepay_apis.exchange_rates.handler.handler`, outside the VPC, in its own resources in `modules/lambdas/exchange_rates.tf` (created once `apis_image_tag` is set; daily at 16:00 UTC = 11:00 Bogotá). securepay-apis deploys it with its own `deploy.yml` and the role `securepay-<env>-deploy-apis` (`source_deployers` in `modules/iam`: one role per data-source repository, which may only push its image and update its Lambdas); SecurePay's `deploy.yml` and role do not touch it. A data-source repository that needs its own deploy (the seed, for example) adds one entry to `source_deployers`.
@@ -842,6 +842,8 @@ Read these before changing the design, not to work on the code:
 - API contract (E-05): `uv run python -m infra.api.openapi` writes `doc-website/static/openapi/<service>.json` from the three FastAPI apps; `tests/test_openapi_export.py` fails when they differ from the apps or when a request of the Bruno collection (`infra/api/bruno/`, `bru run --env local` against Compose) calls an undocumented path. After changing an endpoint, run it and commit the files; a new endpoint gets its happy and error requests in the collection. Steps: `doc-website/docs/getting-started/testing.mdx#api-contract`.
 - The deployer (MAG-308): `compose.aws.yml` (its own file, so it needs nothing of the local stack, not even the LocalStack token) builds `infra/deployer/` and runs `deploy.sh` with the parent folder of the clones in `/work`, `~/.aws` and the computer's Docker socket: `docker compose -f compose.aws.yml run --rm deployer check | kaggle | aws <args> | apply | destroy | <terraform command>`. Only Git, Docker Desktop and Power BI (with its ODBC driver) are installed on the computer; the steps are "From zero to AWS" in `README.md` and `intro.mdx`, keep both the same. `TF_DATA_DIR` lives in the cache volume (Linux providers apart from a Windows `.terraform`), the state stays in `envs/dev`. The image sets git `safe.directory '*'` and `core.autocrlf true`, so a Windows clone is not tagged `-dirty`. A new tool the apply needs goes into its Dockerfile.
 - Before a PR: `terraform fmt -check -recursive` in `infra/terraform/` and `terraform validate` in `envs/dev`. The page `doc-website/docs/architecture/terraform.mdx` changes with the code.
+- Resource counts (`Plan: N to add`) are written only in `doc-website/src/data/terraform-plan.json` (`oneApply`, `oneApplyWithKaggle` = +3, `stepByStep` with `build_images = false`); the pages read it with `import plan from '@site/src/data/terraform-plan.json'` and `{plan.oneApply}`, and `README.md` links to them instead of repeating a number. A change that adds or removes resources updates that file with the new `terraform plan`.
+- Pieces of the first design that were not built (the DynamoDB device–account table, the `regla-cambiada` topic and its Lambda, the list service in AWS, cache users with IAM, X-Ray) are listed in `team-decisions.mdx#designed-but-not-built`; a design page that mentions one links there instead of describing it as built.
 
 ## Docker images and local ecosystem (MAG-31 / MAG-32)
 

@@ -4,6 +4,8 @@ title: Deploy to AWS with Terraform
 description: Step by step, from an empty Windows machine to creating, checking and destroying the development environment in AWS with Terraform.
 ---
 
+import plan from '@site/src/data/terraform-plan.json';
+
 # Deploy to AWS with Terraform
 
 This page takes you from a machine without any AWS tools to a full test of the development environment in AWS: create it, check it, run the engine and the consumer Lambdas, prove that the evidence bucket cannot be deleted, and destroy it. [Terraform](../architecture/terraform.mdx) explains what the code creates and why; this page is only the how.
@@ -120,14 +122,7 @@ cd infra\terraform\envs\dev
    terraform init
    ```
 
-3. See what will be created. With one `apply` (the default), it must say about `Plan: 345 to add`. That number is counted from the code; the first such `plan` will confirm it:
-   - 214 of the base;
-   - 21 of the engine;
-   - 72 of the Lambdas and the APIs;
-   - 4 of the exchange-rates Lambda;
-   - 7 of `up.tf`: 3 images, the seed, 2 invocations and the 2026-10-01 rates.
-
-   With `build_images = false` and no tags, it must say `Plan: 214 to add, 0 to change, 0 to destroy`, with one budget e-mail and no supervisor, compliance or treasury e-mail; each address adds one subscription (`terraform plan` of November 4, 2026; what each module adds is in [Terraform](../architecture/terraform.mdx#what-it-creates)):
+3. See what will be created. With one `apply` (the default) it must say <code>Plan: {plan.oneApply} to add, 0 to change, 0 to destroy</code>, or {plan.oneApplyWithKaggle} with the Kaggle CSVs in `../securepay-csv/data/kaggle` (2 uploads and the Kaggle ETL run). With `build_images = false` and no tags it must say <code>Plan: {plan.stepByStep} to add</code>. Both with one budget e-mail and no supervisor, compliance or treasury e-mail; each address adds one subscription (`terraform plan` of {plan.checked}; what each part adds is in [Terraform](../architecture/terraform.mdx#what-it-creates)):
 
    ```powershell
    terraform plan
@@ -139,7 +134,7 @@ cd infra\terraform\envs\dev
    terraform apply
    ```
 
-   It ends with `Apply complete! Resources: 214 added` (about 345 with one `apply`, which also prints each `docker build` and the seed's `exit code 0`). AWS e-mails each address in `supervisor_emails`, `compliance_emails` and `budget_emails` a link "AWS Notification - Subscription Confirmation": **click Confirm subscription in each one.** `apply` does not wait for it, but until you click, SNS sends nothing to that address. Every new environment creates new subscriptions, so this happens after every `apply` from scratch. From this moment it costs money. With one `apply`, go on with the checks of step 5 and then send the transactions of steps 6.6 and 7.3. With `build_images = false`, the engine is not running yet: its service starts in [step 6](#6-deploy-the-engine-on-fargate), once its image is in ECR.
+   It ends with <code>Apply complete! Resources: {plan.stepByStep} added</code> ({plan.oneApply} with one `apply`, {plan.oneApplyWithKaggle} with the Kaggle CSVs, which also prints each `docker build` and the seed's `exit code 0`). AWS e-mails each address in `supervisor_emails`, `compliance_emails` and `budget_emails` a link "AWS Notification - Subscription Confirmation": **click Confirm subscription in each one.** `apply` does not wait for it, but until you click, SNS sends nothing to that address. Every new environment creates new subscriptions, so this happens after every `apply` from scratch. From this moment it costs money. With one `apply`, go on with the checks of step 5 and then send the transactions of steps 6.6 and 7.3. With `build_images = false`, the engine is not running yet: its service starts in [step 6](#6-deploy-the-engine-on-fargate), once its image is in ECR.
 
 **If `apply` fails,** Terraform stops and prints `Error:` with the resource and the AWS message. What it created before the error stays in the state: fix the cause and run `terraform apply` again (it only creates what is missing; a resource that failed halfway is replaced), or run `terraform destroy`.
 
@@ -712,7 +707,7 @@ Once the lock of the last uploaded version has passed, destroy everything and ty
 terraform destroy
 ```
 
-It ends with `Destroy complete! Resources: 350 destroyed` after one `apply` with one budget e-mail. That is 214 of the base, 21 of the engine, 80 of the Lambdas, the rules and cases APIs, the reconciliation and the analytics, 4 of the exchange-rates Lambda, 7 of `up.tf`, 6 of the two Cognito users, 13 of the demo day (12 files and its run) 3 of the Kaggle datasets (2 CSVs and the ETL run; 345 without the CSVs) and 2 of Power BI's key (the key and the profile it writes); each extra e-mail address is one more. Step by step, without the 7 of `up.tf`, it is 338. The `powerbi` user goes with its access key (`force_destroy`), so there is no need to delete the key first. A Terraform user made before November 9, 2026 needs the policy again for `iam:CreateAccessKey` (the apply makes the Power BI key); one made before November 5, 2026 needs the whole [`terraform-user-policy.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/terraform-user-policy.json) pasted again in its inline policy: it now allows `iam:DeleteAccessKey` and `iam:DeleteLoginProfile` on the `securepay-*` users and `iam:ListVirtualMFADevices` (statement `ListMfaDevicesOnDestroy`: `force_destroy` lists the user's MFA devices, which IAM only allows on `*`, and always tries to delete its console password; without them the destroy stops with `AccessDenied` on `securepay-dev-powerbi`), and the instance profile and `AmazonSSMManagedInstanceCore` of the load test machine ([Load test](./load-test.mdx#from-inside-the-vpc-ec2)). Fewer if some steps were skipped: it destroys what the state has. The Glue job and its files go with it. The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
+It ends with <code>Destroy complete! Resources: {plan.oneApplyWithKaggle} destroyed</code> after one `apply` with the Kaggle CSVs and one budget e-mail ({plan.oneApply} without the CSVs, {plan.stepByStep} step by step); each extra e-mail address is one more. The `powerbi` user goes with its access key (`force_destroy`), so there is no need to delete the key first. A Terraform user made before November 9, 2026 needs the policy again for `iam:CreateAccessKey` (the apply makes the Power BI key); one made before November 5, 2026 needs the whole [`terraform-user-policy.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/terraform-user-policy.json) pasted again in its inline policy: it now allows `iam:DeleteAccessKey` and `iam:DeleteLoginProfile` on the `securepay-*` users and `iam:ListVirtualMFADevices` (statement `ListMfaDevicesOnDestroy`: `force_destroy` lists the user's MFA devices, which IAM only allows on `*`, and always tries to delete its console password; without them the destroy stops with `AccessDenied` on `securepay-dev-powerbi`), and the instance profile and `AmazonSSMManagedInstanceCore` of the load test machine ([Load test](./load-test.mdx#from-inside-the-vpc-ec2)). Fewer if some steps were skipped: it destroys what the state has. The Glue job and its files go with it. The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
 
 **Check that nothing is left.** This must print nothing:
 

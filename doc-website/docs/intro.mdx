@@ -4,6 +4,8 @@ title: Introduction
 description: What PagoSeguro is, the problem it has, our anti-fraud solution, its key features, tech stack, project structure and links.
 ---
 
+import plan from '@site/src/data/terraform-plan.json';
+
 # Introduction
 
 <Callout title="Run it yourself" type="tip">
@@ -130,15 +132,15 @@ SecurePay/
 | [Transaction generator](./components/generator.mdx) | `securepay-generator`: `src/securepay_generator/` | Done: plays the wallet core, with labeled fraud patterns and data defects. |
 | [Decision engine](./components/decision-engine.mdx) | `SecurePay`: `services/decision_engine/` | Evaluates transactions using the current versioned rule catalog in Valkey, with a safe fallback to code defaults if Valkey is unavailable. |
 | [Rules API](./components/rules-api.mdx) | `SecurePay`: `services/rules_api/` | Creates and updates rules, enables/disables them, and exposes historical catalog versions without redeploying the decision engine. |
-| [Cases](./components/cases.mdx) | `SecurePay`: `shared/cases.py`, `services/cases_api/`, `services/alerts/` | Sprint 4, closed: cases opened from the decisions, the analyst's inbox, assignment and resolution, escalation after 4 hours, compliance reports and immutable evidence. |
-| [Reconciliation](./components/reconciliation.mdx) | `SecurePay`: `shared/reconciliation.py`, `services/reconciliation/` | Sprint 5: the shared contract, a fixture day, the match in Spark and `GET /reconciliation/runs` (HU-37); reading, differences and treasury's other routes come with HU-36 and HU-38 to HU-41. |
-| [Messaging](./components/messaging.mdx) | `SecurePay`: `services/decision_engine/publisher.py`, `infra/localstack/` | Done locally: SNS topic, three SQS queues with dead-letter queues, on LocalStack. |
+| [Cases](./components/cases.mdx) | `SecurePay`: `shared/cases.py`, `services/cases_api/`, `services/alerts/` | Done: cases opened from the decisions, the analyst's inbox, assignment and resolution, escalation after 4 hours, compliance reports and immutable evidence; the cases API runs as a Lambda behind API Gateway and Cognito. |
+| [Reconciliation](./components/reconciliation.mdx) | `SecurePay`: `shared/reconciliation.py`, `services/reconciliation/` | Done: reading the four partner files, the match in Spark (AWS Glue in AWS), the differences, their age and the treasury e-mail, every night with Step Functions. |
+| [Messaging](./components/messaging.mdx) | `SecurePay`: `services/decision_engine/publisher.py`, `infra/localstack/`, `infra/terraform/modules/messaging` | Done: SNS topic, three SQS queues with dead-letter queues, on LocalStack and in AWS. |
 | [Consumers](./components/consumers.mdx) | `SecurePay`: `services/consumers/` | Analytics writes to S3; cases opens cases and compliance reports, history keeps 30 days per account, both in PostgreSQL. |
 | [Partner statements](./components/partner-statements.mdx) | `securepay-csv`: `src/securepay_csv/partner_statements/` | Done: daily files of the four payment partners, with their defects, locally and in LocalStack. |
 | [Kaggle datasets](./components/kaggle-datasets.mdx) | `securepay-csv`: `src/securepay_csv/kaggle_datasets/`; `securepay-seed`: `src/securepay_seed/kaggle_etl/` | Done: PaySim and Sparkov (`fraudTest.csv`) downloaded, validated and loaded untouched into `raw/kaggle/` with a manifest; an ETL loads a sample of both into PostgreSQL. |
 | [Restricted list service](./components/restricted-list.mdx) | `securepay-apis`: `src/securepay_apis/restricted_list/` | Done: simulated external provider with full-list and per-document endpoints, random latency and outages; reads the list the seed exports. |
-| Exchange rates | `securepay-apis`: `src/securepay_apis/exchange_rates/` | Done locally: daily rates from Frankfurter to a file or to the DynamoDB table in LocalStack, with a Lambda handler for AWS. |
-| [AWS infrastructure (Terraform)](./architecture/terraform.mdx) | `SecurePay`: `infra/terraform/` | Network, security groups, IAM, S3 and RDS written in Terraform; created in the team's AWS account on 2026-10-23, checked and destroyed. Load balancer, ECS, Lambdas, cache and queues come in later sprints. |
+| [Exchange rates](./components/exchange_rates.mdx) | `securepay-apis`: `src/securepay_apis/exchange_rates/` | Done: daily rates from Frankfurter to the DynamoDB table, in LocalStack and as the Lambda `securepay-<env>-exchange-rates` in AWS. |
+| [AWS infrastructure (Terraform)](./architecture/terraform.mdx) | `SecurePay`: `infra/terraform/` | Done: the whole platform in Terraform; one `terraform apply` creates the development environment and `terraform destroy` removes it after every session. |
 
 ## 7. Links
 
@@ -206,7 +208,7 @@ copy infra\terraform\envs\dev\terraform.tfvars.example infra\terraform\envs\dev\
 notepad infra\terraform\envs\dev\terraform.tfvars
 ```
 
-**6. Bring it up.** Answer `yes`. About 350 resources (347 without the Kaggle CSVs); it takes a while. The apply does all of this:
+**6. Bring it up.** Answer `yes`. About {plan.oneApplyWithKaggle} resources ({plan.oneApply} without the Kaggle CSVs); it takes a while. The apply does all of this:
 
 - builds and pushes the images;
 - creates the network, the engine, the Lambdas, the APIs with their Cognito users, the database, the cache, the data lake, Glue and Athena;

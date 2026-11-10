@@ -200,12 +200,14 @@ If the API is unavailable or returns invalid data:
 - In production, the Lambda ends with an error and Lambda retries it twice.
 - The decision engine is not affected: it keeps the rates it already loaded until the next successful fetch.
 
-## Pending
+## Alarms
 
-:::tip Not built yet
-- **Stale-rate alarm:** a CloudWatch alarm if the latest item is more than 4 days old (covers
-  long holiday weekends).
-:::
+- **Stale rates:** `securepay-<env>-exchange-rates-stale` fires when the Lambda has had no
+  successful run in 4 days (`exchange_rate_max_age_days`; covers long holiday weekends).
+- **Fixed rates:** `securepay-<env>-engine-fixed-rates` fires when the engine logs that it is
+  using the fixed 2026-10-01 rates because the table has no rate for the day or any day before.
+
+Both e-mail `ops-alarms` ([Alarms and thresholds](../architecture/infrastructure.mdx#alarms)).
 
 ## Related references
 

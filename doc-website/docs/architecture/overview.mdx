@@ -34,7 +34,7 @@ Grouped by layer. Why each one was chosen, and what was discarded, is in [AWS in
 | Service | Role in PagoSeguro |
 | :--- | :--- |
 | **ECS Fargate** | Runs the decision engine (FastAPI), 4 to 24 tasks across the two zones, and the on-demand admin task for migrations and the seed. |
-| **Lambda** (12 functions) | Everything with low or irregular volume: the three queue consumers, the rules and cases APIs, the list service, the cache refresh, the alerts task, the exchange rates and list loads, and the two reconciliation steps. |
+| **Lambda** (12 functions) | Everything with low or irregular volume: the three queue consumers, the rules and cases APIs, the alerts task, the exchange rates and the cache load (accounts, merchants and the restricted list), the two reconciliation steps, the analytics export and the database bootstrap. |
 
 ### State and data
 
@@ -42,7 +42,7 @@ Grouped by layer. Why each one was chosen, and what was discarded, is in [AWS in
 | :--- | :--- |
 | **ElastiCache Serverless (Valkey)** | The engine's memory: idempotency keys, time windows, 24-hour sums, devices per account, active rules and the full restricted list. Replicated across zones. |
 | **RDS PostgreSQL** (Multi-AZ) | Business data: users, accounts, devices, merchants, versioned rules, cases and reconciliation differences. It does not store transactions. |
-| **DynamoDB** | Durable device–account pairs with a 30-day expiry, and the daily exchange rates. |
+| **DynamoDB** | The daily exchange rates, loaded by the engine at startup. |
 | **S3 Data Lake** | Three layers: `raw` (decisions and partner statements as they arrive), `curated` (clean Parquet) and `analytics` (dimensional model for the dashboard). |
 | **S3 evidence bucket** | Evidence of each closed case, locked with Object Lock in COMPLIANCE mode for 10 years, in Glacier Instant Retrieval. |
 
@@ -50,7 +50,7 @@ Grouped by layer. Why each one was chosen, and what was discarded, is in [AWS in
 
 | Service | Role in PagoSeguro |
 | :--- | :--- |
-| **SNS** | The `decisiones` topic copies every decision to the three queues. Other topics refresh the cache when a rule changes and send emails to compliance, the supervisor, treasury and the tech team. |
+| **SNS** | The `decisiones` topic copies every decision to the three queues. Two more topics send e-mails: `alertas-negocio` to compliance, the supervisor and treasury, `alarmas-operativas` to the tech team. |
 | **SQS** | Three independent queues (`casos`, `historial`, `analitica`), each with its dead-letter queue, so one consumer falling behind does not stop the others. |
 
 ### Processing and orchestration
@@ -67,7 +67,7 @@ Grouped by layer. Why each one was chosen, and what was discarded, is in [AWS in
 | :--- | :--- |
 | **Glue Data Catalog** | Keeps the table definitions of the Data Lake. |
 | **Athena** | SQL straight on S3, without moving data or keeping a cluster running. |
-| **Power BI** | The dashboard, connected to Athena with its native connector. |
+| **Power BI** | The dashboard, connected to Athena through the Athena ODBC driver ([Power BI over Athena](../getting-started/deploy-aws-terraform.mdx#power-bi-over-athena)). |
 
 ### Operations
 

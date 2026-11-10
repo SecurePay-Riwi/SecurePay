@@ -44,7 +44,7 @@ Grouped by service, so a service that solves several things is counted once.
 | Amazon API Gateway | Rules, cases and list service endpoints (HTTP API) | $1.10 | $0.10 |
 | Amazon EventBridge Scheduler | Reconciliation, exchange rates, 5-minute alerts | $0.00 | $0.00 |
 | AWS Step Functions | Reconciliation orchestration | $0.00 | $0.00 |
-| Amazon DynamoDB | Durable device–account pairs (30 days) + exchange rates table | $0.90 | $0.10 |
+| Amazon DynamoDB | Exchange rates table. The estimate still counts the device–account pairs of the first design, which were [not built](./team-decisions.mdx#designed-but-not-built): about $0.80 of margin | $0.90 | $0.10 |
 | AWS Glue 6.0 | 2 Spark jobs every night: the reconciliation match and the analytics ETL, 2 G.1X workers, ~10 minutes each at $0.308 per DPU-hour (was EMR Serverless, $7.27: not on AWS's free plan, [ADR-05](./decisions.mdx#adr-05)) | $6.16 | $0.10 |
 | AWS Systems Manager | Session Manager + Parameter Store | $0.00 | $0.00 |
 | Amazon RDS PostgreSQL | Multi-AZ instance + storage + backups: users, rules, cases | $31.35 | $5.50 |
@@ -155,7 +155,7 @@ The VPC, its six subnets in three tiers, the NAT Gateways, the gateway endpoints
 | :--- | :--- |
 | RDS PostgreSQL | `db.t3.micro`, Multi-AZ, 20 GB gp3, automatic backups, SSL/TLS |
 | ElastiCache Serverless (Valkey) | No node choice, scales by itself, 100 MB minimum billed, cross-AZ replica included, encryption in transit. Key design in [Decision engine](../components/decision-engine.mdx) |
-| DynamoDB | On demand, TTL on. Device–account pairs (30 days) and exchange rates |
+| DynamoDB | On demand. The exchange rates (the device–account pairs stayed in Valkey and PostgreSQL) |
 | S3 Data Lake | Three medallion layers: `raw` (bronze), `curated` (silver, clean Parquet), `analytics` (gold, dimensional model) |
 | S3 evidence | Separate bucket, Object Lock in COMPLIANCE mode for 10 years. Each object is written directly in Glacier Instant Retrieval (no lifecycle rule: S3 does not transition objects under 128 KB without a size filter). Cost over 10 years below |
 
@@ -180,7 +180,6 @@ The 128 KB minimum eats most of the saving (Glacier IR would be ~83% cheaper wit
 | SNS `decisiones` | Standard topic, published with `PublishBatch` (batches of 10) |
 | SQS `casos`, `historial`, `analitica` | Subscribed with raw message delivery, no subscription filters, read and deleted in batches of 10 |
 | Dead-letter queues | One per queue, after 5 attempts, 14-day retention, CloudWatch alarm on any message, redrive after fixing the cause |
-| SNS `regla-cambiada` | A subscribed Lambda refreshes the cache |
 | SNS `alertas-negocio` / `alarmas-operativas` | Email to compliance, supervisor and treasury / to the tech team |
 
 ### Security and operations

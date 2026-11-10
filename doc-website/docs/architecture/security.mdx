@@ -33,9 +33,9 @@ Rule: only what talks to the database or the cache runs inside the VPC, because 
 | Inside the VPC (application subnets) | Why | Outside the VPC | Why it can be outside |
 | :--- | :--- | :--- | :--- |
 | Decision engine (Fargate) | Reads and writes the cache | Analytics consumer | Only writes its batches to S3 |
-| Admin task (Fargate, on demand) | Schema migrations and seed against the database | Restricted list service | Only reads its file in S3 at startup |
+| Admin task (Fargate, on demand) | Schema migrations and seed against the database | | |
 | Case consumer | Writes cases to the database | Exchange rate task | Calls Frankfurter on the internet and writes to DynamoDB |
-| History consumer | Writes to DynamoDB and the cache | Statement reading (reconciliation) | Only reads the S3 raw layer |
+| History consumer | Writes the 30-day account history to the database | Statement reading (reconciliation) | Only reads the S3 raw layer |
 | Rules API | Reads and writes rules in the database | Spark jobs (AWS Glue) | Only read and write S3 and the Glue catalog |
 | Cases API | Reads and writes cases in the database | | |
 | Alerts Lambda | Reads and updates cases in the database | | |
@@ -76,7 +76,7 @@ One group per function, and the rules are written between groups instead of betw
 | Group | Allowed inbound | Allowed outbound |
 | :--- | :--- | :--- |
 | `sg-alb` | 443/TCP from the internet (0.0.0.0/0) | 8080/TCP to `sg-motor` |
-| `sg-motor` | 8080/TCP from `sg-alb` | 6379 and 6380/TCP to `sg-cache`; 443/TCP to the internet (SNS, ECR, CloudWatch, X-Ray, Parameter Store, DynamoDB through its endpoint, list service) |
+| `sg-motor` | 8080/TCP from `sg-alb` | 6379 and 6380/TCP to `sg-cache`; 443/TCP to the internet (SNS, ECR, CloudWatch, X-Ray, Parameter Store, DynamoDB through its endpoint) |
 | `sg-lambda` | None (Lambdas do not receive connections) | 5432/TCP to `sg-rds`; 6379 and 6380/TCP to `sg-cache`; 443/TCP to the internet |
 | `sg-admin` | None | 5432/TCP to `sg-rds`; 443/TCP to the internet (ECR, CloudWatch, Parameter Store) |
 | `sg-load-runner` (dev, load test only) | None (no SSH: Systems Manager) | 443/TCP to the internet (GitHub, uv, Systems Manager, S3, the load balancer) |
@@ -126,11 +126,11 @@ Team members reach resources inside the VPC through **AWS Systems Manager Sessio
 | 6 | — | — | Was `rol-firehose-raw`: removed in Sprint 6, Firehose is not on AWS's free plan |
 | 7 | `rol-api-reglas` | Lambda | Read and write rules, announce the change and read the raw decisions and labels to simulate a rule version |
 | 8 | `rol-api-casos` | Lambda | Read and write cases and store the evidence on closing |
-| 9 | `rol-actualiza-reglas-cache` | Lambda | Read the active rule from the database and write it to the cache |
+| 9 | — | — | Was `rol-actualiza-reglas-cache`: not built, the rules API publishes the catalog itself ([Designed but not built](./team-decisions.mdx#designed-but-not-built)) |
 | 10 | `rol-alertas` | Lambda | Review and escalate cases, send emails and review transactions approved by fallback |
 | 11 | `rol-tasas` | Lambda | Write the day's exchange rate to DynamoDB |
 | 12 | `rol-carga-lista` | Lambda | Write the restricted list to the cache |
-| 13 | `rol-servicio-listas` | Lambda | Read the list provider's file |
+| 13 | — | — | Was `rol-servicio-listas`: not built, the list service is not deployed in AWS ([Designed but not built](./team-decisions.mdx#designed-but-not-built)) |
 | 14 | `rol-lee-extractos` | Lambda | Read the partners' statements |
 | 15 | `rol-escribe-diferencias` | Lambda | Read the reconciliation result, write differences and notify treasury |
 | 16 | `rol-conciliacion` | Step Functions | Invoke the two reconciliation Lambdas and the Spark job |
@@ -144,7 +144,7 @@ Team members reach resources inside the VPC through **AWS Systems Manager Sessio
 | 24 | `rol-db-bootstrap` | Lambda | Read the master password and the component passwords to create the tables, the users and their grants (Sprint 6) |
 | 25 | `rol-analytics-export` | Lambda | Read the cases and the reconciliation from the database, count what matched and write them to the raw layer (Sprint 6, HU-66) |
 
-That is 22 roles and one user, compared with 12 in version 1.0 (number 6 is kept empty so the numbers below do not change). What changed: the engine's execution role was split from its application role; the escalation task became the alerts Lambda (which also reviews transactions approved by fallback); the daily list load, the list service, the rule refresh in the cache, EventBridge Scheduler and the admin task were added; and statement ingestion was split into the two reconciliation Lambdas. The Power BI user is the only long-lived credential (Power BI Desktop does not assume roles): read only, with keys rotated every 90 days.
+That is 21 roles and one user, compared with 12 in version 1.0 (numbers 6, 9 and 13 are kept empty so the numbers below do not change). What changed: the engine's execution role was split from its application role; the escalation task became the alerts Lambda (which also reviews transactions approved by fallback); the daily list load, EventBridge Scheduler, the admin task, the database bootstrap and the analytics export were added; and statement ingestion was split into the two reconciliation Lambdas. The Power BI user is the only long-lived credential (Power BI Desktop does not assume roles): read only, with keys rotated every 90 days.
 
 ### Detailed permissions per role
 
@@ -167,7 +167,7 @@ Each table is the role's complete permission set. Actions are written as in the 
 | `dynamodb:Query` | table `tasas-cambio` | Load the exchange rates table at startup and every hour (HU-42) |
 | `xray:PutTraceSegments`, `xray:PutTelemetryRecords`, `xray:GetSamplingRules`, `xray:GetSamplingTargets` | `*` (X-Ray does not scope by resource) | Send traces |
 
-The engine calls the list service over HTTPS only if the cache is unavailable; that call does not go through IAM. It has no permission at all on the database.
+The engine never calls the list service: when the cache is unavailable it gives the default decision (HU-67). It has no permission at all on the database.
 
 **3. `rol-consumidor-casos`** · VPC networking · own logs
 
@@ -199,9 +199,10 @@ Since Sprint 4 the history is the PostgreSQL table `account_transactions` (team 
 | Action | Resource | Purpose |
 | :--- | :--- | :--- |
 | `ssm:GetParameter` | parameter `/pagoseguro/prod/rds/api_reglas` | Password of the database user `api_reglas`: read and write rules and versions |
-| `sns:Publish` | `tema:regla-cambiada` | Tell the cache that the active rule changed |
 | `s3:ListBucket` | bucket `pagoseguro-prod-datalake`, only the `raw/decisiones/` and `raw/labels/` prefixes | Find the files of the simulated day and the labels |
 | `s3:GetObject` | `pagoseguro-prod-datalake/raw/decisiones/*` and `/raw/labels/*` | Read them. The simulation replays the day in Python inside this Lambda, without Spark, so it needs no EMR or Glue permissions |
+
+It publishes each new catalog version to the cache itself after the commit (`{rules}:catalog`, `{rules}:version`), so it needs no SNS topic.
 
 **8. `rol-api-casos`** · VPC networking · own logs
 
@@ -213,14 +214,7 @@ Since Sprint 4 the history is the PostgreSQL table `account_transactions` (team 
 
 Change from version 1.0: the evidence is stored by the cases API when the case is closed, not by the case consumer, which only creates the case.
 
-**9. `rol-actualiza-reglas-cache`** · VPC networking · own logs
-
-| Action | Resource | Purpose |
-| :--- | :--- | :--- |
-| `ssm:GetParameter` | parameter `/pagoseguro/prod/rds/lector_reglas` | Password of the database user `lector_reglas` (only `SELECT` on rules): read the active version |
-| `elasticache:Connect` | the cache and the user `reglas` | Write it to the cache |
-
-The subscription to the `regla-cambiada` topic is authorized by a permission on the Lambda itself (`lambda:InvokeFunction` for `sns.amazonaws.com`, with the topic as the source), not by this role.
+**9.** Not built (was `rol-actualiza-reglas-cache`): the rules API publishes the catalog to the cache itself.
 
 **10. `rol-alertas`** · VPC networking · own logs
 
@@ -246,13 +240,9 @@ To review the transactions approved by fallback it calls the engine over HTTPS t
 | `elasticache:Connect` | the cache and the user `carga_lista` | Replace the list in the cache |
 | `ssm:GetParameter` | parameter `/rds/list_loader` | Its database password, to read accounts, merchants and the list |
 
-It requests the full list from the list service over HTTPS (`GET /lista`), without IAM.
+It reads the list from the seed's table in PostgreSQL, like the accounts and merchants (HU-67); it never calls the list service.
 
-**13. `rol-servicio-listas`** · own logs (outside the VPC)
-
-| Action | Resource | Purpose |
-| :--- | :--- | :--- |
-| `s3:GetObject` | `pagoseguro-prod-proveedor-listas/lista_restrictiva.jsonl` | Load the list at startup. No permission on the Data Lake |
+**13.** Not built (was `rol-servicio-listas`): the list service is not deployed in AWS; it stays as the simulated provider in Compose.
 
 **14. `rol-lee-extractos`** · own logs (outside the VPC)
 
@@ -384,8 +374,7 @@ Terraform invokes it on each apply that creates the database, changes a password
 | Queues `casos`, `historial`, `analitica` | `sqs:SendMessage` for `sns.amazonaws.com` only if the source is `tema:decisiones` (`aws:SourceArn` condition). LocalStack does not check it; AWS does |
 | Bucket `pagoseguro-prod-evidencia` | Object Lock in COMPLIANCE mode with a default retention of 10 years (requires versioning). Not even the root account can delete objects or shorten the retention |
 | The three buckets | Block public access on, and deny every request without TLS (`aws:SecureTransport` = `false`) |
-| Lambda `actualiza-reglas-cache` | Allows `tema:regla-cambiada` to invoke it |
-| API Gateway | Cognito JWT authorizer on the rules and cases routes. The list service routes do not have it because they simulate a third party |
+| API Gateway | Cognito JWT authorizer on the rules and cases routes; `GET /health` and the `OPTIONS` preflight routes go without it |
 
 ### JSON examples
 
@@ -518,9 +507,9 @@ This is how they are written in Terraform. `<cuenta>` and the identifiers are pa
 
 | Parameter | Who reads it | Note |
 | :--- | :--- | :--- |
-| `/pagoseguro/prod/rds/master-password` | The admin task (seed) and `db-bootstrap` | Generated by Terraform. No other component uses the master user |
+| `/pagoseguro/prod/rds/master-password` and `master-url` | The admin task (seed) and `db-bootstrap` | Generated by Terraform. No other component uses the master user |
 | `/pagoseguro/prod/kaggle/token` | The Kaggle download script, if it runs in AWS | Today each team member runs it locally with their own token |
-| `/pagoseguro/prod/rds/<user>` (8) | Each component, only its own: `cases_consumer`, `history_consumer`, `alerts`, `reconciliation`, `list_loader`, `analytics_export` (deployed), and `cases_api`, `rules_api`, `rules_reader` (their components are not deployed yet), plus `db-bootstrap` for the five deployed ones | Passwords generated by Terraform. The cache has no password: it uses IAM (see [Identity and access](#iam)) |
+| `/pagoseguro/prod/rds/<user>` (8) | Each component, only its own: `cases_consumer`, `history_consumer`, `alerts`, `reconciliation`, `list_loader`, `analytics_export`, `rules_api` and `cases_api`, plus `db-bootstrap`, which sets them all | Passwords generated by Terraform. The cache has no password: only the engine and the Lambdas' security groups reach it, over TLS (cache users with IAM are [not built](./team-decisions.mdx#designed-but-not-built)) |
 
 AWS managed keys were chosen instead of customer managed KMS keys because they encrypt just as well and cost nothing; a customer managed key adds manual rotation and fine-grained policies, which no requirement of this project asks for, at $1 a month per key. For the same reason, Parameter Store instead of Secrets Manager: the advantage of Secrets Manager is automatic rotation, and these secrets do not rotate.
 

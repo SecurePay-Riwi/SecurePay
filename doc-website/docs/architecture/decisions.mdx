@@ -27,7 +27,7 @@ Each record follows the same format: context, decision, alternatives considered 
 
 **Context.** The core needs a synchronous decision service with p99 ≤ 200 ms at 300 tx/s. At the sustained 50 tx/s that is 129.6 million requests a month, the busiest path in the system.
 
-**Decision.** The engine sits directly behind an Application Load Balancer. API Gateway is kept for the low-volume endpoints (rules, cases, restricted list service).
+**Decision.** The engine sits directly behind an Application Load Balancer. API Gateway is kept for the low-volume endpoints (the rules and cases APIs). The restricted list service of the first design is not deployed: the engine reads the list from the cache ([Designed but not built](./team-decisions.mdx#designed-but-not-built)).
 
 **Alternatives.** API Gateway for everything: about $128.60/month against $25 for the ALB, and 10 to 20 ms of extra latency on a 200 ms budget. Network Load Balancer: faster, but no HTTP-level health checks or built-in TLS termination with ACM.
 
@@ -51,11 +51,13 @@ Each record follows the same format: context, decision, alternatives considered 
 
 **Context.** On every transaction the engine reads and updates idempotency keys, 10 to 30-minute window counters, 24-hour rolling sums, the active rules and the restricted list cache: 129.6 million transactions a month inside 200 ms.
 
-**Decision.** That state lives in ElastiCache Serverless for Valkey. DynamoDB is kept for low-frequency data: device–account pairs and exchange rates.
+**Decision.** That state lives in ElastiCache Serverless for Valkey. DynamoDB is kept for low-frequency data: the exchange rates. (The device–account pairs planned there stayed in the cache and in PostgreSQL: [Designed but not built](./team-decisions.mdx#designed-but-not-built).)
 
 **Alternatives.** Storing each transaction in DynamoDB: about $105/month and it grows with traffic. Fixed-size nodes (Redis OSS or Valkey): predictable cost, but the size must be guessed before having data; if it falls short, the cache evicts keys and idempotency is the first thing lost.
 
 **Consequences.** The cost becomes variable ($9 to $25 depending on real memory). Latency of the serverless layer and real operation usage stay open until measured. **Checkpoint:** if latency is not enough, the way out is Valkey on `t3.small` nodes ×2 (~$39.71/month), a Terraform change that does not touch the engine code.
+
+**Checkpoint result (HU-60, run 8, 2026-11-08).** The way out exists as a variable: `cache_node_type` (`null` = Serverless, the default; for example `cache.m7g.large` = one shard with one replica, PR #128). Run 8 used it at 300 tx/s with 10 tasks: the client p99 went from 180 to 140 ms and the default decisions from 307 to 147, but the load balancer's p99 still reached 205 to 215 ms in two minutes, because the pause once a minute stayed ([known issue](../getting-started/load-test.mdx#known-issue)). The cache is not the cause, so the decision stands: Serverless, which costs less at this volume and needs no size guessed in advance.
 
 ## ADR-04 — Messaging is SNS fanned out to three SQS queues {/* #adr-04 */}
 
@@ -113,11 +115,13 @@ Each record follows the same format: context, decision, alternatives considered 
 
 | Measure | Compose (local) | kind (local) | ECS Fargate (dev) | EKS (dev) |
 | :--- | :--- | :--- | :--- | :--- |
-| p50 / p95 / p99 (ms) | | | | |
-| Errors | | | | |
-| Time for a new task or pod to be ready | — | | | |
+| p50 / p95 / p99 (ms) at 300 tx/s | | | 32 / 106 / 229 (run 5, load balancer) | |
+| Errors | | | 4 `HTTP 502` from the load balancer in 149,486 requests, none from the engine; 0.40 % default decisions | |
+| Time for a new task or pod to be ready | — | | Not measured (autoscaling did not add tasks in run 5) | |
 | Team hours to get it running | — | | | |
-| Cost of the session | $0 | $0 | | |
+| Cost of the session | $0 | $0 | USD 0.10 for the 15-minute run on top of dev ([cost of a run](../getting-started/load-test.mdx#cost)) | |
+
+The Fargate column is [run 5 of the load test](../getting-started/load-test.mdx#result) (10 tasks of 0.5 vCPU, from the EC2 machine in the VPC). kind and EKS are still to be run with [Run the engine on Kubernetes](../getting-started/kubernetes.mdx).
 
 With the measured numbers pending, the decision stands: for one service with constant load and a team of 3 to 4, Fargate gives the same Deployment-like behaviour (rolling deploys, health checks, autoscaling, two zones) without a control plane to pay for or a cluster to upgrade. Kubernetes would pay off with many services, several teams, or a need to leave AWS, none of which this project has.
 
