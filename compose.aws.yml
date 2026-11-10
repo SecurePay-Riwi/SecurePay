@@ -1,0 +1,30 @@
+# The deployer: Terraform, the AWS CLI and uv in a container, to bring dev
+# up on AWS with only Git and Docker Desktop installed (MAG-308). Separate
+# from docker-compose.yml, so it needs nothing of the local stack (no
+# LocalStack token). It sees the folder of the clones (/work), your ~/.aws
+# and this computer's Docker: the images are built here and pushed to ECR,
+# the Terraform state stays in infra/terraform/envs/dev and the Power BI
+# profile lands in your ~/.aws. README, "From zero to AWS":
+#
+#   docker compose -f compose.aws.yml run --rm deployer check
+#   docker compose -f compose.aws.yml run --rm deployer apply
+#   docker compose -f compose.aws.yml run --rm deployer destroy
+name: securepay-aws
+
+services:
+  deployer:
+    build: {context: ./infra/deployer, dockerfile: Dockerfile}
+    environment:
+      # Passed only when set: without it the AWS CLI uses the default profile.
+      AWS_PROFILE:
+      KAGGLE_API_TOKEN:
+      # The name of this clone's folder, if it is not SecurePay.
+      SECUREPAY_DIR: ${SECUREPAY_DIR:-SecurePay}
+    volumes:
+      - ..:/work
+      - ${USERPROFILE:-${HOME}}/.aws:/root/.aws
+      - /var/run/docker.sock:/var/run/docker.sock
+      - cache:/cache
+
+volumes:
+  cache:
