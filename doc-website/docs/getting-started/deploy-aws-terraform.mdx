@@ -408,6 +408,8 @@ The same apply creates `securepay-dev-rules-api` and `securepay-dev-cases-api`, 
 
    Resolving archives the case's evidence in the evidence bucket ([step 11](#11-prove-that-evidence-cannot-be-deleted)).
 
+The same steps work from the browser: the pages [/rules-api](/rules-api) and [/cases-api](/cases-api) sign in with these users and call the same API ([Rules and cases API pages](../components/api-console.mdx)).
+
 The first call to each API after an apply takes a few seconds (the Lambda starts inside the VPC); the next ones answer in milliseconds. A `500` with `Internal Server Error` is the Lambda failing: `aws logs tail /aws/lambda/securepay-dev-rules-api --since 10m` (or `-cases-api`).
 
 ## 8. Run the nightly reconciliation
