@@ -169,11 +169,20 @@ Each record follows the same format: context, decision, alternatives considered 
 
 *Cost: EKS costs more for the same engine.*
 
-- **The engine alone:** Fargate is about $72/month (4 tasks of 0.5 vCPU and 1 GB); EKS is about $133/month (the $73 control plane plus 2 `t3.medium` nodes at about $60) before any extra node for the peak.
-- **The whole platform:** the built option (A) is $337.31/month; the assignment's stack on EKS (C, with RabbitMQ, Airflow and Spark on the cluster) is $664.89/month, almost double ([options](./aws-services-and-costs.mdx#options)).
+- **The engine alone:** Fargate is $72.08/month and EKS about $134/month, before any extra node for the peak. Both are computed from AWS's `us-east-2` price list (November 4, 2026, the one of [AWS services and costs](./aws-services-and-costs.mdx)) for 730 hours a month, with the same capacity: the 4 tasks Fargate keeps (2 per zone) against the 2 nodes that hold the same 4 pods.
+
+  | | Price | Monthly |
+  | :--- | :--- | :--- |
+  | Fargate: 4 tasks of 0.5 vCPU and 1 GB | $0.04048 per vCPU-hour + $0.004445 per GB-hour = $0.0247 an hour per task | 4 × $0.0247 × 730 = **$72.08** |
+  | EKS: control plane | $0.10 an hour per cluster | $0.10 × 730 = $73.00 |
+  | EKS: 2 `t3.medium` nodes (2 vCPU, 4 GB), one per zone | $0.0416 an hour each | 2 × $0.0416 × 730 = $60.74 |
+  | EKS total | | **$133.74** |
+
+  Neither line counts the load balancer, the cache or the logs, which are the same on both. EKS costs more mostly because of the control plane, a fixed charge Fargate does not have.
+- **The whole platform:** the built option (A) is $337.31/month; the assignment's stack on EKS (C, with RabbitMQ, Airflow and Spark on the cluster, on 6 `t3.large` nodes) is $664.89/month, almost double. How each is computed is in [Three options](./aws-services-and-costs.mdx#options).
 - **This comparison:** $0, on kind. EKS is not on the account's AWS free plan, so trying it in AWS would have been an extra cost only for the exercise.
 
-**Conclusion.** The decision stands: for one service with constant load and a team of 3 to 4, Fargate gives the same latency and the same Deployment-like behaviour (rolling deploys, health checks, self-healing, autoscaling, two zones) for about half the cost and without a cluster to operate. Kubernetes would pay off with many services, several teams, or a need to leave AWS, none of which this project has; the manifests stay in `infra/k8s/` in case that changes.
+**Conclusion.** The decision stands: for one service with constant load and a team of 3 to 4, Fargate gives the same latency and the same Deployment-like behaviour (rolling deploys, health checks, self-healing, autoscaling, two zones) for about half the cost ($72 against $134 for the engine) and without a cluster to operate. Kubernetes would pay off with many services, several teams, or a need to leave AWS, none of which this project has; the manifests stay in `infra/k8s/` in case that changes.
 
 ## ADR-07 — The engine's autoscaling maximum goes from 12 to 24 tasks {/* #adr-07 */}
 
