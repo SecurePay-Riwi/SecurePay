@@ -95,9 +95,9 @@ Each record follows the same format: context, decision, alternatives considered 
 
 **Consequences.** The solution is tied to AWS. In exchange, high availability comes with each service and the team spends its time on the business rules instead of running infrastructure.
 
-**Kubernetes comparison.** The course program asks to deploy the decision engine on Kubernetes and compare it with Fargate. This is done as a one-off exercise, not as part of the architecture: the engine runs on EKS for one session in dev's VPC, with a Deployment, a Service and a namespace, under the same load as on Fargate; latency, operation effort and cost are measured, and the cluster is destroyed the same day. The control plane bills per hour, so the exercise costs a few dollars instead of $73/month. The results are recorded here and confirm or revise this decision.
+**Kubernetes comparison.** The course program asks to deploy the decision engine on Kubernetes and compare it with Fargate. This is done as a one-off exercise, not as part of the architecture. The plan was one EKS session in dev's VPC; in the end it was run locally on kind, with the same Deployment, Service and namespace, at no cost (how and result below). The results confirm or revise this decision.
 
-**Kubernetes comparison: how (HU-58).** The manifests are in `infra/k8s/` (kustomize: one `base` and the overlays `kind` and `eks`); the steps, in [Run the engine on Kubernetes](../getting-started/kubernetes.mdx). The same image, command, size (0.5 vCPU, 1 GB) and variables as the ECS service. First on **kind**, a real Kubernetes cluster whose nodes are Docker containers on the team's computer: it costs nothing and proves the engine runs on Kubernetes unchanged, but it has no AWS (no load balancer, IAM or zones), so it cannot measure latency against Fargate. Then on **EKS** for one session, if the account's plan allows it, measured with the same load test as Fargate (HU-60).
+**Kubernetes comparison: how (HU-58).** The manifests are in `infra/k8s/` (kustomize: one `base` and the overlays `kind` and `eks`); the steps, in [Run the engine on Kubernetes](../getting-started/kubernetes.mdx). The same image, command, size (0.5 vCPU, 1 GB) and variables as the ECS service. First on **kind**, a real Kubernetes cluster whose nodes are Docker containers on the team's computer: it costs nothing and proves the engine runs on Kubernetes unchanged, but it has no AWS (no load balancer, IAM or zones), so it cannot measure latency against Fargate. The `eks` overlay is ready for one session in AWS, measured with the same load test as Fargate (HU-60), but it was not applied.
 
 | | ECS Fargate (today) | EKS (managed nodes) |
 | :--- | :--- | :--- |
@@ -109,20 +109,28 @@ Each record follows the same format: context, decision, alternatives considered 
 | Load balancer and IAM | ALB and task role, native | AWS Load Balancer Controller or the in-tree NLB; IAM through IRSA or Pod Identity |
 | Portability | AWS only | Any Kubernetes (the same manifests run on kind) |
 
-**Kubernetes comparison: result.** Measured on 2026-11-10 on one team computer with `latency.py` (1,000 requests, 10 at a time), against the Compose engine and the engine on kind (one node), both with the Compose stack's Valkey; every answer was a full decision. The Fargate and EKS columns stay open until the EKS session in AWS.
+**Kubernetes comparison: how it was run.** EKS was not deployed in AWS: the comparison was run locally on kind, on one team computer (Windows, Docker Desktop), with the manifests of `infra/k8s/`, the same image and variables as the ECS service, and nothing else changed:
 
-| Measure | Compose (local) | kind (local) | ECS Fargate (dev) | EKS (dev) |
-| :--- | :--- | :--- | :--- | :--- |
-| p50 / p95 / p99 (ms) | 51.1 / 65.2 / 77.0 | 44.5 / 70.9 / 80.3 | | |
-| Throughput of the run (tx/s) | 193 | 227 | | |
-| Errors | 0 of 1,000 | 0 of 1,000 | | |
-| Time for a new task or pod to be ready | — | 11 s (a deleted pod replaced; the other pod kept answering) | | |
-| Team hours to get it running | — | About 15 min (create the cluster, load the image, deploy, measure, replace a pod) | | |
-| Cost of the session | $0 | $0 | | |
+1. `kind create cluster --name securepay --config infra/k8s/overlays/kind/kind.yaml`: a real Kubernetes cluster (API server, scheduler, kubelet, containerd) whose nodes are Docker containers. The three nodes of `kind.yaml` (one control plane, two workers) started; the measurement used one node, because three nodes next to the Compose stack ran out of the computer's memory.
+2. `kind load docker-image securepay-engine:kind`: the engine image built by Compose, copied into the nodes (kind does not pull from a registry).
+3. `kubectl apply -k infra/k8s/overlays/kind`: the namespace `securepay`, the ConfigMap with the engine's variables, a Deployment of two pods of 0.5 vCPU and 1 GB with `/health` as readiness and liveness, a PodDisruptionBudget and a NodePort Service published on `localhost:8080`. The pods reach the Compose stack's Valkey and LocalStack, so both engines decide with the same data.
+4. `infra/k8s/latency.py` sent the same 1,000 requests (10 at a time) to the Compose engine and to the engine on kind.
+5. One pod was deleted to watch the Deployment replace it while the Service kept answering from the other.
 
-The kind numbers are local and are **not** comparable with AWS (no load balancer, zones or ElastiCache, and the client runs on the same computer); the 200 ms limit is judged only on the ALB in dev ([load test](../getting-started/load-test.mdx)). Locally, Kubernetes adds no latency worth noting, the same image and manifests run unchanged, and a deleted pod is replaced in seconds while the other keeps answering.
+**Kubernetes comparison: result.**
 
-With the kind result in and the EKS numbers pending, the decision stands: for one service with constant load and a team of 3 to 4, Fargate gives the same Deployment-like behaviour (rolling deploys, health checks, autoscaling, two zones) without a control plane to pay for or a cluster to upgrade. Kubernetes would pay off with many services, several teams, or a need to leave AWS, none of which this project has.
+| Measure | Compose (local) | kind (local) |
+| :--- | :--- | :--- |
+| p50 / p95 / p99 (ms) | 51.1 / 65.2 / 77.0 | 44.5 / 70.9 / 80.3 |
+| Throughput of the run (tx/s) | 193 | 227 |
+| Errors | 0 of 1,000 | 0 of 1,000 |
+| Time for a new pod to be ready | — | 11 s (the other pod kept answering) |
+| Team hours to get it running | — | About 15 min (create the cluster, load the image, deploy, measure, replace a pod) |
+| Cost of the session | $0 | $0 |
+
+The kind numbers are local and are **not** comparable with AWS (no load balancer, zones or ElastiCache, and the client runs on the same computer); Fargate's latency is the one of the [load test](../getting-started/load-test.mdx), judged on the ALB in dev. Locally, Kubernetes adds no latency worth noting, the same image and manifests run unchanged, and a deleted pod is replaced in seconds while the other keeps answering. The EKS side of the comparison (cost, what the team writes and operates) is the table above; the `overlays/eks` manifests and `cluster.yaml` are ready for a session in AWS but were not applied.
+
+With the kind result, the decision stands: for one service with constant load and a team of 3 to 4, Fargate gives the same Deployment-like behaviour (rolling deploys, health checks, autoscaling, two zones) without a control plane to pay for or a cluster to upgrade. Kubernetes would pay off with many services, several teams, or a need to leave AWS, none of which this project has.
 
 ## ADR-07 — The engine's autoscaling maximum goes from 12 to 24 tasks {/* #adr-07 */}
 
