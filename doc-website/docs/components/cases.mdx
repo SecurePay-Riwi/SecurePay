@@ -94,6 +94,10 @@ To judge a case the analyst also needs the accounts behind the same devices (the
 
 The latest seen first. A use older than the window does not count, on either side, and the purge of HU-28 leaves nothing older than 30 days.
 
+## The senders behind a case (CA-02)
+
+A mule case (RN-03) holds a withdrawal; what the analyst needs to see is the network that fed the account just before it. `GET /cases/{case_id}/senders` reads it from the same history, without another table: the `IN` rows of `P2P` transfers to the case's account in the `minutes` before the case's transaction (default 30, the mule rule's `window_minutes`; at most 1,440), without the case's own transaction. One item per sender, the most transfers first, with their sum in USD, the first and the last, and `open_cases` of the sender. `received_usd` adds the whole window and `case_vs_received_pct` compares the case's amount with it (90 % in the example: almost everything that came in went out). The engine decides with `source_balance_before`, not with this sum, so the percentage explains the case but is not the rule's number. The history consumer writes the `IN` rows asynchronously, like the case: a transfer still in the queue appears a moment later.
+
 The columns of the four tables are in [Data model](../reference/data-model.mdx#cases-cases-case_events-compliance_reports-account_transactions).
 
 ## Amounts
@@ -181,6 +185,7 @@ Built like the [rules API](./rules-api.mdx): FastAPI, tables created at startup,
 | `GET /compliance/restricted-list-reports` | Built (HU-34) |
 | `GET /accounts/{account_id}/transactions` | Built (HU-28) |
 | `GET /accounts/{account_id}/related-accounts` | Built (HU-29) |
+| `GET /cases/{case_id}/senders` | Built (CA-02) |
 
 ### `GET /cases`
 
@@ -342,6 +347,38 @@ curl "http://localhost:8003/accounts/5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42/relate
     }
   ],
   "total": 1
+}
+```
+
+### `GET /cases/{case_id}/senders`
+
+The accounts that sent `P2P` transfers to the case's account in the `minutes` before the case's transaction (1 to 1,440, default 30), see [The senders behind a case](#the-senders-behind-a-case-ca-02). A case without transfers before it is `200` with an empty list and `case_vs_received_pct` null. `404` for a case that does not exist, `400` for a case id that is not a UUID or `minutes` out of range; `503` without PostgreSQL.
+
+```bash
+curl "http://localhost:8003/cases/0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01/senders"
+```
+
+```json
+{
+  "case_id": "0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01",
+  "account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+  "minutes": 30,
+  "since": "2026-10-31T13:32:11Z",
+  "until": "2026-10-31T14:02:11Z",
+  "senders": [
+    {
+      "account_id": "9e1b3d5f-7a9c-4e1b-8d3f-5a7c9e1b3d64",
+      "transfers": 2,
+      "amount_usd": "120.40",
+      "first_at": "2026-10-31T13:40:02Z",
+      "last_at": "2026-10-31T13:51:47Z",
+      "open_cases": 0
+    }
+  ],
+  "total_senders": 3,
+  "received_usd": "255.50",
+  "case_amount_usd": "230.05",
+  "case_vs_received_pct": "90.04"
 }
 ```
 

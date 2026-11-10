@@ -7,7 +7,7 @@ file belongs to one story:
 
     routes_cases.py       inbox, detail, assign, resolve (HU-26, HU-27, HU-30)
     routes_reports.py     suspicious operations report (HU-35)
-    routes_accounts.py    account history, related accounts (HU-28, HU-29)
+    routes_accounts.py    account history, related accounts (HU-28, HU-29), senders of a case (CA-02)
     routes_compliance.py  restricted list reports (HU-34)
     routes_reconciliation.py  reconciliation differences (HU-38 to HU-41)
 

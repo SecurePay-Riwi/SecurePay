@@ -207,6 +207,50 @@ class RelatedAccountList(BaseModel):
     total: int = Field(description="Items in the list.")
 
 
+class CaseSender(BaseModel):
+    """One account that sent P2P transfers to the case's account before
+    the transaction of the case."""
+
+    account_id: UUID = Field(description="The sender.")
+    transfers: int = Field(description="P2P transfers it sent in the window.")
+    amount_usd: Decimal | None = Field(
+        description="Their sum in USD, at the engine's rate of each one; null when none has it.",
+    )
+    first_at: datetime = Field(description="Its first transfer in the window, UTC.")
+    last_at: datetime = Field(description="Its last transfer in the window, UTC.")
+    open_cases: int = Field(
+        description="Cases of the sender that are OPEN or ESCALATED."
+    )
+
+
+class CaseSenders(BaseModel):
+    """CA-02: the network behind a mule case."""
+
+    case_id: UUID = Field(description="The case.")
+    account_id: UUID = Field(description="The case's main account, the receiver.")
+    minutes: int = Field(description="The window before the case's transaction.")
+    since: datetime = Field(description="Start of the window, UTC.")
+    until: datetime = Field(
+        description="The case's transaction date, UTC: end of the window."
+    )
+    senders: list[CaseSender] = Field(
+        description="One item per sender, the most transfers first.",
+    )
+    total_senders: int = Field(description="Different senders in the window.")
+    received_usd: Decimal = Field(
+        description="Everything received in the window, in USD."
+    )
+    case_amount_usd: Decimal | None = Field(
+        description="The case's transaction in USD (the withdrawal of a mule case).",
+    )
+    case_vs_received_pct: Decimal | None = Field(
+        description=(
+            "case_amount_usd as a percentage of received_usd, two decimals; "
+            "null when nothing was received or the case has no USD amount."
+        ),
+    )
+
+
 # --- Cases (HU-26) -----------------------------------------------------------
 
 

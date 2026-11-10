@@ -428,6 +428,12 @@ Read this before touching `shared/cases.py`, `services/cases_api/`,
   account's `device_id`s in the window and the other accounts with rows
   on them in the window; one item per (account, device) with
   `last_seen` and `open_cases` (cases in `PENDING`).
+- **The senders of a case (CA-02)** are another query on the same
+  table: `GET /cases/{case_id}/senders?minutes=` (in
+  `routes_accounts.py`) groups the `IN` `P2P` rows of the case's account
+  in the `minutes` before its `transaction_date` (default the mule rule's
+  `window_minutes`, at most 1,440) by `counterparty_account_id`, with
+  each sender's `open_cases`, `received_usd` and `case_vs_received_pct`.
 - **The suspicious operations report (HU-35)** is
   `GET /reports/suspicious?from=&to=&format=json|csv` in
   `routes_reports.py`: the cases with `created_at` in the period (both

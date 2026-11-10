@@ -30,6 +30,7 @@ EXPECTED = {
     ("get", "/reports/suspicious"): ["200", "400", "503"],
     ("get", "/accounts/{account_id}/transactions"): ["200", "400", "503"],
     ("get", "/accounts/{account_id}/related-accounts"): ["200", "400", "503"],
+    ("get", "/cases/{case_id}/senders"): ["200", "400", "404", "503"],
     ("get", "/cases"): ["200", "400", "503"],
     ("get", "/cases/{case_id}"): ["200", "400", "404", "503"],
     ("put", "/cases/{case_id}/assignee"): ["200", "400", "404", "409", "503"],
