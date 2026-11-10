@@ -27,7 +27,7 @@ Both pages call the deployed APIs from the browser, through the HTTP API `secure
 
 The **LED** next to *Connection* calls `GET /health` every 15 seconds. It is the only route without a token, and it answers only when the HTTP API, the cases API's Lambda and RDS are up: green is "AWS is on", red is "AWS is off".
 
-The browser can call the API because the HTTP API has CORS for the site's origins (`cors_origins` of `modules/api`: the GitHub Pages site and `localhost:3000`) and an `OPTIONS /{proxy+}` route without the authorizer for the preflight requests.
+The browser can call the API because the HTTP API has CORS for the site's origins (`cors_origins` of `modules/api`: the GitHub Pages site and `localhost:3000`) and one `OPTIONS` route without the authorizer next to each of its routes (`OPTIONS /rules`, `OPTIONS /rules/{proxy+}`, ...) for the preflight requests: API Gateway sends a request to its most specific route, so a single `OPTIONS /{proxy+}` would lose to `ANY /rules` and its authorizer would answer `401`.
 
 ## Roles
 

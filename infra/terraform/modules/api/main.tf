@@ -200,13 +200,15 @@ resource "aws_apigatewayv2_route" "this" {
   authorizer_id      = aws_apigatewayv2_authorizer.cognito[0].id
 }
 
-# A preflight carries no token: without this route the JWT authorizer of
-# the ANY routes would refuse it before CORS answers.
+# A preflight carries no token, and API Gateway sends it to the most
+# specific route: OPTIONS /rules would reach ANY /rules, whose JWT
+# authorizer answers 401 before CORS does. So every path above gets its own
+# OPTIONS route without the authorizer, where CORS answers the preflight.
 resource "aws_apigatewayv2_route" "preflight" {
-  count = var.enabled ? 1 : 0
+  for_each = { for key, api in local.routes_enabled : replace(key, "ANY ", "OPTIONS ") => api }
 
   api_id    = aws_apigatewayv2_api.this[0].id
-  route_key = "OPTIONS /{proxy+}"
+  route_key = each.key
   target    = "integrations/${aws_apigatewayv2_integration.health[0].id}"
 }
 
