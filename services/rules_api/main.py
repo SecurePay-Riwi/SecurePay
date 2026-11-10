@@ -11,7 +11,7 @@ import logging
 from contextlib import asynccontextmanager
 
 import valkey
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -19,7 +19,7 @@ from mangum import Mangum
 from pydantic import ValidationError
 from sqlalchemy.exc import OperationalError
 
-from services.rules_api import docs, publisher, simulation, store
+from services.rules_api import docs, publisher, roles, simulation, store
 from services.rules_api.schemas import (
     Health,
     Published,
@@ -41,6 +41,9 @@ RESERVED_CODES = {"versions", "publish", "simulations"}
 ONE_DAY = "A simulation covers one day (D5): send day, not from and to."
 
 INVALID = "The request contains invalid rule data."
+
+# In AWS only the risk manager writes the catalog (roles.py).
+MANAGER_ONLY = [Depends(roles.require_manager)]
 
 
 def _publish(snapshot: CatalogSnapshot, force: bool = False) -> bool:
@@ -196,6 +199,7 @@ def get_version(version: int):
 @app.post(
     "/rules/versions/{version}/activate",
     response_model=CatalogSnapshot,
+    dependencies=MANAGER_ONLY,
     **docs.ACTIVATE,
 )
 def activate_version(version: int, x_user: str = Header("anonymous")):
@@ -243,7 +247,12 @@ def activate_version(version: int, x_user: str = Header("anonymous")):
     return snapshot
 
 
-@app.post("/rules/publish", response_model=Published, **docs.PUBLISH)
+@app.post(
+    "/rules/publish",
+    response_model=Published,
+    dependencies=MANAGER_ONLY,
+    **docs.PUBLISH,
+)
 def publish_latest():
     snapshot = store.latest()
     try:
@@ -277,7 +286,13 @@ def get_rule(code: str):
     return _get({r.code: r for r in store.latest().rules}, code)
 
 
-@app.post("/rules", response_model=RuleChange, status_code=201, **docs.CREATE)
+@app.post(
+    "/rules",
+    response_model=RuleChange,
+    status_code=201,
+    dependencies=MANAGER_ONLY,
+    **docs.CREATE,
+)
 def create_rule(body: RuleCreate, x_user: str = Header("anonymous")):
     author = _author(x_user)
     if body.code in RESERVED_CODES:
@@ -305,7 +320,9 @@ def create_rule(body: RuleCreate, x_user: str = Header("anonymous")):
     return _write(author, change)
 
 
-@app.put("/rules/{code}", response_model=RuleChange, **docs.UPDATE)
+@app.put(
+    "/rules/{code}", response_model=RuleChange, dependencies=MANAGER_ONLY, **docs.UPDATE
+)
 def update_rule(code: str, body: RuleUpdate, x_user: str = Header("anonymous")):
     author = _author(x_user)
 
@@ -351,12 +368,22 @@ def _toggle(code: str, enabled: bool, x_user: str) -> RuleChange:
     return _write(author, change)
 
 
-@app.post("/rules/{code}/enable", response_model=RuleChange, **docs.ENABLE)
+@app.post(
+    "/rules/{code}/enable",
+    response_model=RuleChange,
+    dependencies=MANAGER_ONLY,
+    **docs.ENABLE,
+)
 def enable_rule(code: str, x_user: str = Header("anonymous")):
     return _toggle(code, True, x_user)
 
 
-@app.post("/rules/{code}/disable", response_model=RuleChange, **docs.DISABLE)
+@app.post(
+    "/rules/{code}/disable",
+    response_model=RuleChange,
+    dependencies=MANAGER_ONLY,
+    **docs.DISABLE,
+)
 def disable_rule(code: str, x_user: str = Header("anonymous")):
     return _toggle(code, False, x_user)
 

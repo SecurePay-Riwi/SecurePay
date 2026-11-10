@@ -76,6 +76,12 @@ def _error(description: str, detail: str) -> dict:
     }
 
 
+FORBIDDEN = _error(
+    "In AWS, the signed-in user is not in the gerente group (only the risk "
+    "manager changes the rules). Locally there is no token and no check.",
+    "Only the risk manager (gerente) may change the rules.",
+)
+
 INVALID = {
     "description": "Invalid body, header or parameters.",
     "model": ValidationError,
@@ -134,6 +140,7 @@ CREATE = {
     ),
     "tags": ["Rules"],
     "responses": {
+        403: FORBIDDEN,
         201: _ok(
             "Created. A new catalog version.",
             _change({**VELOCITY_1H, "rule_version": 1}, 3),
@@ -154,6 +161,7 @@ UPDATE = {
     ),
     "tags": ["Rules"],
     "responses": {
+        403: FORBIDDEN,
         200: _ok("Changed, or already like that.", _change(SLOW_VELOCITY, 2)),
         400: INVALID,
         404: NO_RULE,
@@ -166,6 +174,7 @@ ENABLE = {
     "description": "If it is already enabled, nothing changes and no version is created.",
     "tags": ["Rules"],
     "responses": {
+        403: FORBIDDEN,
         200: _ok("Enabled.", _change({**VELOCITY, "rule_version": 3}, 4)),
         400: INVALID,
         404: NO_RULE,
@@ -182,6 +191,7 @@ DISABLE = {
     ),
     "tags": ["Rules"],
     "responses": {
+        403: FORBIDDEN,
         200: _ok(
             "Disabled.", _change({**VELOCITY, "enabled": False, "rule_version": 2}, 3)
         ),
@@ -255,6 +265,7 @@ ACTIVATE = {
     ),
     "tags": ["Versions"],
     "responses": {
+        403: FORBIDDEN,
         200: _ok("The catalog now active.", {**SNAPSHOT, "version": 5}),
         400: INVALID,
         404: NO_VERSION,
@@ -267,6 +278,7 @@ PUBLISH = {
     "description": "For operations: after Valkey lost its data, or when a publish failed.",
     "tags": ["Versions"],
     "responses": {
+        403: FORBIDDEN,
         200: _ok("Valkey holds the latest version.", {"version": 2, "published": True}),
         503: _error(
             "Valkey or PostgreSQL is not available.", "Valkey is not available."

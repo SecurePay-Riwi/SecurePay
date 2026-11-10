@@ -15,15 +15,15 @@ client = TestClient(app)
 EXPECTED = {
     ("get", "/health"): ["200", "503"],
     ("get", "/rules"): ["200", "503"],
-    ("post", "/rules"): ["201", "400", "409", "503"],
+    ("post", "/rules"): ["201", "400", "403", "409", "503"],
     ("get", "/rules/{code}"): ["200", "404", "503"],
-    ("put", "/rules/{code}"): ["200", "400", "404", "503"],
-    ("post", "/rules/{code}/enable"): ["200", "400", "404", "503"],
-    ("post", "/rules/{code}/disable"): ["200", "400", "404", "409", "503"],
+    ("put", "/rules/{code}"): ["200", "400", "403", "404", "503"],
+    ("post", "/rules/{code}/enable"): ["200", "400", "403", "404", "503"],
+    ("post", "/rules/{code}/disable"): ["200", "400", "403", "404", "409", "503"],
     ("get", "/rules/versions"): ["200", "400", "503"],
     ("get", "/rules/versions/{version}"): ["200", "400", "404", "503"],
-    ("post", "/rules/versions/{version}/activate"): ["200", "400", "404", "503"],
-    ("post", "/rules/publish"): ["200", "503"],
+    ("post", "/rules/versions/{version}/activate"): ["200", "400", "403", "404", "503"],
+    ("post", "/rules/publish"): ["200", "403", "503"],
     ("post", "/rules/simulations"): ["200", "400", "404", "422", "503"],
 }
 

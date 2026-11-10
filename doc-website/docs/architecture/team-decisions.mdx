@@ -166,7 +166,7 @@ The assignment names a Kaggle credit card dataset as the card payment history. A
 | The rules API and the cases API run as Lambdas (`securepay-<env>-rules-api`, `-cases-api`) with the engine image and Mangum, behind one API Gateway HTTP API with a Cognito JWT authorizer (`modules/api`). | It is the design of [Infrastructure](infrastructure.mdx) and [Security](security.mdx); an analyst's few requests a day cost nothing on Lambda, where an always-on Fargate service would. |
 | API Gateway sets `X-User` from the token's e-mail. | The author of a rule change and the analyst of a case are the person who signed in, not a header anyone can type. |
 | The rules API publishes the catalog to Valkey itself, as locally; the `regla-cambiada` topic and the `actualiza-reglas-cache` Lambda are not built. | One writer and one step less: the engine already reads `{rules}:version` every second. |
-| The APIs do not check the Cognito groups yet, and MFA is off in dev. | Two analysts' worth of demo users; the groups exist so that a check can be added without changing the pool. |
+| MFA is off in dev. Only the risk manager (`gerente`) changes the rule catalog; an analyst gets `403` (added on 2026-11-10 with the Rules API and Cases API pages). | The brief gives the rules to the risk manager and the case inbox to the analyst (section 4, actors). Minimum privilege (RNF-05): hiding a button is not enough when the API is public. |
 
 ## X-Ray is left out
 

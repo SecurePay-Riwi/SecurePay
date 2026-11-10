@@ -72,7 +72,7 @@ copy infra\terraform\envs\dev\terraform.tfvars.example infra\terraform\envs\dev\
 notepad infra\terraform\envs\dev\terraform.tfvars
 ```
 
-**6. Bring it up.** Answer `yes`. About 342 resources (339 without the Kaggle CSVs); it takes a while. The apply does all of this:
+**6. Bring it up.** Answer `yes`. About 343 resources (340 without the Kaggle CSVs); it takes a while. The apply does all of this:
 
 - builds and pushes the images;
 - creates the network, the engine, the Lambdas, the APIs with their Cognito users, the database, the cache, the data lake, Glue and Athena;
@@ -787,7 +787,7 @@ Necesitas Terraform 1.9 o más reciente, la CLI de AWS y un usuario IAM (nunca r
 
     cp terraform.tfvars.example terraform.tfvars   # tu nombre y tu correo
     terraform init
-    terraform plan       # con Docker Desktop abierto y uv: unos 337 to add (todo el ambiente)
+    terraform plan       # con Docker Desktop abierto y uv: unos 338 to add (todo el ambiente)
     terraform apply
     terraform destroy    # siempre al terminar de probar: los NAT y RDS cobran aunque no haya tráfico
 

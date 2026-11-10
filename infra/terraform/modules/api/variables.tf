@@ -52,3 +52,13 @@ variable "users" {
     error_message = "Each user's group must be analista or gerente."
   }
 }
+
+variable "cors_origins" {
+  description = "Origins whose pages may call the HTTP API from the browser: the GitHub Pages site and the local Docusaurus server, like the engine's CORS."
+  type        = list(string)
+  default = [
+    "https://securepay-riwi.github.io",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+  ]
+}
