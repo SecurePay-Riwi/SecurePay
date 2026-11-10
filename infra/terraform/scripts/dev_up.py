@@ -36,7 +36,13 @@ SIBLINGS = {"admin": "securepay-seed", "apis": "securepay-apis"}
 
 def _run(*args: str, input: str | None = None, check: bool = True) -> str:
     result = subprocess.run(
-        args, input=input, capture_output=True, text=True, check=False
+        args,
+        input=input,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
     )
     if check and result.returncode != 0:
         raise SystemExit(
@@ -54,7 +60,11 @@ def image_tag(folder: Path) -> str:
         return ""
     git = ("git", "-C", str(folder))
     probe = subprocess.run(
-        (*git, "rev-parse", "--short", "HEAD"), capture_output=True, text=True
+        (*git, "rev-parse", "--short", "HEAD"),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     if probe.returncode != 0:
         return ""
@@ -62,8 +72,13 @@ def image_tag(folder: Path) -> str:
     status = _run(*git, "status", "--porcelain")
     if not status:
         return commit
-    changes = status + _run(*git, "diff", "HEAD")
-    return f"{commit}-dirty-{hashlib.sha256(changes.encode()).hexdigest()[:7]}"
+    # The diff as bytes: on Windows the console code page cannot decode
+    # every file (a binary or non-UTF-8 one), and the hash only needs bytes.
+    diff = subprocess.run(
+        (*git, "diff", "HEAD"), capture_output=True, check=True
+    ).stdout
+    changes = status.encode("utf-8") + diff
+    return f"{commit}-dirty-{hashlib.sha256(changes).hexdigest()[:7]}"
 
 
 def tags(query: dict) -> dict:
