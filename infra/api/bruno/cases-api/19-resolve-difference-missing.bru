@@ -1,0 +1,25 @@
+meta {
+  name: Resolve a difference that does not exist (404)
+  type: http
+  seq: 19
+}
+
+post {
+  url: {{cases}}/reconciliation/differences/00000000-0000-0000-0000-000000000000/resolution
+  body: json
+  auth: none
+}
+
+headers {
+  X-User: {{user}}
+}
+
+body:json {
+  {
+    "note": "Checked with the partner."
+  }
+}
+
+assert {
+  res.status: eq 404
+}
