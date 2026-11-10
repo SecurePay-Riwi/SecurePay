@@ -27,7 +27,7 @@ Grouped by layer. Why each one was chosen, and what was discarded, is in [AWS in
 | Service | Role in PagoSeguro |
 | :--- | :--- |
 | **Application Load Balancer** | The only entry from the wallet core. Terminates HTTPS on port 443 and spreads each transaction across the engine tasks in both zones, checking their health. |
-| **API Gateway + Cognito** | Entry for people: analysts and the risk manager sign in with Cognito and use the rules and cases APIs. It also exposes the simulated restricted-list provider. |
+| **API Gateway + Cognito** | Entry for people: analysts and the risk manager sign in with Cognito and use the rules and cases APIs. |
 
 ### Compute
 
@@ -92,4 +92,4 @@ Nothing comes from a real system:
 | [Kaggle datasets](../components/kaggle-datasets.mdx) | PaySim (transfers) and Sparkov (card payments): labeled history for rule effectiveness, never sent through the engine (see [Team decisions](./team-decisions.mdx#card-payment-history-sparkov)). | Done (local and LocalStack) |
 | [Partner statements](../components/partner-statements.mdx) | Daily files from four payment partners, for reconciliation, built from the generator's output with the assignment's defects. | Done (local and LocalStack) |
 | [Exchange rates](../components/exchange_rates.mdx) | Frankfurter public API (v2), loaded once a day into DynamoDB. | Done (local and LocalStack) |
-| Restricted list service | A simulated service that is slow and fails on purpose, protected by a circuit breaker. It serves the list the seed exports to S3 (see [Restricted list service](../components/restricted-list.mdx)). | Done (local and LocalStack) |
+| Restricted list service | A simulated provider that is slow and fails on purpose. It serves the list the seed exports to S3; the engine never calls it, it reads the cached copy of the seed's table (see [Restricted list service](../components/restricted-list.mdx)). | Done (local and LocalStack) |

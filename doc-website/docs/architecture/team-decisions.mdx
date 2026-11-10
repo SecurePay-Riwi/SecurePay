@@ -107,7 +107,7 @@ The assignment names a Kaggle credit card dataset as the card payment history. A
 
 ## Restricted list service
 
-**Decided on 2026-10-14.**
+**Decided on 2026-10-14. Changed by HU-67 (MAG-352):** the cache loader copies the list from PostgreSQL (the seed's table) into Valkey, and when the cache fails the engine gives the default decision (`HOLD` if the list was never loaded). Nothing calls `GET /lista` or `GET /lista/{documento}`, so there is no circuit breaker and the service is not deployed in AWS. See [Restricted list service](../components/restricted-list.mdx#how-the-system-uses-it). The table below is the original decision.
 
 | Decision | Why |
 | :--- | :--- |
@@ -121,7 +121,7 @@ The assignment names a Kaggle credit card dataset as the card payment history. A
 
 | Gap | Decision |
 | :--- | :--- |
-| Circuit breaker of the list service | Automatic. |
+| Circuit breaker of the list service | Automatic. **Not needed since HU-67:** the engine never calls the service. |
 | Consumer Lambda memory | 512 MB, as in the cost table; raised to 1024 MB only if the load test asks for it (~$32 more a month). |
 | SNS filters per recipient on the business alerts topic | Treasury and compliance only get their own emails. No extra cost. |
 | Device history in the cache | A sorted set by date pruned to 30 days per account, like the other windows, instead of a set that expires whole. DynamoDB keeps the durable copy. |
