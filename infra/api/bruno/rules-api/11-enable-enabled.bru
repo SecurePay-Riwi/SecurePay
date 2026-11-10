@@ -1,0 +1,24 @@
+meta {
+  name: Enable a rule that is enabled (happy)
+  type: http
+  seq: 11
+}
+
+post {
+  url: {{rules}}/rules/velocity/enable
+  body: none
+  auth: none
+}
+
+headers {
+  X-User: {{user}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.rule.enabled: eq true
+}
+
+docs {
+  velocity is enabled by default, so nothing changes and no version is created (RN-08).
+}

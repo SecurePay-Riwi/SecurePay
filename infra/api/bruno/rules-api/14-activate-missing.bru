@@ -1,0 +1,23 @@
+meta {
+  name: Activate a version that does not exist (404)
+  type: http
+  seq: 14
+}
+
+post {
+  url: {{rules}}/rules/versions/999999/activate
+  body: none
+  auth: none
+}
+
+headers {
+  X-User: {{user}}
+}
+
+assert {
+  res.status: eq 404
+}
+
+docs {
+  Activating an existing version writes a new one, so the collection only checks the refusal.
+}

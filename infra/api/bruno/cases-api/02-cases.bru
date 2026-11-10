@@ -10,6 +10,13 @@ get {
   auth: none
 }
 
+script:post-response {
+  const items = res.getBody().items || [];
+  if (items.length) {
+    bru.setVar("caseId", items[0].id);
+  }
+}
+
 assert {
   res.status: eq 200
 }

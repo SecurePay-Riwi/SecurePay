@@ -1,0 +1,19 @@
+meta {
+  name: Enable a rule that does not exist (404)
+  type: http
+  seq: 12
+}
+
+post {
+  url: {{rules}}/rules/does_not_exist/enable
+  body: none
+  auth: none
+}
+
+headers {
+  X-User: {{user}}
+}
+
+assert {
+  res.status: eq 404
+}

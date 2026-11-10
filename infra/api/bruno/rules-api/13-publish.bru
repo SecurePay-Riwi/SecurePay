@@ -1,0 +1,20 @@
+meta {
+  name: Publish the latest catalog (happy)
+  type: http
+  seq: 13
+}
+
+post {
+  url: {{rules}}/rules/publish
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.published: eq true
+}
+
+docs {
+  Writes the latest version to Valkey again (after Valkey restarts). The catalog in PostgreSQL does not change.
+}
