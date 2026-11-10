@@ -117,7 +117,7 @@ Each record follows the same format: context, decision, alternatives considered 
 | Throughput of the run (tx/s) | 191 | 220 | | |
 | Errors | 0 of 1,000 | 0 of 1,000 | | |
 | Time for a new task or pod to be ready | — | 11 s (a deleted pod replaced; the other pod kept answering) | | |
-| Team hours to get it running | — | About 1.25 h, most of it on the computer's memory and Windows ports (below) | | |
+| Team hours to get it running | — | About 15 min of steps (create the cluster, load the image, deploy, measure, replace a pod), not counting the Windows problems below | | |
 | Cost of the session | $0 | $0 | | |
 
 **What the kind numbers say, and what they do not.** Both engines ran on the same computer, so the comparison only shows what Kubernetes adds locally: the median is the same, and the tail is about 20 ms higher on kind (p99 93 against 72 ms), which is the NodePort hop plus four more containers sharing the computer's memory. These are local numbers and are **not** comparable with AWS: there is no load balancer, network between zones or ElastiCache, and the client runs on the same machine as the engine. The 200 ms limit is judged only on the ALB in dev ([load test](../getting-started/load-test.mdx)). The run did prove what kind can prove: the same image, manifests and variables run unchanged on Kubernetes, the readiness probe and the Deployment replace a pod in seconds, and the Service keeps answering from the other pod.
