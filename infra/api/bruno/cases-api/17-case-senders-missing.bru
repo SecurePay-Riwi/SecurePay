@@ -1,0 +1,19 @@
+meta {
+  name: Senders of a case that does not exist (404)
+  type: http
+  seq: 17
+}
+
+get {
+  url: {{cases}}/cases/00000000-0000-0000-0000-000000000000/senders
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 404
+}
+
+docs {
+  CA-02. With a real case id (GET /cases) it answers 200 with the senders.
+}

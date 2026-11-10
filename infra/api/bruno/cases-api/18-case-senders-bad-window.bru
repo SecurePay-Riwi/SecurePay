@@ -1,0 +1,19 @@
+meta {
+  name: Senders with a window out of range (400)
+  type: http
+  seq: 18
+}
+
+get {
+  url: {{cases}}/cases/00000000-0000-0000-0000-000000000000/senders?minutes=0
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 400
+}
+
+docs {
+  CA-02: minutes goes from 1 to 1440.
+}

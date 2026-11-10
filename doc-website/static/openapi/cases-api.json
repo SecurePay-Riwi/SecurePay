@@ -985,6 +985,130 @@
         }
       }
     },
+    "/cases/{case_id}/senders": {
+      "get": {
+        "tags": [
+          "Accounts"
+        ],
+        "summary": "List the senders behind a case (the mule network)",
+        "description": "CA-02: the accounts that sent P2P transfers to the case's account in the `minutes` before the case's transaction (by default 30, the window of the mule rule, RN-03), read from the account history (the `IN` rows). One item per sender with how many transfers, their sum in USD, the first and the last, and the sender's own open cases; the most transfers first.\n\n`received_usd` adds every transfer of the window and `case_vs_received_pct` compares the case's transaction (in a mule case, the withdrawal) with it. The engine decides with the account's balance (`source_balance_before`), so this percentage explains the case but is not the rule's own number. A case without transfers before it is an empty list.",
+        "operationId": "case_senders_cases__case_id__senders_get",
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Case Id"
+            }
+          },
+          {
+            "name": "minutes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1440,
+              "minimum": 1,
+              "description": "Transfers received in the `minutes` before the case's transaction (1 to 1440; the mule rule looks at 30).",
+              "default": 30,
+              "title": "Minutes"
+            },
+            "description": "Transfers received in the `minutes` before the case's transaction (1 to 1440; the mule rule looks at 30)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The senders in the window, the most transfers first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseSenders"
+                },
+                "example": {
+                  "case_id": "0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01",
+                  "account_id": "5d7f9b1c-3e5a-4c7e-9b1d-3f5a7c9e1b42",
+                  "minutes": 30,
+                  "since": "2026-10-31T13:32:11Z",
+                  "until": "2026-10-31T14:02:11Z",
+                  "senders": [
+                    {
+                      "account_id": "9e1b3d5f-7a9c-4e1b-8d3f-5a7c9e1b3d64",
+                      "transfers": 2,
+                      "amount_usd": "120.40",
+                      "first_at": "2026-10-31T13:40:02Z",
+                      "last_at": "2026-10-31T13:51:47Z",
+                      "open_cases": 0
+                    },
+                    {
+                      "account_id": "1f3a5c7e-9b1d-4f3a-8c5e-7a9c1e3b5d02",
+                      "transfers": 1,
+                      "amount_usd": "70.10",
+                      "first_at": "2026-10-31T13:45:30Z",
+                      "last_at": "2026-10-31T13:45:30Z",
+                      "open_cases": 1
+                    },
+                    {
+                      "account_id": "7c9e1b3d-5f7a-4c9e-9b3d-5f7a9c1e3b28",
+                      "transfers": 1,
+                      "amount_usd": "65.00",
+                      "first_at": "2026-10-31T13:58:12Z",
+                      "last_at": "2026-10-31T13:58:12Z",
+                      "open_cases": 0
+                    }
+                  ],
+                  "total_senders": 3,
+                  "received_usd": "255.50",
+                  "case_amount_usd": "230.05",
+                  "case_vs_received_pct": "90.04"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The case id is not a UUID, or `minutes` is out of range.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The request contains invalid data."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "There is no case with that id.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Case not found."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL is not available.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "The cases database is not available."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/compliance/restricted-list-reports": {
       "get": {
         "tags": [
@@ -2257,6 +2381,151 @@
           "size"
         ],
         "title": "CasePage"
+      },
+      "CaseSender": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Account Id",
+            "description": "The sender."
+          },
+          "transfers": {
+            "type": "integer",
+            "title": "Transfers",
+            "description": "P2P transfers it sent in the window."
+          },
+          "amount_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Usd",
+            "description": "Their sum in USD, at the engine's rate of each one; null when none has it."
+          },
+          "first_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "First At",
+            "description": "Its first transfer in the window, UTC."
+          },
+          "last_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last At",
+            "description": "Its last transfer in the window, UTC."
+          },
+          "open_cases": {
+            "type": "integer",
+            "title": "Open Cases",
+            "description": "Cases of the sender that are OPEN or ESCALATED."
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id",
+          "transfers",
+          "amount_usd",
+          "first_at",
+          "last_at",
+          "open_cases"
+        ],
+        "title": "CaseSender",
+        "description": "One account that sent P2P transfers to the case's account before\nthe transaction of the case."
+      },
+      "CaseSenders": {
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Case Id",
+            "description": "The case."
+          },
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Account Id",
+            "description": "The case's main account, the receiver."
+          },
+          "minutes": {
+            "type": "integer",
+            "title": "Minutes",
+            "description": "The window before the case's transaction."
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Since",
+            "description": "Start of the window, UTC."
+          },
+          "until": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Until",
+            "description": "The case's transaction date, UTC: end of the window."
+          },
+          "senders": {
+            "items": {
+              "$ref": "#/components/schemas/CaseSender"
+            },
+            "type": "array",
+            "title": "Senders",
+            "description": "One item per sender, the most transfers first."
+          },
+          "total_senders": {
+            "type": "integer",
+            "title": "Total Senders",
+            "description": "Different senders in the window."
+          },
+          "received_usd": {
+            "type": "string",
+            "title": "Received Usd",
+            "description": "Everything received in the window, in USD."
+          },
+          "case_amount_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Case Amount Usd",
+            "description": "The case's transaction in USD (the withdrawal of a mule case)."
+          },
+          "case_vs_received_pct": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Case Vs Received Pct",
+            "description": "case_amount_usd as a percentage of received_usd, two decimals; null when nothing was received or the case has no USD amount."
+          }
+        },
+        "type": "object",
+        "required": [
+          "case_id",
+          "account_id",
+          "minutes",
+          "since",
+          "until",
+          "senders",
+          "total_senders",
+          "received_usd",
+          "case_amount_usd",
+          "case_vs_received_pct"
+        ],
+        "title": "CaseSenders",
+        "description": "CA-02: the network behind a mule case."
       },
       "CaseStatus": {
         "type": "string",

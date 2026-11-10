@@ -46,7 +46,7 @@ The general rule: **pay for capacity where volume is high and pay per use where 
 | **Immutable evidence for 10 years** | S3 Object Lock in COMPLIANCE mode, written by the cases API when each case closes |
 | **Reconciliation before 07:00** | Starts at 02:00, with retries per step and an alarm at 06:30 |
 | **Suspicious-operations report** | Recorded immediately at decision time, summary to compliance every 5 minutes |
-| **Simulate a rule without touching production** | Spark evaluates the candidate rule on the labeled history, with the same interpreter as the engine, on separate compute |
+| **Simulate a rule without touching production** | The rules API replays one labeled day in Python with the engine's own rule code (`POST /rules/simulations`, HU-24) for the current catalog and the candidate, and compares them; it never writes rules, versions or the cache. Spark measures the rules over the whole lake every night (views q2 and q3) |
 
 Network, security groups and IAM roles are in [Security](./security.mdx); the full resource list in [AWS infrastructure](./infrastructure.mdx).
 

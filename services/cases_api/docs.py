@@ -662,3 +662,72 @@ RECONCILIATION_RUNS = {
         503: DB_DOWN,
     },
 }
+
+
+# --- Senders of a case (CA-02) ---------------------------------------------
+
+CASE_SENDERS = {
+    "summary": "List the senders behind a case (the mule network)",
+    "description": (
+        "CA-02: the accounts that sent P2P transfers to the case's account "
+        "in the `minutes` before the case's transaction (by default 30, the "
+        "window of the mule rule, RN-03), read from the account history "
+        "(the `IN` rows). One item per sender with how many transfers, "
+        "their sum in USD, the first and the last, and the sender's own "
+        "open cases; the most transfers first.\n\n"
+        "`received_usd` adds every transfer of the window and "
+        "`case_vs_received_pct` compares the case's transaction (in a mule "
+        "case, the withdrawal) with it. The engine decides with the "
+        "account's balance (`source_balance_before`), so this percentage "
+        "explains the case but is not the rule's own number. A case "
+        "without transfers before it is an empty list."
+    ),
+    "responses": {
+        200: _ok(
+            "The senders in the window, the most transfers first.",
+            {
+                "case_id": "0b5e7c43-9d8a-4f6e-8f43-5a7d1c2e9b01",
+                "account_id": _ACCOUNT,
+                "minutes": 30,
+                "since": "2026-10-31T13:32:11Z",
+                "until": "2026-10-31T14:02:11Z",
+                "senders": [
+                    {
+                        "account_id": "9e1b3d5f-7a9c-4e1b-8d3f-5a7c9e1b3d64",
+                        "transfers": 2,
+                        "amount_usd": "120.40",
+                        "first_at": "2026-10-31T13:40:02Z",
+                        "last_at": "2026-10-31T13:51:47Z",
+                        "open_cases": 0,
+                    },
+                    {
+                        "account_id": "1f3a5c7e-9b1d-4f3a-8c5e-7a9c1e3b5d02",
+                        "transfers": 1,
+                        "amount_usd": "70.10",
+                        "first_at": "2026-10-31T13:45:30Z",
+                        "last_at": "2026-10-31T13:45:30Z",
+                        "open_cases": 1,
+                    },
+                    {
+                        "account_id": "7c9e1b3d-5f7a-4c9e-9b3d-5f7a9c1e3b28",
+                        "transfers": 1,
+                        "amount_usd": "65.00",
+                        "first_at": "2026-10-31T13:58:12Z",
+                        "last_at": "2026-10-31T13:58:12Z",
+                        "open_cases": 0,
+                    },
+                ],
+                "total_senders": 3,
+                "received_usd": "255.50",
+                "case_amount_usd": "230.05",
+                "case_vs_received_pct": "90.04",
+            },
+        ),
+        400: _error(
+            "The case id is not a UUID, or `minutes` is out of range.",
+            "The request contains invalid data.",
+        ),
+        404: CASE_NOT_FOUND,
+        503: DB_DOWN,
+    },
+}
