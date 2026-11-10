@@ -39,7 +39,7 @@ description: Business and technical terms used across the project, in plain word
 | **LocalStack** | Emulates AWS services (SNS, SQS, S3) on your machine. Development only. |
 | **`EVENTO_NO_PUBLICADO`** | Log mark for a decision event that could not be published to SNS. A CloudWatch alarm will watch it. |
 | **Medallion layers** | The three Data Lake layers: `raw` (bronze, as it arrived), `curated` (silver, clean and deduplicated Parquet) and `analytics` (gold, dimensional model for the dashboard). |
-| **Circuit breaker** | Code in the engine that stops calling the restricted list service for a while after several failures, instead of waiting on a dead service. |
+| **Circuit breaker** | Something that stops calling a failing dependency for a while instead of waiting on it. In this project only the ECS deployment circuit breaker is used (it rolls back a deploy whose tasks fail); the engine needs none for the restricted list, because it reads the cached copy and never calls the provider. |
 | **Fargate / ECS / ECR** | ECR stores Docker images, ECS keeps the containers running, Fargate runs them without servers. |
 | **Lambda** | Runs code only when something happens (a message, a request, a schedule). Pays per invocation and per millisecond. |
 | **AWS Glue** | Runs Spark jobs without a cluster to manage; pays per second while the job runs. The project's two Spark jobs run on Glue 6.0 (EMR Serverless, the first choice, is not on AWS's free account plan). |

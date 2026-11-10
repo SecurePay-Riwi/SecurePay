@@ -22,7 +22,7 @@ The engine checks, in order:
 2. **Read the active rules** from the cache, not from PostgreSQL.
 3. **Read and update the time windows** in the cache (transfers in the last 10 minutes, amounts received and withdrawn, 24-hour sums). The engine updates the counters itself, so the next transaction sees them instantly.
 4. **Shared device counter**, also in the cache. DynamoDB keeps the durable copy written by the history consumer, but the engine does not read it on every transaction.
-5. **Restricted list check** against the cache. The external list service is only called when the cached copy is not available, behind a circuit breaker.
+5. **Restricted list check** against the cache (the cache loader copies the seed's list from PostgreSQL). The external list service is never called: when the cache fails the engine gives the default decision, and `HOLD` if the list was never loaded.
 6. **Decide** `APPROVE`, `HOLD` or `REJECT`, and keep with the decision the rule version and which rules fired.
 
 **Fallback.** If something takes too long, the engine falls back to a default decision: under USD 50 it approves, from USD 50 up it holds. It exists in two layers, one inside the engine with an internal time budget and one in the core in case the whole engine does not answer. The amount is converted to USD first, with the rate of the transaction's date (the last earlier day on weekends and holidays). Every fallback decision is flagged. See [Team decisions](./team-decisions.mdx).
