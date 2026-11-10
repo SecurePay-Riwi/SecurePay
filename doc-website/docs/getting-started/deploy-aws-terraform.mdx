@@ -386,17 +386,21 @@ The same apply creates `securepay-dev-rules-api` and `securepay-dev-cases-api`, 
    Invoke-RestMethod "$api/cases" -Headers $auth | Select-Object -ExpandProperty items
    ```
 
-4. Change a rule without a redeploy (CA-06): disable velocity and enable it again. Each change is a new catalog version with the analyst as its author, and the engine reads it from the cache within a second (`rules_version` in its next decision):
+4. Change a rule without a redeploy (CA-06): disable velocity and enable it again. Only the `gerente` group changes the catalog, so the analyst's token gets `403`; sign in as the manager. Each change is a new catalog version with the manager as its author, and the engine reads it from the cache within a second (`rules_version` in its next decision):
 
    ```powershell
+   curl.exe -s -o NUL -w "%{http_code}`n" -X POST -H "Authorization: $token" "$api/rules/velocity/disable"   # 403
+   $manager = aws cognito-idp initiate-auth --client-id $client --auth-flow USER_PASSWORD_AUTH --auth-parameters USERNAME=gerente@example.com,PASSWORD="$($passwords.'gerente@example.com')" --query AuthenticationResult.IdToken --output text
+   $auth = @{ Authorization = $manager }
    Invoke-RestMethod -Method Post "$api/rules/velocity/disable" -Headers $auth
    (Invoke-RestMethod "$api/rules/versions" -Headers $auth).versions[0] | Select-Object version, author
    Invoke-RestMethod -Method Post "$api/rules/velocity/enable" -Headers $auth
    ```
 
-5. Assign and resolve the case of step 7 (its id is in `GET /cases`); the case events record `analista@example.com`:
+5. Assign and resolve the case of step 7 (its id is in `GET /cases`) as the analyst again; the case events record `analista@example.com`:
 
    ```powershell
+   $auth = @{ Authorization = $token }
    $case = (Invoke-RestMethod "$api/cases" -Headers $auth).items[0].id
    Invoke-RestMethod -Method Put "$api/cases/$case/assignee" -Headers $auth -ContentType "application/json" -Body '{"assignee": "analista@example.com"}'
    Invoke-RestMethod -Method Post "$api/cases/$case/resolution" -Headers $auth -ContentType "application/json" -Body '{"outcome": "FRAUD", "note": "Confirmed with the customer."}'
