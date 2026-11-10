@@ -128,8 +128,6 @@ Each record follows the same format: context, decision, alternatives considered 
 | Team hours to get it running | — | About 15 min (create the cluster, load the image, deploy, measure, replace a pod) |
 | Cost of the session | $0 | $0 |
 
-The kind numbers are local and are **not** comparable with AWS (no load balancer, zones or ElastiCache, and the client runs on the same computer); Fargate's latency is the one of the [load test](../getting-started/load-test.mdx), judged on the ALB in dev. Locally, Kubernetes adds no latency worth noting, the same image and manifests run unchanged, and a deleted pod is replaced in seconds while the other keeps answering. The EKS side of the comparison (cost, what the team writes and operates) is the table above; the `overlays/eks` manifests and `cluster.yaml` are ready for a session in AWS but were not applied.
-
 **Kubernetes comparison: evidence** (screenshots of the run, 2026-11-10).
 
 ![kubectl get nodes: the control plane and the two workers of kind.yaml Ready](/img/kind/nodes-ready.jpg)
@@ -148,7 +146,14 @@ The kind numbers are local and are **not** comparable with AWS (no load balancer
 
 *A deleted pod replaced in 11 s while the other kept answering.*
 
-With the kind result, the decision stands: for one service with constant load and a team of 3 to 4, Fargate gives the same Deployment-like behaviour (rolling deploys, health checks, autoscaling, two zones) without a control plane to pay for or a cluster to upgrade. Kubernetes would pay off with many services, several teams, or a need to leave AWS, none of which this project has.
+**Kubernetes comparison: analysis.**
+
+- **Latency.** The median is about the same on both (51 ms on Compose, 45 ms on kind) and the tail is a few milliseconds higher on kind (p99 80 ms against 77 ms): the NodePort hop adds little. Neither engine failed a request. These numbers are local and are **not** comparable with AWS (no load balancer, zones or ElastiCache, and the client runs on the same computer); Fargate's latency is the one of the [load test](../getting-started/load-test.mdx), judged on the ALB in dev.
+- **Availability.** A deleted pod was replaced in 11 s while the other kept answering. ECS does the same with its tasks (a stopped task is replaced and the ALB sends traffic to the healthy ones), so Kubernetes gives no availability that Fargate lacks for this service.
+- **Effort.** The same image and manifests run unchanged on kind and are ready for EKS (`overlays/eks`, `cluster.yaml`, not applied), so moving later is possible. On EKS the team would also install and upgrade the cluster, the AWS Load Balancer Controller, the autoscaler and IRSA, which Fargate does not need.
+- **Cost.** EKS adds the control plane ($73/month) and its nodes on top of what Fargate costs, and it is not on the account's free plan.
+
+With this result, the decision stands: for one service with constant load and a team of 3 to 4, Fargate gives the same Deployment-like behaviour (rolling deploys, health checks, autoscaling, two zones) without a control plane to pay for or a cluster to upgrade. Kubernetes would pay off with many services, several teams, or a need to leave AWS, none of which this project has.
 
 ## ADR-07 — The engine's autoscaling maximum goes from 12 to 24 tasks {/* #adr-07 */}
 
