@@ -109,7 +109,7 @@ Each record follows the same format: context, decision, alternatives considered 
 | Load balancer and IAM | ALB and task role, native | AWS Load Balancer Controller or the in-tree NLB; IAM through IRSA or Pod Identity |
 | Portability | AWS only | Any Kubernetes (the same manifests run on kind) |
 
-**Kubernetes comparison: how it was run.** EKS was not deployed in AWS: the comparison was run locally on kind, on one team computer (Windows, Docker Desktop), with the manifests of `infra/k8s/`, the same image and variables as the ECS service, and nothing else changed:
+**Kubernetes comparison: how it was run.** EKS was not deployed in AWS because it is not included in the account's AWS free plan (the credits plan the team works on), the same limit that moved the Spark jobs from EMR to Glue and removed Firehose ([supported services](https://docs.aws.amazon.com/accounts/latest/reference/supported-services-sign-up-new.html)). Paying for a cluster outside the plan for one comparison was not justified, so the comparison was run locally on kind, on one team computer (Windows, Docker Desktop), with the manifests of `infra/k8s/`, the same image and variables as the ECS service, and nothing else changed:
 
 1. `kind create cluster --name securepay --config infra/k8s/overlays/kind/kind.yaml`: a real Kubernetes cluster (API server, scheduler, kubelet, containerd) whose nodes are Docker containers. The three nodes of `kind.yaml` (one control plane, two workers) started; the measurement used one node, because three nodes next to the Compose stack ran out of the computer's memory.
 2. `kind load docker-image securepay-engine:kind`: the engine image built by Compose, copied into the nodes (kind does not pull from a registry).
@@ -129,6 +129,24 @@ Each record follows the same format: context, decision, alternatives considered 
 | Cost of the session | $0 | $0 |
 
 The kind numbers are local and are **not** comparable with AWS (no load balancer, zones or ElastiCache, and the client runs on the same computer); Fargate's latency is the one of the [load test](../getting-started/load-test.mdx), judged on the ALB in dev. Locally, Kubernetes adds no latency worth noting, the same image and manifests run unchanged, and a deleted pod is replaced in seconds while the other keeps answering. The EKS side of the comparison (cost, what the team writes and operates) is the table above; the `overlays/eks` manifests and `cluster.yaml` are ready for a session in AWS but were not applied.
+
+**Kubernetes comparison: evidence** (screenshots of the run, 2026-11-10).
+
+![kubectl get nodes: the control plane and the two workers of kind.yaml Ready](/img/kind/nodes-ready.jpg)
+
+*The three-node cluster of `kind.yaml` up.*
+
+![kubectl get pods: two decision-engine pods Running, one on each worker, and /health answering on localhost:8080](/img/kind/pods-running.jpg)
+
+*The Deployment's two pods `Running`, one per worker, and the engine on kind answering `/health`.*
+
+![latency.py: one JSON line for Compose (port 8000) and one for kind (port 8080), 1,000 HOLD decisions each](/img/kind/latency.jpg)
+
+*The measurement of the table: Compose on port 8000, kind on port 8080.*
+
+![kubectl get pods -w: one pod Terminating and its replacement Running after 11 seconds](/img/kind/pod-replaced.jpg)
+
+*A deleted pod replaced in 11 s while the other kept answering.*
 
 With the kind result, the decision stands: for one service with constant load and a team of 3 to 4, Fargate gives the same Deployment-like behaviour (rolling deploys, health checks, autoscaling, two zones) without a control plane to pay for or a cluster to upgrade. Kubernetes would pay off with many services, several teams, or a need to leave AWS, none of which this project has.
 

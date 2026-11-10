@@ -77,7 +77,7 @@ What happened on the first run (2026-11-10, Docker Desktop with WSL 2 and 16 GB 
 
 ## On EKS (one session in AWS)
 
-Costs about USD 0.10 an hour for the control plane plus two `t3.medium` (about USD 0.08 an hour) on top of dev. Do it in the same session as the Fargate load test (HU-60) and delete the cluster the same day. This session was not done: the comparison in ADR-06 was run on kind. If the account's plan refuses EKS (the free plan limits some services), write it down in ADR-06 and keep the kind result.
+Costs about USD 0.10 an hour for the control plane plus two `t3.medium` (about USD 0.08 an hour) on top of dev. Do it in the same session as the Fargate load test (HU-60) and delete the cluster the same day. This session was not done: EKS is not included in the account's AWS free plan, so the comparison in ADR-06 was run on kind.
 
 1. Dev must be up with the engine on Fargate ([Deploy to AWS](./deploy-aws-terraform.mdx), steps 4 to 7). Install eksctl (`winget install eksctl`).
 
