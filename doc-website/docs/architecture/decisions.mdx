@@ -109,17 +109,22 @@ Each record follows the same format: context, decision, alternatives considered 
 | Load balancer and IAM | ALB and task role, native | AWS Load Balancer Controller or the in-tree NLB; IAM through IRSA or Pod Identity |
 | Portability | AWS only | Any Kubernetes (the same manifests run on kind) |
 
-**Kubernetes comparison: result.** To be completed with the measured numbers:
+**Kubernetes comparison: result.** The kind columns were measured on 2026-11-10 on one team computer (Windows, Docker Desktop with WSL 2, 16 GB of RAM), with `latency.py` (1,000 requests, 10 at a time, the same transaction with a new id each) against the Compose engine and the engine on kind, both sharing the Compose stack's Valkey; 997 and 1,000 of the answers were full `HOLD` decisions (velocity) and none was a default decision. The Fargate and EKS columns stay open until the EKS session in AWS.
 
 | Measure | Compose (local) | kind (local) | ECS Fargate (dev) | EKS (dev) |
 | :--- | :--- | :--- | :--- | :--- |
-| p50 / p95 / p99 (ms) | | | | |
-| Errors | | | | |
-| Time for a new task or pod to be ready | — | | | |
-| Team hours to get it running | — | | | |
+| p50 / p95 / p99 (ms) | 51.3 / 66.5 / 72.0 | 44.3 / 72.8 / 93.1 | | |
+| Throughput of the run (tx/s) | 191 | 220 | | |
+| Errors | 0 of 1,000 | 0 of 1,000 | | |
+| Time for a new task or pod to be ready | — | 11 s (a deleted pod replaced; the other pod kept answering) | | |
+| Team hours to get it running | — | About 1.25 h, most of it on the computer's memory and Windows ports (below) | | |
 | Cost of the session | $0 | $0 | | |
 
-With the measured numbers pending, the decision stands: for one service with constant load and a team of 3 to 4, Fargate gives the same Deployment-like behaviour (rolling deploys, health checks, autoscaling, two zones) without a control plane to pay for or a cluster to upgrade. Kubernetes would pay off with many services, several teams, or a need to leave AWS, none of which this project has.
+**What the kind numbers say, and what they do not.** Both engines ran on the same computer, so the comparison only shows what Kubernetes adds locally: the median is the same, and the tail is about 20 ms higher on kind (p99 93 against 72 ms), which is the NodePort hop plus four more containers sharing the computer's memory. These are local numbers and are **not** comparable with AWS: there is no load balancer, network between zones or ElastiCache, and the client runs on the same machine as the engine. The 200 ms limit is judged only on the ALB in dev ([load test](../getting-started/load-test.mdx)). The run did prove what kind can prove: the same image, manifests and variables run unchanged on Kubernetes, the readiness probe and the Deployment replace a pod in seconds, and the Service keeps answering from the other pod.
+
+**What it cost to run.** The three-node cluster of `kind.yaml` started (control plane and two workers `Ready`), but with the Compose stack running the computer ran out of memory twice and the control plane stopped answering; the measurement used a one-node cluster (the two pods on the control plane), which changes nothing in the latency on one computer. On Windows, `localhost:8080` added 2 s to every request (the client tries IPv6 first, and kind publishes the port on IPv4 only), so the run uses `127.0.0.1`; and after `wsl --shutdown`, the ports Docker published to Windows stopped forwarding until the containers were recreated. Both are in [Run the engine on Kubernetes](../getting-started/kubernetes.mdx#if-something-fails-on-windows). None of this is the engine's code: it is the operation work that Fargate does not ask for.
+
+With the kind result in and the EKS numbers pending, the decision stands: for one service with constant load and a team of 3 to 4, Fargate gives the same Deployment-like behaviour (rolling deploys, health checks, autoscaling, two zones) without a control plane to pay for or a cluster to upgrade. Kubernetes would pay off with many services, several teams, or a need to leave AWS, none of which this project has.
 
 ## ADR-07 — The engine's autoscaling maximum goes from 12 to 24 tasks {/* #adr-07 */}
 

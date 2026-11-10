@@ -1,6 +1,6 @@
 """The same requests against two engines, to compare them (HU-58).
 
-    uv run python infra/k8s/latency.py http://localhost:8000 http://localhost:8080
+    uv run python infra/k8s/latency.py http://127.0.0.1:8000 http://127.0.0.1:8080
 
 Sends `--requests` transactions (smoke-transaction.json with a new id
 each, `--workers` at a time) to each URL in turn and prints the p50, p95
