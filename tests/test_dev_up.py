@@ -50,6 +50,22 @@ def test_uncommitted_changes_get_a_tag_of_their_own(tmp_path):
     assert dev_up.image_tag(folder) not in (first, commit)
 
 
+def test_uncommitted_binary_diff_can_be_tagged(tmp_path):
+    folder = tmp_path / "SecurePay"
+    _clone(folder)
+    (folder / ".gitattributes").write_text("*.dat text\n")
+    (folder / "payload.dat").write_bytes(b"before\n")
+    _git(folder, "add", ".")
+    _git(
+        folder,
+        "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "data",
+    )  # fmt: skip
+    commit = _git(folder, "rev-parse", "--short", "HEAD")
+    (folder / "payload.dat").write_bytes(b"after \x90\n")
+
+    assert dev_up.image_tag(folder).startswith(f"{commit}-dirty-")
+
+
 def test_a_missing_clone_is_not_built(tmp_path):
     assert dev_up.image_tag(tmp_path / "nothing") == ""
     (tmp_path / "plain").mkdir()

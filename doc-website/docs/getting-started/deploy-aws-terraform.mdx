@@ -767,6 +767,8 @@ A later `terraform apply` puts back the image of your clone (with `build_images`
 | The `apply` fails at `terraform_data.seed` with `exit code 1` | The seed task failed | `aws logs tail /ecs/securepay-dev-admin --since 30m` names the cause; fix it and apply again (the seed empties its tables first) |
 | `aws` or `terraform` is not recognized | The terminal was open before the install | Open a new terminal (close VS Code completely if it is its terminal) |
 | `InvalidClientTokenId` | Access key copied wrong | `aws configure` again |
+| `not authorized to perform: ec2:DescribeAvailabilityZones` | The Terraform user is missing `PowerUserAccess` | In IAM → Users → your Terraform user → Permissions, attach `PowerUserAccess` directly. Keep the `securepay-terraform-iam` inline policy too, then retry `terraform plan` |
+| `UnicodeDecodeError` in `dev_up.py` while Terraform reads image tags | Git returned a diff that is not valid in the Windows console encoding | Update SecurePay to the latest code and retry `terraform plan` |
 | `FreeTierRestrictionError: backup retention period` | An account on the AWS free plan accepts at most 1 day of RDS backups | Already handled: dev uses `database_backup_retention_days = 1`. If a similar error mentions Multi-AZ, add `database_multi_az = false` to `terraform.tfvars` |
 | `docker login` fails with `400 Bad Request` | PowerShell altered the token piped to `--password-stdin` | Use the variable form of step 6.1 |
 | `not authorized to perform: iam:PassRole` on the task definition | The Terraform user lacks the statement `PassRolesToServices` | Paste again the whole `terraform-user-policy.json` in its inline policy |
