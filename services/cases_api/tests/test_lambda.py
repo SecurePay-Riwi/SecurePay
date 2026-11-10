@@ -40,3 +40,11 @@ def test_a_query_string_reaches_the_route(add_case):
 
     assert answer["statusCode"] == 200
     assert json.loads(answer["body"])["items"] == []
+
+
+def test_a_preflight_of_any_path_is_answered():
+    # modules/api sends OPTIONS /rules, /cases, ... here without a token.
+    for path in ("/rules", "/rules/versions", "/cases", "/reports/suspicious"):
+        answer = main.handler(http_api_event("OPTIONS", path), None)
+
+        assert answer["statusCode"] == 204, (path, answer)
