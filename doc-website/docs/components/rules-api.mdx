@@ -47,16 +47,18 @@ The versions are immutable, so the answer is the same years later. `GET /rules/v
 | :--- | :--- | :--- | :--- |
 | `GET` | `/rules` | The active catalog, disabled rules included | `200` |
 | `GET` | `/rules/{code}` | One rule | `200`, `404` |
-| `POST` | `/rules` | Creates a rule with an existing `type` and its own `params` | `201`, `400`, `409` |
-| `PUT` | `/rules/{code}` | Replaces `description`, `action`, `opens_case`, `score` and `params`; not `code` or `type` | `200`, `400`, `404` |
-| `POST` | `/rules/{code}/enable` | Enables a rule | `200`, `404` |
-| `POST` | `/rules/{code}/disable` | Disables a rule; `default_timeout` cannot be disabled | `200`, `404`, `409` |
+| `POST` | `/rules` | Creates a rule with an existing `type` and its own `params` | `201`, `400`, `403`, `409` |
+| `PUT` | `/rules/{code}` | Replaces `description`, `action`, `opens_case`, `score` and `params`; not `code` or `type` | `200`, `400`, `403`, `404` |
+| `POST` | `/rules/{code}/enable` | Enables a rule | `200`, `403`, `404` |
+| `POST` | `/rules/{code}/disable` | Disables a rule; `default_timeout` cannot be disabled | `200`, `403`, `404`, `409` |
 | `GET` | `/rules/versions` | Versions, newest first, `limit` (1–100, 20) and `offset` | `200`, `400` |
 | `GET` | `/rules/versions/{version}` | The whole catalog of one version | `200`, `404` |
-| `POST` | `/rules/versions/{version}/activate` | A new version with the rules of an old one | `200`, `404` |
-| `POST` | `/rules/publish` | Publishes the latest version to Valkey again | `200`, `503` |
+| `POST` | `/rules/versions/{version}/activate` | A new version with the rules of an old one | `200`, `403`, `404` |
+| `POST` | `/rules/publish` | Publishes the latest version to Valkey again | `200`, `403`, `503` |
 | `POST` | `/rules/simulations` | Replays one day of the history with a candidate catalog and compares it with the current one (or `against_version`); writes nothing (HU-24) | `200`, `400`, `404`, `422` |
 | `GET` | `/health` | Up, with its database | `200`, `503` |
+
+In AWS only the risk manager changes the catalog: a signed-in user who is not in the Cognito group `gerente` gets `403` on every route that writes it (the five marked above and `POST /rules`). The group comes from the token's claims, which API Gateway passes to the Lambda (`roles.py`); locally there is no token and nothing is checked, like `X-User`. Reading and simulating are open to every signed-in user.
 
 Every endpoint answers `503` when PostgreSQL is down, and `400` with `{"detail", "errors"}` for invalid input (the same format as the engine). `params` are validated against the rule `type` in `shared/rule_catalog.py`; `versions`, `publish` and `simulations` are not valid codes.
 

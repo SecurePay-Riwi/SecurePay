@@ -65,8 +65,9 @@ resource "aws_cognito_user_pool" "this" {
   }
 }
 
-# The two roles of security.mdx. The APIs do not check the group yet: every
-# signed-in user may call every route.
+# The two roles of security.mdx (the actors of the brief). The rules API
+# answers 403 to a change of the catalog from anyone not in gerente
+# (services/rules_api/roles.py); every signed-in user reads.
 resource "aws_cognito_user_group" "this" {
   for_each = var.enabled ? toset(["analista", "gerente"]) : toset([])
 
@@ -137,6 +138,16 @@ resource "aws_apigatewayv2_api" "this" {
 
   name          = "${var.name_prefix}-api"
   protocol_type = "HTTP"
+
+  # The Rules API and Cases API pages of the site (/rules-api, /cases-api)
+  # call it from the browser. API Gateway answers the preflight itself and
+  # adds these headers; the Lambdas send none.
+  cors_configuration {
+    allow_origins = var.cors_origins
+    allow_methods = ["GET", "POST", "PUT", "OPTIONS"]
+    allow_headers = ["authorization", "content-type"]
+    max_age       = 3600
+  }
 }
 
 resource "aws_apigatewayv2_authorizer" "cognito" {
@@ -187,6 +198,16 @@ resource "aws_apigatewayv2_route" "this" {
   target             = "integrations/${aws_apigatewayv2_integration.this[each.value].id}"
   authorization_type = "JWT"
   authorizer_id      = aws_apigatewayv2_authorizer.cognito[0].id
+}
+
+# A preflight carries no token: without this route the JWT authorizer of
+# the ANY routes would refuse it before CORS answers.
+resource "aws_apigatewayv2_route" "preflight" {
+  count = var.enabled ? 1 : 0
+
+  api_id    = aws_apigatewayv2_api.this[0].id
+  route_key = "OPTIONS /{proxy+}"
+  target    = "integrations/${aws_apigatewayv2_integration.health[0].id}"
 }
 
 resource "aws_apigatewayv2_route" "health" {

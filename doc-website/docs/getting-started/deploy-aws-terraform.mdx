@@ -120,7 +120,7 @@ cd infra\terraform\envs\dev
    terraform init
    ```
 
-3. See what will be created. With one `apply` (the default), it must say about `Plan: 337 to add`. That number is counted from the code; the first such `plan` will confirm it:
+3. See what will be created. With one `apply` (the default), it must say about `Plan: 338 to add`. That number is counted from the code; the first such `plan` will confirm it:
    - 214 of the base;
    - 21 of the engine;
    - 72 of the Lambdas and the APIs;
@@ -139,7 +139,7 @@ cd infra\terraform\envs\dev
    terraform apply
    ```
 
-   It ends with `Apply complete! Resources: 214 added` (about 337 with one `apply`, which also prints each `docker build` and the seed's `exit code 0`). AWS e-mails each address in `supervisor_emails`, `compliance_emails` and `budget_emails` a link "AWS Notification - Subscription Confirmation": **click Confirm subscription in each one.** `apply` does not wait for it, but until you click, SNS sends nothing to that address. Every new environment creates new subscriptions, so this happens after every `apply` from scratch. From this moment it costs money. With one `apply`, go on with the checks of step 5 and then send the transactions of steps 6.6 and 7.3. With `build_images = false`, the engine is not running yet: its service starts in [step 6](#6-deploy-the-engine-on-fargate), once its image is in ECR.
+   It ends with `Apply complete! Resources: 214 added` (about 338 with one `apply`, which also prints each `docker build` and the seed's `exit code 0`). AWS e-mails each address in `supervisor_emails`, `compliance_emails` and `budget_emails` a link "AWS Notification - Subscription Confirmation": **click Confirm subscription in each one.** `apply` does not wait for it, but until you click, SNS sends nothing to that address. Every new environment creates new subscriptions, so this happens after every `apply` from scratch. From this moment it costs money. With one `apply`, go on with the checks of step 5 and then send the transactions of steps 6.6 and 7.3. With `build_images = false`, the engine is not running yet: its service starts in [step 6](#6-deploy-the-engine-on-fargate), once its image is in ECR.
 
 **If `apply` fails,** Terraform stops and prints `Error:` with the resource and the AWS message. What it created before the error stays in the state: fix the cause and run `terraform apply` again (it only creates what is missing; a resource that failed halfway is replaced), or run `terraform destroy`.
 
@@ -386,17 +386,21 @@ The same apply creates `securepay-dev-rules-api` and `securepay-dev-cases-api`, 
    Invoke-RestMethod "$api/cases" -Headers $auth | Select-Object -ExpandProperty items
    ```
 
-4. Change a rule without a redeploy (CA-06): disable velocity and enable it again. Each change is a new catalog version with the analyst as its author, and the engine reads it from the cache within a second (`rules_version` in its next decision):
+4. Change a rule without a redeploy (CA-06): disable velocity and enable it again. Only the `gerente` group changes the catalog, so the analyst's token gets `403`; sign in as the manager. Each change is a new catalog version with the manager as its author, and the engine reads it from the cache within a second (`rules_version` in its next decision):
 
    ```powershell
+   curl.exe -s -o NUL -w "%{http_code}`n" -X POST -H "Authorization: $token" "$api/rules/velocity/disable"   # 403
+   $manager = aws cognito-idp initiate-auth --client-id $client --auth-flow USER_PASSWORD_AUTH --auth-parameters USERNAME=gerente@example.com,PASSWORD="$($passwords.'gerente@example.com')" --query AuthenticationResult.IdToken --output text
+   $auth = @{ Authorization = $manager }
    Invoke-RestMethod -Method Post "$api/rules/velocity/disable" -Headers $auth
    (Invoke-RestMethod "$api/rules/versions" -Headers $auth).versions[0] | Select-Object version, author
    Invoke-RestMethod -Method Post "$api/rules/velocity/enable" -Headers $auth
    ```
 
-5. Assign and resolve the case of step 7 (its id is in `GET /cases`); the case events record `analista@example.com`:
+5. Assign and resolve the case of step 7 (its id is in `GET /cases`) as the analyst again; the case events record `analista@example.com`:
 
    ```powershell
+   $auth = @{ Authorization = $token }
    $case = (Invoke-RestMethod "$api/cases" -Headers $auth).items[0].id
    Invoke-RestMethod -Method Put "$api/cases/$case/assignee" -Headers $auth -ContentType "application/json" -Body '{"assignee": "analista@example.com"}'
    Invoke-RestMethod -Method Post "$api/cases/$case/resolution" -Headers $auth -ContentType "application/json" -Body '{"outcome": "FRAUD", "note": "Confirmed with the customer."}'
@@ -706,7 +710,7 @@ Once the lock of the last uploaded version has passed, destroy everything and ty
 terraform destroy
 ```
 
-It ends with `Destroy complete! Resources: 342 destroyed` after one `apply` with one budget e-mail. That is 214 of the base, 21 of the engine, 72 of the Lambdas, the rules and cases APIs, the reconciliation and the analytics, 4 of the exchange-rates Lambda, 7 of `up.tf`, 6 of the two Cognito users, 13 of the demo day (12 files and its run) 3 of the Kaggle datasets (2 CSVs and the ETL run; 337 without the CSVs) and 2 of Power BI's key (the key and the profile it writes); each extra e-mail address is one more. Step by step, without the 7 of `up.tf`, it is 330. The `powerbi` user goes with its access key (`force_destroy`), so there is no need to delete the key first. A Terraform user made before November 9, 2026 needs the policy again for `iam:CreateAccessKey` (the apply makes the Power BI key); one made before November 5, 2026 needs the whole [`terraform-user-policy.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/terraform-user-policy.json) pasted again in its inline policy: it now allows `iam:DeleteAccessKey` and `iam:DeleteLoginProfile` on the `securepay-*` users and `iam:ListVirtualMFADevices` (statement `ListMfaDevicesOnDestroy`: `force_destroy` lists the user's MFA devices, which IAM only allows on `*`, and always tries to delete its console password; without them the destroy stops with `AccessDenied` on `securepay-dev-powerbi`), and the instance profile and `AmazonSSMManagedInstanceCore` of the load test machine ([Load test](./load-test.mdx#from-inside-the-vpc-ec2)). Fewer if some steps were skipped: it destroys what the state has. The Glue job and its files go with it. The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
+It ends with `Destroy complete! Resources: 343 destroyed` after one `apply` with one budget e-mail. That is 214 of the base, 21 of the engine, 73 of the Lambdas, the rules and cases APIs, the reconciliation and the analytics, 4 of the exchange-rates Lambda, 7 of `up.tf`, 6 of the two Cognito users, 13 of the demo day (12 files and its run) 3 of the Kaggle datasets (2 CSVs and the ETL run; 338 without the CSVs) and 2 of Power BI's key (the key and the profile it writes); each extra e-mail address is one more. Step by step, without the 7 of `up.tf`, it is 331. The `powerbi` user goes with its access key (`force_destroy`), so there is no need to delete the key first. A Terraform user made before November 9, 2026 needs the policy again for `iam:CreateAccessKey` (the apply makes the Power BI key); one made before November 5, 2026 needs the whole [`terraform-user-policy.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/terraform-user-policy.json) pasted again in its inline policy: it now allows `iam:DeleteAccessKey` and `iam:DeleteLoginProfile` on the `securepay-*` users and `iam:ListVirtualMFADevices` (statement `ListMfaDevicesOnDestroy`: `force_destroy` lists the user's MFA devices, which IAM only allows on `*`, and always tries to delete its console password; without them the destroy stops with `AccessDenied` on `securepay-dev-powerbi`), and the instance profile and `AmazonSSMManagedInstanceCore` of the load test machine ([Load test](./load-test.mdx#from-inside-the-vpc-ec2)). Fewer if some steps were skipped: it destroys what the state has. The Glue job and its files go with it. The image repositories are deleted with their images. The buckets are emptied first, all versions included. If a version is still locked, only the evidence bucket fails: wait and run `terraform destroy` again.
 
 **Check that nothing is left.** This must print nothing:
 

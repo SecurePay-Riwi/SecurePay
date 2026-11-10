@@ -245,6 +245,19 @@
               }
             }
           },
+          "403": {
+            "description": "In AWS, the signed-in user is not in the gerente group (only the risk manager changes the rules). Locally there is no token and no check.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Only the risk manager (gerente) may change the rules."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "400": {
             "description": "Invalid body, header or parameters.",
             "content": {
@@ -773,6 +786,19 @@
               }
             }
           },
+          "403": {
+            "description": "In AWS, the signed-in user is not in the gerente group (only the risk manager changes the rules). Locally there is no token and no check.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Only the risk manager (gerente) may change the rules."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "400": {
             "description": "Invalid body, header or parameters.",
             "content": {
@@ -844,6 +870,19 @@
                 "example": {
                   "version": 2,
                   "published": true
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "In AWS, the signed-in user is not in the gerente group (only the risk manager changes the rules). Locally there is no token and no check.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "detail": "Only the risk manager (gerente) may change the rules."
                 }
               }
             }
@@ -1282,6 +1321,19 @@
               }
             }
           },
+          "403": {
+            "description": "In AWS, the signed-in user is not in the gerente group (only the risk manager changes the rules). Locally there is no token and no check.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Only the risk manager (gerente) may change the rules."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "400": {
             "description": "Invalid body, header or parameters.",
             "content": {
@@ -1392,6 +1444,19 @@
               }
             }
           },
+          "403": {
+            "description": "In AWS, the signed-in user is not in the gerente group (only the risk manager changes the rules). Locally there is no token and no check.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Only the risk manager (gerente) may change the rules."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "400": {
             "description": "Invalid body, header or parameters.",
             "content": {
@@ -1498,6 +1563,19 @@
                     "rule_version": 2
                   },
                   "catalog_version": 3
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "In AWS, the signed-in user is not in the gerente group (only the risk manager changes the rules). Locally there is no token and no check.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Only the risk manager (gerente) may change the rules."
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
