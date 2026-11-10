@@ -107,7 +107,7 @@ The contract of the three HTTP services is exported to `doc-website/static/opena
 uv run python -m infra.api.openapi
 ```
 
-`infra/api/bruno/` is a [Bruno](https://www.usebruno.com/) collection with 33 requests against the local stack: the happy path and the documented errors of each service (decision engine 7, rules API 10, cases API 16). Each request checks its status code. It needs the Compose stack up and seeded ([Local setup](./local-setup.mdx)); nothing in AWS:
+`infra/api/bruno/` is a [Bruno](https://www.usebruno.com/) collection with 41 requests against the local stack: the happy path and the documented errors of every endpoint (decision engine 7, rules API 14, cases API 20). Each request checks its status code. It needs the Compose stack up and seeded ([Local setup](./local-setup.mdx)); nothing in AWS:
 
 ```bash
 docker compose up -d
@@ -116,7 +116,7 @@ cd infra/api/bruno
 bru run --env local
 ```
 
-Expected: every request passes. Request 03 of the engine reuses the id of request 02, so run the engine's folder in order (`bru run` does). The rules requests never write: the ones that would change the catalog are refused (409 or 400) before anything is stored. In the Bruno app, open the folder `infra/api/bruno` as a collection and pick the `local` environment.
+Expected: every request passes. Request 03 of the engine reuses the id of request 02, so run the engine's folder in order (`bru run` does). The rules requests never change the catalog: the ones that would are refused (409, 404 or 400) before anything is stored, enabling `velocity` finds it already enabled, and `POST /rules/publish` only writes the latest version to Valkey again. The happy request of `GET /cases/{case_id}/senders` (cases 20) uses the first pending case of request 02 and is skipped while the stack has no case yet. In the Bruno app, open the folder `infra/api/bruno` as a collection and pick the `local` environment.
 
 ## How to read the results
 

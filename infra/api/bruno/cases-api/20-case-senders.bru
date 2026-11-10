@@ -1,0 +1,25 @@
+meta {
+  name: Senders of a case (happy)
+  type: http
+  seq: 20
+}
+
+get {
+  url: {{cases}}/cases/{{caseId}}/senders
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  if (!bru.getVar("caseId")) {
+    bru.runner.skipRequest();
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  CA-02. Uses the first pending case of request 02; skipped while the stack has no case yet (the generator opens them).
+}
