@@ -1,0 +1,55 @@
+---
+sidebar_position: 13
+title: Rules and cases API pages
+description: The browser pages of the rules API and the cases API, signed in with Cognito against AWS.
+---
+
+# Rules and cases API pages
+
+**Pages:** [/rules-api](/rules-api) and [/cases-api](/cases-api) · **Folders:** `doc-website/src/pages/rules-api.tsx`, `doc-website/src/pages/cases-api.tsx`, `doc-website/src/components/ApiConsole/`
+
+The brief does not ask for a user interface: the [rules API](./rules-api.mdx) and the [cases API](./cases.mdx) are the deliverable, and Swagger and the [Bruno collection](../getting-started/testing.mdx#api-contract) test them. These two pages are an extra for the demo. They show what the APIs answer as a normal web page, and every result has a small **JSON** tab with the exact request and response.
+
+Both pages call the deployed APIs from the browser, through the HTTP API `securepay-<env>-api` of AWS. Nothing is simulated and nothing is stored in the site: with dev destroyed, the pages only show that AWS is off.
+
+## Connecting
+
+1. Bring dev up ([deploy to AWS](../getting-started/deploy-aws-terraform.mdx)) and, in `infra/terraform/envs/dev`, read three outputs:
+
+   ```powershell
+   terraform output -raw api_url              # https://<id>.execute-api.us-east-2.amazonaws.com
+   terraform output -raw user_pool_client_id
+   terraform output -json api_user_passwords  # analista@example.com and gerente@example.com
+   ```
+
+2. Open [/rules-api](/rules-api) or [/cases-api](/cases-api), paste the URL and the app client and press **Save**. The browser keeps both (`localStorage`); the URL changes with every apply, so paste the new one after a destroy.
+3. Sign in with one of the users. The page asks Cognito for an ID token (`USER_PASSWORD_AUTH`, the flow the app client allows) and sends it as `Authorization` on every call; API Gateway checks it and writes the user's e-mail into `X-User`. The token stays in the tab (`sessionStorage`) and the page signs out when it expires, after 60 minutes.
+
+The **LED** next to *Connection* calls `GET /health` every 15 seconds. It is the only route without a token, and it answers only when the HTTP API, the cases API's Lambda and RDS are up: green is "AWS is on", red is "AWS is off".
+
+The browser can call the API because the HTTP API has CORS for the site's origins (`cors_origins` of `modules/api`: the GitHub Pages site and `localhost:3000`) and an `OPTIONS /{proxy+}` route without the authorizer for the preflight requests.
+
+## Roles
+
+The two Cognito groups see different pages, and the API enforces the difference where it matters:
+
+| | Fraud analyst (`analista`) | Risk manager (`gerente`) |
+|---|---|---|
+| Rules: catalog, versions, simulation | Reads them and runs simulations | Same, plus create, edit, enable, disable and activate a version |
+| Cases: inbox, case detail, assign, resolve | Yes | Yes |
+| Account history and related accounts | Yes | Yes |
+| Escalated cases (RN-09) | — | Yes |
+| Suspicious operations and restricted-list reports (RN-06) | — | Yes, with the CSV download |
+| Reconciliation: differences, aging, runs | — | Yes, and resolves differences |
+
+Changing the rules is checked by the rules API itself: an analyst's token gets `403` on every write (`services/rules_api/roles.py`), whatever page or tool sends it. The other rows are what each page shows; the cases API answers both groups.
+
+## What each page does
+
+**Rules API.** *Catalog* lists the rules with their decision, score, parameters and version; the manager turns a rule on or off with its switch, edits it inline (`PUT /rules/{code}`) or adds one (`POST /rules`). *Versions* lists the catalog versions, shows one as cards and lets the manager activate it again (`POST /rules/versions/{n}/activate`). *Simulate a change* replays one day with the current catalog and with one rule changed (`POST /rules/simulations`, HU-24) and compares the decisions; it never writes anything.
+
+**Cases API.** *Case inbox* lists the pending cases, the riskiest first, with the time left before they escalate; a click opens the case with its transaction, its history of events, the forms to assign (empty takes it for yourself) and to resolve it, and, for the mule rule, the senders behind it (CA-02). *Account lookup* shows an account's 30-day history (HU-28) and the accounts on the same devices (HU-29). The manager also has *Escalated*, *Compliance reports* (HU-35 and HU-34, at most 31 days) and *Reconciliation* (HU-38 to HU-41: aging, differences with their resolution, and the nightly runs).
+
+## Locally
+
+The pages need one base URL and a Cognito token, so they work against AWS only. To change them, run `npm start` in `doc-website/` and point them at dev; the origin `http://localhost:3000` is already allowed.

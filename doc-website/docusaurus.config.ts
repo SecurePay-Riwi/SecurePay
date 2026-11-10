@@ -73,6 +73,8 @@ const config: Config = {
         },
         {to: '/demo', label: 'Demo', position: 'left'},
         {to: '/live-demo', label: 'Live AWS', position: 'left'},
+        {to: '/rules-api', label: 'Rules API', position: 'left'},
+        {to: '/cases-api', label: 'Cases API', position: 'left'},
         {
           href: 'https://github.com/SecurePay-Riwi/SecurePay',
           label: 'GitHub',
