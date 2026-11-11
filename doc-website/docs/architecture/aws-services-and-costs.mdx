@@ -38,10 +38,10 @@ Grouped by service, so a service that solves several things is counted once.
 | Application Load Balancer | High-volume entry to the decision engine | $18.53 | $0.65 |
 | AWS Fargate | Decision engine | $72.08 | $2.47 |
 | Amazon SQS | 3 queues (cases, history, analytics) + 1 DLQ each | $31.10 | $0.50 |
-| AWS Lambda | Consumers, rules and cases APIs, list service, partner ingestion, exchange rates, case escalation | $35.55 | $0.60 |
+| AWS Lambda | Consumers, rules and cases APIs, partner ingestion, list loading, analytics export, exchange rates, case escalation (the estimate still counts a list service Lambda that was not deployed: a small margin) | $35.55 | $0.60 |
 | ElastiCache Serverless (Valkey) | Idempotency, windows, 24 h sums, active rules, list cache | ~$22.87 | ~$0.23 |
-| Amazon SNS | Decision fan-out, active rule invalidation, and emails to compliance, supervisor, treasury and the tech team | $6.13 | $0.10 |
-| Amazon API Gateway | Rules, cases and list service endpoints (HTTP API) | $1.10 | $0.10 |
+| Amazon SNS | Decision fan-out and emails to compliance, supervisor, treasury and the tech team | $6.13 | $0.10 |
+| Amazon API Gateway | Rules and cases endpoints (HTTP API) | $1.10 | $0.10 |
 | Amazon EventBridge Scheduler | Reconciliation, exchange rates, 5-minute alerts | $0.00 | $0.00 |
 | AWS Step Functions | Reconciliation orchestration | $0.00 | $0.00 |
 | Amazon DynamoDB | Exchange rates table. The estimate still counts the device–account pairs of the first design, which were not created: about $0.80 of margin | $0.90 | $0.10 |
