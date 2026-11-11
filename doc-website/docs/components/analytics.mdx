@@ -177,7 +177,30 @@ The generator's run of `seed 42`, mode `dev`, 400 transactions, 5 % fraud, repla
 - `expected_rule_hits` in the output says it per rule: every transaction that expects `account_takeover`, `mule`, `restricted_list`, `splitting` or `velocity` got it.
 - `shared_device` is not a fraud pattern: the generator labels its 75 transactions `is_fraud = false` with `expected_rule = shared_device`, and marks a device as shared with more than 1 account, while RN-04 asks for more than 3. The rule fired on 13 of them. Its "false positives" are by design: it only raises `risk_score` (`APPROVE`, score 30) and holds nothing.
 
-**PaySim and Sparkov** were not measured here: the Kaggle datasets are not in this environment. Run the first command where securepay-seed's Kaggle ETL is loaded and add its tables to this page.
+#### PaySim and Sparkov (AWS, November 11, 2026)
+
+Measured in the AWS rehearsal of November 11: the apply loaded the 70,000 Kaggle rows (`load_kaggle`), the state machine's `MeasureKaggle` step replayed them with catalog version 1 and the numbers below are views `q2` and `q3` read in Athena. The generator's rows of that same run are in the views too; they are the fixture day, so they differ a little from the table above.
+
+| Source | Rule | Hits | True positives | False positives | Precision |
+| :--- | :--- | ---: | ---: | ---: | ---: |
+| PaySim | `restricted_list` | 49 | 2 | 47 | 0.0408 |
+| PaySim | `splitting` | 18 | 0 | 18 | 0.0000 |
+| Sparkov | `restricted_list` | 40 | 0 | 40 | 0.0000 |
+| Sparkov | `splitting` | 2 | 0 | 2 | 0.0000 |
+
+`velocity`, `mule`, `account_takeover` and `shared_device` had no hits on either dataset.
+
+| Source | Frauds | Detected | Missed | Detection rate | Fraud missed (USD) |
+| :--- | ---: | ---: | ---: | ---: | ---: |
+| PaySim (`CASH_OUT`, `TRANSFER`) | 1,500 | 2 | 1,498 | 0.0013 | 2,107,488,547.80 |
+| Sparkov (14 categories) | 600 | 0 | 600 | 0.0000 | 311,514.38 |
+
+**What these numbers say.** The rules are written for the wallet's own patterns (RN-02 to RN-07), and the Kaggle frauds are a different kind of fraud, so the low detection is the expected result, not a defect:
+
+- Each Kaggle row becomes a QR payment from one user to a merchant, with no balance before or after and no security events. `velocity` counts only `P2P`, `mule` runs only on a withdrawal and reads the balance, and `account_takeover` needs device and password changes, so these rules can never fire on these rows. `shared_device` needs more than 3 accounts on a device, which the ETL does not create.
+- PaySim's frauds are single very large transfers and cash-outs (one row of USD 10,000,000); no rule of the catalog looks at a single large amount. A rule like "an amount far above the account's usual one" would be the first one to add. It would go into the catalog and be tested with the simulation (HU-24) before activating it.
+- The `restricted_list` hits are right by RN-06: the ETL assigns the rows to seed users, and some of them are on the list, which has nothing to do with the dataset's label. They count as false positives only against the Kaggle label.
+- Both datasets are very imbalanced, as the assignment warns. That is why the views give precision and missed amounts per pattern and do not give one accuracy number, which would be close to 100 % while detecting nothing.
 
 ## Simulating a rule version (HU-24)
 
