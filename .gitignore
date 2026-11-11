@@ -42,3 +42,5 @@ benchmark/
 load-results/
 # Output of infra/docker/measure-image-sizes.ps1.
 infra/docker/sizes.csv
+# terraform output -json of services/analytics/aws_run.py (aws-run.mdx)
+outputs.json

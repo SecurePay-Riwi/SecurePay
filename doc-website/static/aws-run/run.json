@@ -1,7 +1,467 @@
 {
   "format_version": 1,
   "generated_from": "services/analytics/aws_run.py",
-  "run": null,
+  "run": {
+    "recorded_at": "2026-11-11T02:43:05.729224Z",
+    "environment": "securepay-dev",
+    "region": "us-east-2",
+    "engine_tasks": 2,
+    "window": {
+      "from": "2026-11-11T02:43:05.729224Z",
+      "to": "2026-11-11T02:44:42.162483Z"
+    },
+    "scenarios": [
+      {
+        "id": "normal",
+        "title": "Everyday transfer",
+        "rn": "RN-01",
+        "expected": "APPROVE",
+        "decision": "APPROVE",
+        "matches": true,
+        "rules_triggered": [],
+        "risk_score": 0,
+        "by_default": false,
+        "amount_usd": "28.00",
+        "steps": [
+          {
+            "label": "P2P of USD 28",
+            "ms": 303.4,
+            "decision": "APPROVE"
+          }
+        ],
+        "trace": [
+          {
+            "label": "Engine answered",
+            "at_ms": 0,
+            "detail": "APPROVE in 303.4 ms at the client"
+          },
+          {
+            "label": "Account history written",
+            "at_ms": null,
+            "detail": "history consumer, RDS"
+          }
+        ]
+      },
+      {
+        "id": "over_limit",
+        "title": "Default decision",
+        "rn": "RN-01",
+        "expected": "HOLD",
+        "decision": "HOLD",
+        "matches": true,
+        "rules_triggered": [
+          "default_timeout"
+        ],
+        "risk_score": 0,
+        "by_default": true,
+        "amount_usd": "75.00",
+        "steps": [
+          {
+            "label": "P2P of USD 75 from an account not in the cache",
+            "ms": 108.8,
+            "decision": "HOLD"
+          }
+        ],
+        "trace": [
+          {
+            "label": "Engine answered",
+            "at_ms": 0,
+            "detail": "HOLD in 108.8 ms at the client"
+          }
+        ]
+      },
+      {
+        "id": "restricted_list",
+        "title": "Restricted list",
+        "rn": "RN-06",
+        "expected": "REJECT",
+        "decision": "REJECT",
+        "matches": true,
+        "rules_triggered": [
+          "restricted_list"
+        ],
+        "risk_score": 0,
+        "by_default": false,
+        "amount_usd": "120.00",
+        "steps": [
+          {
+            "label": "P2P of USD 120 to a listed owner",
+            "ms": 95.2,
+            "decision": "REJECT"
+          }
+        ],
+        "trace": [
+          {
+            "label": "Engine answered",
+            "at_ms": 0,
+            "detail": "REJECT in 95.2 ms at the client"
+          },
+          {
+            "label": "Account history written",
+            "at_ms": null,
+            "detail": "history consumer, RDS"
+          },
+          {
+            "label": "Case opened",
+            "at_ms": 407,
+            "detail": "cases consumer, RDS, due in 4 h (83129dfc-b5bc-4c4a-a2b4-064567498437)"
+          }
+        ]
+      },
+      {
+        "id": "velocity",
+        "title": "Velocity",
+        "rn": "RN-02",
+        "expected": "HOLD",
+        "decision": "HOLD",
+        "matches": true,
+        "rules_triggered": [
+          "velocity"
+        ],
+        "risk_score": 0,
+        "by_default": false,
+        "amount_usd": "15.00",
+        "steps": [
+          {
+            "label": "Transfer 1 of 6, USD 15",
+            "ms": 119.9,
+            "decision": "APPROVE"
+          },
+          {
+            "label": "Transfer 2 of 6, USD 15",
+            "ms": 92.5,
+            "decision": "APPROVE"
+          },
+          {
+            "label": "Transfer 3 of 6, USD 15",
+            "ms": 92.3,
+            "decision": "APPROVE"
+          },
+          {
+            "label": "Transfer 4 of 6, USD 15",
+            "ms": 92.3,
+            "decision": "APPROVE"
+          },
+          {
+            "label": "Transfer 5 of 6, USD 15",
+            "ms": 106.9,
+            "decision": "APPROVE"
+          },
+          {
+            "label": "Transfer 6 of 6, USD 15",
+            "ms": 92.8,
+            "decision": "HOLD"
+          }
+        ],
+        "trace": [
+          {
+            "label": "Engine answered",
+            "at_ms": 0,
+            "detail": "HOLD in 92.8 ms at the client"
+          },
+          {
+            "label": "Account history written",
+            "at_ms": null,
+            "detail": "history consumer, RDS"
+          }
+        ]
+      },
+      {
+        "id": "mule",
+        "title": "Mule account",
+        "rn": "RN-03",
+        "expected": "HOLD",
+        "decision": "HOLD",
+        "matches": true,
+        "rules_triggered": [
+          "mule"
+        ],
+        "risk_score": 0,
+        "by_default": false,
+        "amount_usd": "765.00",
+        "steps": [
+          {
+            "label": "Sender 1 transfers USD 300",
+            "ms": 94.1,
+            "decision": "APPROVE"
+          },
+          {
+            "label": "Sender 2 transfers USD 300",
+            "ms": 95.2,
+            "decision": "APPROVE"
+          },
+          {
+            "label": "Sender 3 transfers USD 300",
+            "ms": 93.0,
+            "decision": "APPROVE"
+          },
+          {
+            "label": "Withdraws USD 765 of USD 900",
+            "ms": 95.8,
+            "decision": "HOLD"
+          }
+        ],
+        "trace": [
+          {
+            "label": "Engine answered",
+            "at_ms": 0,
+            "detail": "HOLD in 95.8 ms at the client"
+          },
+          {
+            "label": "Account history written",
+            "at_ms": null,
+            "detail": "history consumer, RDS"
+          },
+          {
+            "label": "Case opened",
+            "at_ms": 576,
+            "detail": "cases consumer, RDS, due in 4 h (e473f930-43e6-4d90-b5bc-3c9f691c4d11)"
+          },
+          {
+            "label": "Analyst resolved it",
+            "at_ms": 93410,
+            "detail": "LEGITIMATE, final decision APPROVE"
+          },
+          {
+            "label": "Evidence locked",
+            "at_ms": null,
+            "detail": "s3://…/cases/2026/11/e473f930-43e6-4d90-b5bc-3c9f691c4d11.json, Object Lock COMPLIANCE until 2026-11-11T02:49:42Z"
+          }
+        ]
+      },
+      {
+        "id": "shared_device",
+        "title": "Shared device",
+        "rn": "RN-04",
+        "expected": "APPROVE",
+        "decision": "APPROVE",
+        "matches": true,
+        "rules_triggered": [
+          "shared_device"
+        ],
+        "risk_score": 30,
+        "by_default": false,
+        "amount_usd": "12.00",
+        "steps": [
+          {
+            "label": "Account 1 pays USD 12 from the same tablet",
+            "ms": 93.2,
+            "decision": "APPROVE"
+          },
+          {
+            "label": "Account 2 pays USD 12 from the same tablet",
+            "ms": 93.5,
+            "decision": "APPROVE"
+          },
+          {
+            "label": "Account 3 pays USD 12 from the same tablet",
+            "ms": 92.1,
+            "decision": "APPROVE"
+          },
+          {
+            "label": "Account 4 pays USD 12 from the same tablet",
+            "ms": 92.4,
+            "decision": "APPROVE"
+          }
+        ],
+        "trace": [
+          {
+            "label": "Engine answered",
+            "at_ms": 0,
+            "detail": "APPROVE in 92.4 ms at the client"
+          },
+          {
+            "label": "Account history written",
+            "at_ms": null,
+            "detail": "history consumer, RDS"
+          }
+        ]
+      },
+      {
+        "id": "splitting",
+        "title": "Splitting",
+        "rn": "RN-05",
+        "expected": "HOLD",
+        "decision": "HOLD",
+        "matches": true,
+        "rules_triggered": [
+          "splitting"
+        ],
+        "risk_score": 40,
+        "by_default": false,
+        "amount_usd": "4000.00",
+        "steps": [
+          {
+            "label": "Withdrawal 1 of 3, USD 4,000",
+            "ms": 93.8,
+            "decision": "APPROVE"
+          },
+          {
+            "label": "Withdrawal 2 of 3, USD 4,000",
+            "ms": 94.4,
+            "decision": "APPROVE"
+          },
+          {
+            "label": "Withdrawal 3 of 3, USD 4,000",
+            "ms": 94.7,
+            "decision": "HOLD"
+          }
+        ],
+        "trace": [
+          {
+            "label": "Engine answered",
+            "at_ms": 0,
+            "detail": "HOLD in 94.7 ms at the client"
+          },
+          {
+            "label": "Account history written",
+            "at_ms": null,
+            "detail": "history consumer, RDS"
+          },
+          {
+            "label": "Case opened",
+            "at_ms": 575,
+            "detail": "cases consumer, RDS, due in 4 h (05d5d7a0-21db-4832-921c-f76b7f32302f)"
+          }
+        ]
+      },
+      {
+        "id": "account_takeover",
+        "title": "Account takeover",
+        "rn": "RN-07",
+        "expected": "HOLD",
+        "decision": "HOLD",
+        "matches": true,
+        "rules_triggered": [
+          "account_takeover"
+        ],
+        "risk_score": 0,
+        "by_default": false,
+        "amount_usd": "350.00",
+        "steps": [
+          {
+            "label": "Device changed",
+            "ms": 88.9,
+            "decision": null
+          },
+          {
+            "label": "Password changed",
+            "ms": 88.7,
+            "decision": null
+          },
+          {
+            "label": "P2P of USD 350 from the new phone",
+            "ms": 94.7,
+            "decision": "HOLD"
+          }
+        ],
+        "trace": [
+          {
+            "label": "Engine answered",
+            "at_ms": 0,
+            "detail": "HOLD in 94.7 ms at the client"
+          },
+          {
+            "label": "Account history written",
+            "at_ms": null,
+            "detail": "history consumer, RDS"
+          }
+        ]
+      },
+      {
+        "id": "currency",
+        "title": "Other currency",
+        "rn": "RN-11",
+        "expected": "APPROVE",
+        "decision": "APPROVE",
+        "matches": true,
+        "rules_triggered": [],
+        "risk_score": 0,
+        "by_default": false,
+        "amount_usd": "28.99",
+        "steps": [
+          {
+            "label": "P2P of COP 95,000",
+            "ms": 93.6,
+            "decision": "APPROVE"
+          }
+        ],
+        "trace": [
+          {
+            "label": "Engine answered",
+            "at_ms": 0,
+            "detail": "APPROVE in 93.6 ms at the client"
+          },
+          {
+            "label": "Account history written",
+            "at_ms": null,
+            "detail": "history consumer, RDS"
+          }
+        ]
+      }
+    ],
+    "skipped": [],
+    "metrics": {
+      "latency_ms": {
+        "p50": 7.4,
+        "p95": 9.3,
+        "p99": 12.0
+      },
+      "requests": 24,
+      "fallback_decisions": 1,
+      "queues": {
+        "cases": 22,
+        "history": 22,
+        "analytics": 22
+      },
+      "lambdas": {
+        "securepay-dev-alerts": {
+          "invocations": 1,
+          "errors": 0
+        },
+        "securepay-dev-analytics-consumer": {
+          "invocations": 4,
+          "errors": 0
+        },
+        "securepay-dev-analytics-export": {
+          "invocations": 0,
+          "errors": 0
+        },
+        "securepay-dev-cases-api": {
+          "invocations": 25,
+          "errors": 0
+        },
+        "securepay-dev-cases-consumer": {
+          "invocations": 16,
+          "errors": 0
+        },
+        "securepay-dev-db-bootstrap": {
+          "invocations": 0,
+          "errors": 0
+        },
+        "securepay-dev-difference-writer": {
+          "invocations": 0,
+          "errors": 0
+        },
+        "securepay-dev-history-consumer": {
+          "invocations": 19,
+          "errors": 0
+        },
+        "securepay-dev-list-loader": {
+          "invocations": 0,
+          "errors": 0
+        },
+        "securepay-dev-rules-api": {
+          "invocations": 0,
+          "errors": 0
+        },
+        "securepay-dev-statement-reader": {
+          "invocations": 0,
+          "errors": 0
+        }
+      }
+    }
+  },
   "load_test": {
     "source": "documented",
     "label": "Run 5, November 5, 2026, 21:28 UTC, 10 engine tasks (docs/getting-started/load-test.mdx)",
