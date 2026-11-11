@@ -54,10 +54,10 @@ Needs Docker Desktop and the Compose stack running ([Local setup](./local-setup.
 4. Compare both engines with the same requests:
 
    ```powershell
-   uv run python infra/k8s/latency.py http://localhost:8000 http://localhost:8080 --requests 1000 --workers 10
+   uv run python infra/k8s/latency.py http://127.0.0.1:8000 http://127.0.0.1:8080 --requests 1000 --workers 10 | Tee-Object ../kind-evidencias/latency.txt
    ```
 
-   One JSON line per engine with `per_second`, `p50_ms`, `p95_ms`, `p99_ms` and the decisions. Both run on the same computer, so the numbers say whether Kubernetes adds latency (the NodePort hop), not how fast AWS is.
+   One JSON line per engine with `per_second`, `p50_ms`, `p95_ms`, `p99_ms` and the decisions; nothing else keeps them, so `Tee-Object` also writes them to a file outside the repository (create the folder first with `mkdir ../kind-evidencias -Force`). Use `127.0.0.1`, not `localhost` (see below). Both run on the same computer, so the numbers say whether Kubernetes adds latency (the NodePort hop), not how fast AWS is. In `outcomes` most answers are `HOLD` (the same account, so velocity holds it after five); if they are all `APPROVE`, check one answer's `by_default` and `decision_reason` before using the numbers.
 
 5. Try what Kubernetes gives: delete a pod and watch the Deployment replace it (`kubectl -n securepay delete pod <name>`, then `get pods -w`); the Service keeps answering from the other one.
 
@@ -65,9 +65,19 @@ Needs Docker Desktop and the Compose stack running ([Local setup](./local-setup.
 
 If the pods cannot reach Valkey (`CacheUnavailable` in `kubectl -n securepay logs deployment/decision-engine`), `host.docker.internal` does not resolve in your Docker: replace it in `overlays/kind/kustomization.yaml` with the gateway of the `kind` network (`docker network inspect kind`).
 
+### If something fails on Windows
+
+What happened on the first run (2026-11-10, Docker Desktop with WSL 2 and 16 GB of RAM); the numbers are in [ADR-06](../architecture/decisions.mdx#adr-06).
+
+| Symptom | Cause | What to do |
+| :--- | :--- | :--- |
+| Every request to kind takes about 2,000 ms | `localhost` tries IPv6 first and kind publishes the port on IPv4 only | Use `http://127.0.0.1:8080` (and `127.0.0.1:8000` for Compose, so both go the same way) |
+| Docker Desktop stops with `Wsl/ExecError` or `0xc00000fd`, or `kubectl` answers `Unable to connect to the server: EOF` | Out of memory: the Compose stack plus three kind nodes | Leave only `decision-engine`, `valkey` and `localstack` running (`docker compose stop alerts consumers cases-api rules-api restricted-list-api postgres`) and, if it is still not enough, a one-node cluster: `kind.yaml` without the two `worker` entries, outside the repository |
+| After `wsl --shutdown`, requests from Windows get `connection closed` or kind answers `503` while `/health` says `ok` | The ports Docker published to Windows stopped forwarding | `docker compose up -d --force-recreate decision-engine valkey`, then `docker compose up cache-loader` (Valkey starts empty) and `kubectl -n securepay rollout restart deployment/decision-engine` |
+
 ## On EKS (one session in AWS)
 
-Costs about USD 0.10 an hour for the control plane plus two `t3.medium` (about USD 0.08 an hour) on top of dev. Do it in the same session as the Fargate load test (HU-60) and delete the cluster the same day. If the account's plan refuses EKS (the free plan limits some services), write it down in ADR-06 and keep the kind result.
+Costs about USD 0.10 an hour for the control plane plus two `t3.medium` (about USD 0.08 an hour) on top of dev. Do it in the same session as the Fargate load test (HU-60) and delete the cluster the same day. This session was not done: EKS is not included in the account's AWS free plan, so the comparison in ADR-06 was run on kind.
 
 1. Dev must be up with the engine on Fargate ([Deploy to AWS](./deploy-aws-terraform.mdx), steps 4 to 7). Install eksctl (`winget install eksctl`).
 
