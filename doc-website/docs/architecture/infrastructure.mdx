@@ -6,7 +6,7 @@ description: Every AWS service with its purpose and why it was chosen, the resou
 
 # AWS infrastructure
 
-This is the infrastructure that Terraform creates in AWS: which service does each job and why, and the full list of resources. How the code is organized and how to create and destroy an environment is in [Terraform](./terraform.mdx). Everything in the inventory below is built in `infra/terraform/` unless its Status says otherwise; one `terraform apply` creates the whole development environment and `terraform destroy` removes it after every session, so nothing stays deployed. Pieces of the first design that were replaced while building are listed in [Designed but not built](./team-decisions.mdx#designed-but-not-built). The network, security groups, IAM roles and encryption are in [Security](./security.mdx).
+This is the infrastructure that Terraform creates in AWS: which service does each job and why, and the full list of resources. How the code is organized and how to create and destroy an environment is in [Terraform](./terraform.mdx). Everything in the inventory below is built in `infra/terraform/` unless its Status says otherwise; one `terraform apply` creates the whole development environment and `terraform destroy` removes it after every session, so nothing stays deployed. The network, security groups, IAM roles and encryption are in [Security](./security.mdx).
 
 The IAM permissions and ports were checked against the official AWS documentation on October 14; the links are at the end of the page.
 
@@ -113,7 +113,7 @@ This is the inventory of what Terraform must create, not of what exists today. D
 | :--- | :--- | :--- | :--- | :--- |
 | RDS instance | `pagoseguro-prod-db` | 1 | PostgreSQL `db.t3.micro`, Multi-AZ, 20 GB gp3, in the data subnets; TLS required; one user per component with its password in Parameter Store; 7-day backups (1 day in dev, `database_backup_retention_days`) | Built in dev |
 | Cache | `pagoseguro-prod-cache` | 1 | ElastiCache Serverless for Valkey, in the data subnets, encryption in transit; ports 6379 and 6380 | Memory expected (see [Estimated figures](#estimates)) |
-| DynamoDB table | `tasas-cambio` | 1 | On demand; point-in-time recovery | Built in dev as `securepay-<env>-exchange-rates`. The `dispositivo-cuenta` table of the first design was [not built](./team-decisions.mdx#designed-but-not-built) |
+| DynamoDB table | `tasas-cambio` | 1 | On demand; point-in-time recovery | Built in dev as `securepay-<env>-exchange-rates`. The `dispositivo-cuenta` table of the first design was not created: the pairs live in Valkey and in PostgreSQL `account_transactions` |
 | Data Lake bucket | `pagoseguro-prod-datalake` | 1 | Prefixes `raw/`, `curated/`, `analytics/`, `athena-results/`; versioning; block public access | Built in dev |
 | Evidence bucket | `pagoseguro-prod-evidencia` | 1 | Object Lock COMPLIANCE 10 years, Glacier Instant Retrieval, versioning. In dev, no default retention: each object gets a retain-until date of `EVIDENCE_RETENTION_DAYS` (0.0035 days, about 5 minutes) so the bucket can be destroyed | Built in dev |
 | List provider bucket | `pagoseguro-prod-proveedor-listas` | 1 | One file, `lista_restrictiva.jsonl`, exported by the seed. Separate from the Data Lake because it is third-party data | Built in dev |
@@ -126,7 +126,7 @@ This is the inventory of what Terraform must create, not of what exists today. D
 
 | Resource | Name | Qty. | Configuration | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| SNS topics | `decisiones`, `alertas-negocio`, `alarmas-operativas` | 3 | `alertas-negocio` with a filter by recipient (compliance, supervisor, treasury). The `regla-cambiada` topic was [not built](./team-decisions.mdx#designed-but-not-built) | Built in dev |
+| SNS topics | `decisiones`, `alertas-negocio`, `alarmas-operativas` | 3 | `alertas-negocio` with a filter by recipient (compliance, supervisor, treasury). The `regla-cambiada` topic of the first design was not created: the rules API publishes the catalog to the cache itself | Built in dev |
 | SQS queues | `casos`, `historial`, `analitica` and their `-dlq` | 6 | Raw message delivery from SNS; DLQ after 5 attempts with 14-day retention | Built in dev |
 | EventBridge Scheduler schedules | | 5 | Reconciliation (02:00 Bogotá; the analytics runs in the same state machine), the 06:30 check, alerts (every 5 min), cache load and exchange rates (daily) | Built in dev |
 
@@ -138,7 +138,7 @@ This is the inventory of what Terraform must create, not of what exists today. D
 | GitHub OIDC provider | 1 | For `rol-despliegue`, with no keys stored in GitHub | Built in dev |
 | Power BI IAM user | 1 | Read only on the analytics layer; keys rotated every 90 days | Built in dev |
 | Parameter Store parameters | 10 | Master password, master URL and 8 component passwords (see [Encryption and secrets](./security.mdx#encryption)) | Built in dev |
-| Cache users | 0 | Designed: `motor`, `historial`, `reglas`, `carga_lista` with IAM authentication | [Not built](./team-decisions.mdx#designed-but-not-built): only the engine's and the Lambdas' security groups reach the cache, over TLS |
+| Cache users | 0 | Designed: `motor`, `historial`, `reglas`, `carga_lista` with IAM authentication | Not created: only the engine's and the Lambdas' security groups reach the cache, over TLS |
 | CloudWatch log groups | 15 | One per Lambda, two for ECS and one for API Gateway; 14-day retention | Built in dev |
 | Metric filters | 5 | On the engine log: default, held or rejected, and slow decisions, `EVENTO_NO_PUBLICADO`, fixed exchange rates | Built (HU-59) |
 | CloudWatch alarms | 13 kinds | See [Alarms and thresholds](#alarms) | Built (HU-59) |

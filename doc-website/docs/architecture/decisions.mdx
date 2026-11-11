@@ -27,7 +27,7 @@ Each record follows the same format: context, decision, alternatives considered 
 
 **Context.** The core needs a synchronous decision service with p99 ≤ 200 ms at 300 tx/s. At the sustained 50 tx/s that is 129.6 million requests a month, the busiest path in the system.
 
-**Decision.** The engine sits directly behind an Application Load Balancer. API Gateway is kept for the low-volume endpoints (the rules and cases APIs). The restricted list service of the first design is not deployed: the engine reads the list from the cache ([Designed but not built](./team-decisions.mdx#designed-but-not-built)).
+**Decision.** The engine sits directly behind an Application Load Balancer. API Gateway is kept for the low-volume endpoints (the rules and cases APIs). The restricted list service of the first design is not deployed: the engine reads the list from the cache ([Restricted list service](../components/restricted-list.mdx#how-the-system-uses-it)).
 
 **Alternatives.** API Gateway for everything: about $128.60/month against $25 for the ALB, and 10 to 20 ms of extra latency on a 200 ms budget. Network Load Balancer: faster, but no HTTP-level health checks or built-in TLS termination with ACM.
 
@@ -51,7 +51,7 @@ Each record follows the same format: context, decision, alternatives considered 
 
 **Context.** On every transaction the engine reads and updates idempotency keys, 10 to 30-minute window counters, 24-hour rolling sums, the active rules and the restricted list cache: 129.6 million transactions a month inside 200 ms.
 
-**Decision.** That state lives in ElastiCache Serverless for Valkey. DynamoDB is kept for low-frequency data: the exchange rates. (The device–account pairs planned there stayed in the cache and in PostgreSQL: [Designed but not built](./team-decisions.mdx#designed-but-not-built).)
+**Decision.** That state lives in ElastiCache Serverless for Valkey. DynamoDB is kept for low-frequency data: the exchange rates. (The device–account pairs first planned there live in the cache and in PostgreSQL `account_transactions`.)
 
 **Alternatives.** Storing each transaction in DynamoDB: about $105/month and it grows with traffic. Fixed-size nodes (Redis OSS or Valkey): predictable cost, but the size must be guessed before having data; if it falls short, the cache evicts keys and idempotency is the first thing lost.
 

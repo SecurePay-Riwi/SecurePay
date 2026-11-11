@@ -44,7 +44,7 @@ Grouped by service, so a service that solves several things is counted once.
 | Amazon API Gateway | Rules, cases and list service endpoints (HTTP API) | $1.10 | $0.10 |
 | Amazon EventBridge Scheduler | Reconciliation, exchange rates, 5-minute alerts | $0.00 | $0.00 |
 | AWS Step Functions | Reconciliation orchestration | $0.00 | $0.00 |
-| Amazon DynamoDB | Exchange rates table. The estimate still counts the device–account pairs of the first design, which were [not built](./team-decisions.mdx#designed-but-not-built): about $0.80 of margin | $0.90 | $0.10 |
+| Amazon DynamoDB | Exchange rates table. The estimate still counts the device–account pairs of the first design, which were not created: about $0.80 of margin | $0.90 | $0.10 |
 | AWS Glue 6.0 | 2 Spark jobs every night: the reconciliation match and the analytics ETL, 2 G.1X workers, ~10 minutes each at $0.308 per DPU-hour (was EMR Serverless, $7.27: not on AWS's free plan, [ADR-05](./decisions.mdx#adr-05)) | $6.16 | $0.10 |
 | AWS Systems Manager | Session Manager + Parameter Store | $0.00 | $0.00 |
 | Amazon RDS PostgreSQL | Multi-AZ instance + storage + backups: users, rules, cases | $31.35 | $5.50 |
