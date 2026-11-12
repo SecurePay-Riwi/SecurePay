@@ -224,7 +224,9 @@ Measured in the AWS rehearsal of November 11: the apply loaded the 70,000 Kaggle
 
 ![Fraud detection page (q3), every label source](/img/powerbi/fraud-detection.png)
 
-![Fraud detection page (q3), generator only: 7 of 19 detected](/img/powerbi/fraud-detection-generator.png)
+![Fraud detection page (q3), generator only: 7 of 19 transactions (36.84 %), 7 of 7 schemes (100 %)](/img/powerbi/fraud-detection-generator.png)
+
+The page shows both readings of question 3: *Detection per Transaction* (`detected / frauds`) and *Detection per Scheme* (`expected_detected / expected`, the transactions where the label expects a rule). On the generator they are 36.84 % and 100 %: the 12 transactions that got through are the earlier steps of the 7 schemes, which RN-02, RN-03 and RN-05 let pass by design. The Kaggle labels name no rule, so with every source *Detection per Scheme* stays 100 % and *Detection per Transaction* falls to 0.42 %.
 
 ![Reconciliation page (q5): the 19 differences of the fixture day](/img/powerbi/reconciliation.png)
 
