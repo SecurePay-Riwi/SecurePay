@@ -4,6 +4,8 @@ title: Runbook
 description: Bring dev up, run the demo, answer each alarm and take it down, with the exact commands (E-12, CT-05).
 ---
 
+import plan from '@site/src/data/terraform-plan.json';
+
 # Runbook
 
 What the team does in AWS, in order, with the commands. Each step links to the page that explains it. Commands are PowerShell, from `infra/terraform/envs/dev` unless the step says otherwise.
@@ -17,7 +19,7 @@ What the team does in AWS, in order, with the commands. Each step links to the p
 
 About 30 minutes, about USD 0.22 an hour from here on.
 
-1. Create everything with one `apply` (Docker Desktop running, uv, securepay-seed, securepay-apis and securepay-csv cloned beside SecurePay, with the Kaggle CSVs downloaded in securepay-csv): it also builds and pushes the images, seeds RDS, loads the Kaggle sample and the cache and the exchange rates. It also writes Power BI's key to the profile `securepay-powerbi`. Expected: about `342 to add` (`339` without the Kaggle CSVs), plus one per e-mail address. Without Docker: `build_images = false` and the steps below, starting from `214 to add`.
+1. Create everything with one `apply` (Docker Desktop running, uv, securepay-seed, securepay-apis and securepay-csv cloned beside SecurePay, with the Kaggle CSVs downloaded in securepay-csv): it also builds and pushes the images, seeds RDS, loads the Kaggle sample and the cache and the exchange rates. It also writes Power BI's key to the profile `securepay-powerbi`. Expected: <code>Plan: {plan.oneApplyWithKaggle} to add</code> ({plan.oneApply} without the Kaggle CSVs), plus one per e-mail address. Without Docker: `build_images = false` and the steps below, starting from <code>{plan.stepByStep} to add</code>.
 
    ```powershell
    terraform init
@@ -108,7 +110,7 @@ Every alarm e-mails `securepay-dev-ops-alarms`, and its description says what to
    terraform destroy
    ```
 
-   Expected: `Destroy complete!` with everything the state had (350 after one `apply`, 347 without the Kaggle CSVs, 338 step by step). If only the evidence bucket fails, its lock has not passed yet: wait and run it again. If the EKS session of [Run the engine on Kubernetes](../getting-started/kubernetes.mdx) ran, delete that cluster first: it uses dev's subnets.
+   Expected: `Destroy complete!` with everything the state had ({plan.oneApplyWithKaggle} after one `apply`, {plan.oneApply} without the Kaggle CSVs, {plan.stepByStep} step by step). If only the evidence bucket fails, its lock has not passed yet: wait and run it again. If the EKS session of [Run the engine on Kubernetes](../getting-started/kubernetes.mdx) ran, delete that cluster first: it uses dev's subnets.
 
 2. Check that nothing is left charging. The first command must print nothing:
 

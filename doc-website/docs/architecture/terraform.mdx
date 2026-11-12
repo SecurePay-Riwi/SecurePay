@@ -4,6 +4,8 @@ title: Terraform
 description: How the AWS infrastructure is written in Terraform, the names it uses in AWS, how to create and destroy the development environment, and what it outputs.
 ---
 
+import plan from '@site/src/data/terraform-plan.json';
+
 # Terraform
 
 The design in [AWS infrastructure](./infrastructure.mdx) and [Security](./security.mdx) is written as Terraform code in `infra/terraform/`. This page explains how that code is organized and how to create and destroy an environment. The code implements the design and does not change it; the only deliberate differences are the English names (next section) and the development settings that keep a test cheap and easy to destroy.
@@ -73,11 +75,11 @@ A module is the reusable piece. An environment folder chooses its values and cal
 
 ## What it creates
 
-The first `plan` must say `214 to add, 0 to change, 0 to destroy` (HU-66 added the analytics catalog with its 13 tables, the workgroup, the `analytics-export` role and its database password; HU-59 adds the dashboard, 3 queue-age alarms and 2 database alarms) with one budget e-mail and no supervisor, compliance or treasury e-mail (each address is one more subscription). Once the image tags are set (see [Deploy the engine](../getting-started/deploy-aws-terraform.mdx#6-deploy-the-engine-on-fargate)), the next one adds 21 more: the two task definitions, the engine service and its autoscaling target and two policies (CPU and requests per task), and the engine monitoring (5 metric filters on its log, 8 alarms and 2 saved queries). With `lambda_image_tag` (see [the Lambdas](../getting-started/deploy-aws-terraform.mdx#7-run-the-consumers-and-the-alerts-task-as-lambdas)) it adds 72: the 11 functions and their log groups, the `db-bootstrap` invocation, 3 queue mappings, the alerts and cache loader schedules, the alerts invoke settings, metric filter and alarm, an error alarm for each function but the alerts one (10), the API (the HTTP API, its authorizer, 3 integrations, 9 routes, the stage, its log group and 2 invoke permissions) and Cognito (the pool, 2 groups and the client), the reconciliation (2 job files, the Glue job, the state machine, 2 schedules and its alarm; see [the reconciliation](../getting-started/deploy-aws-terraform.mdx#8-run-the-nightly-reconciliation)) and the analytics job (its file and the Glue job). With `apis_image_tag` (see [the exchange-rates Lambda](../getting-started/deploy-aws-terraform.mdx#9-load-the-daily-exchange-rates)) it adds 4: the function, its log group, its schedule and the stale-rates alarm. Each treasury e-mail is one more subscription. These counts come from `terraform plan` (November 4, 2026); the 28 of the rules and cases APIs (November 5) are counted from the code and are checked in the next `plan`. With `build_images` and `load_data_on_apply` (the default, `envs/dev/up.tf`), the first `plan` already has the tags and adds all of it plus 7: the 3 image pushes, the seed, the `list-loader` and `exchange-rates` invocations and the 2026-10-01 rates. The demo's Cognito users (`api_users`: 2 users, their passwords and group memberships) add 6, and the demo day (`load_demo_day`: 12 fixture files and the run that starts the state machine) 13. With the Kaggle CSVs in `../securepay-csv/data/kaggle` (`load_kaggle`, MAG-312) it adds 3: the two CSVs in `raw/kaggle/` and the run of the Kaggle ETL. Power BI's key (`powerbi_profile`) adds 2: the access key and the step that writes it to the AWS CLI profile. That makes about 342, counted from the code.
+With one `apply` (the default, `envs/dev/up.tf`) the first `plan` must say <code>Plan: {plan.oneApply} to add, 0 to change, 0 to destroy</code> ({plan.oneApplyWithKaggle} with the Kaggle CSVs), with one budget e-mail and no supervisor, compliance or treasury e-mail (each address is one more subscription). Step by step (`build_images = false`, no image tags) it is <code>{plan.stepByStep} to add</code>: the network, security groups, IAM, storage, database, cache, ECR, messaging, the analytics catalog, the dashboard and the alarms that need no image. On top of that base, the one `apply` adds the engine service and its alarms and metric filters (once the engine tag is known), the 12 Lambdas with their log groups, schedules and error alarms, the HTTP API and Cognito with the demo users (`api_users`), the reconciliation and analytics Glue jobs and the state machine, and the steps of `up.tf`: the 3 image pushes, the seed, the `list-loader` and `exchange-rates` invocations, the 2026-10-01 rates, the demo day (`load_demo_day`), Power BI's key (`powerbi_profile`) and, with the CSVs, the Kaggle upload and ETL (`load_kaggle`). The numbers live in one file, `doc-website/src/data/terraform-plan.json`, which every page reads; they come from `terraform plan` on {plan.checked}. After a change that adds or removes resources, run the plan again and update that file.
 
 ![SecurePay network on AWS](/img/network-diagram.png)
 
-*Network, subnets, routes and security groups as created in dev. Dashed cards (load balancer, Fargate, Lambdas, cache and the other services of later sprints) are planned.* <a href={require('@site/static/img/network-diagram.png').default} target="_blank">Open full size</a>.
+*Network, subnets, routes and security groups as created in dev. The dashed card is the load test's EC2, created only with `load_runner = true`. Drawn by `doc-website/diagrams/network.py`.* <a href={require('@site/static/img/network-diagram.png').default} target="_blank">Open full size</a>.
 
 | Module | Resources | Detail |
 | :--- | :--- | :--- |
@@ -174,7 +176,7 @@ Sprint 6 removed `firehose-raw` and `emr-jobs`, and the EMR permissions of `sche
 ```bash
 cp terraform.tfvars.example terraform.tfvars   # your name and email
 terraform init
-terraform plan       # the first time: 181 to add
+terraform plan       # the first time: see "What it creates"
 terraform apply
 terraform destroy    # always when you finish testing
 ```

@@ -61,8 +61,8 @@ locals {
       statements = [
         { Sid = "DatabasePassword", Effect = "Allow", Action = "ssm:GetParameter", Resource = "${local.arn.parameter}/rds/rules_api" },
         # It publishes each catalog version to the cache itself, as it does
-        # locally; the SNS topic and the rules-cache-refresh Lambda of the
-        # first design were not built.
+        # locally (no SNS topic or cache-refresh Lambda: team-decisions.mdx,
+        # "Designed but not built").
         { Sid = "CacheWithIam", Effect = "Allow", Action = "elasticache:Connect", Resource = [local.arn.cache, "${local.arn.cache_user}-rules-api"] },
         # The simulation (HU-24) replays raw/decisiones with the generator's
         # labels in Python inside this Lambda: it lists the files, then reads them.
@@ -80,13 +80,6 @@ locals {
       ]
     }
 
-    rules-cache-refresh = {
-      service = "lambda.amazonaws.com"
-      statements = [
-        { Sid = "DatabasePassword", Effect = "Allow", Action = "ssm:GetParameter", Resource = "${local.arn.parameter}/rds/rules_reader" },
-        { Sid = "CacheWithIam", Effect = "Allow", Action = "elasticache:Connect", Resource = [local.arn.cache, "${local.arn.cache_user}-rules"] },
-      ]
-    }
 
     alerts = {
       service = "lambda.amazonaws.com"
@@ -126,12 +119,6 @@ locals {
       ]
     }
 
-    list-service = {
-      service = "lambda.amazonaws.com"
-      statements = [
-        { Sid = "ReadProviderFile", Effect = "Allow", Action = "s3:GetObject", Resource = "${local.bucket.list_provider}/lista_restrictiva.jsonl" },
-      ]
-    }
 
     statement-reader = {
       service = "lambda.amazonaws.com"

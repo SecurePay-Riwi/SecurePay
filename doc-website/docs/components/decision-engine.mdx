@@ -363,7 +363,7 @@ def accounts(device_accounts, t: int, window_days: int) -> int:
 
 - **"Raises the risk score for all" (RN-04).** Every account that uses the device reads the same `dev:` set, so from the fourth account on, each of them gets the score on its next transaction on that device, including the first three.
 - **Out-of-order events.** The score of each account is the last time it was seen, so an account that used the device after a late event still counts: it shares the device inside the window too. A late event of an account already stored moves its last time back, which only shortens how long it is kept.
-- **Where the pairs live.** The engine writes them in Valkey, like the rest of the history ([Team decisions](../architecture/team-decisions.mdx)). The durable copy in DynamoDB and the device network analysis come later.
+- **Where the pairs live.** The engine writes them in Valkey, like the rest of the history ([Team decisions](../architecture/team-decisions.mdx)). The durable copy is the history consumer's `account_transactions` table (the `device_id` of each transaction, read by `GET /accounts/{account_id}/related-accounts`, HU-29), and the device network analysis is the analytics table `dim_device` and view `q6` (HU-47). The first design kept that copy in a DynamoDB table, which was never created: these two cover it.
 
 | Catalog parameter | Default | Meaning |
 | :--- | ---: | :--- |

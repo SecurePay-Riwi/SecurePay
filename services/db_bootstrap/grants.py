@@ -1,8 +1,6 @@
 """What each component's database user may do, read from its queries.
 
-Only the components deployed in AWS have a user here. The rules cache
-refresh is not built: the rules API publishes the catalog itself, so
-rules_reader has a password in Parameter Store and no user.
+Only the components deployed in AWS have a user here.
 
 INSERT ... RETURNING and an ORM insert (which returns the new id) also
 need SELECT; SELECT ... FOR UPDATE needs UPDATE; DELETE with a WHERE needs

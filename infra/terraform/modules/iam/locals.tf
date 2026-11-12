@@ -40,23 +40,20 @@ locals {
   # GLUE_DATABASE of services/analytics (modules/analytics creates it).
   glue_database = "${replace(local.p, "-", "_")}_analytics"
 
-  # The 12 Lambdas of infrastructure.mdx plus db-bootstrap (MAG-361) and
-  # analytics-export (HU-66); true = runs inside the VPC.
+  # The 12 Lambdas of infrastructure.mdx; true = runs inside the VPC.
   lambdas = {
-    cases-consumer      = true
-    history-consumer    = true
-    analytics-consumer  = false
-    rules-api           = true
-    cases-api           = true
-    list-service        = false
-    rules-cache-refresh = true
-    alerts              = true
-    exchange-rates      = false
-    list-loader         = true
-    statement-reader    = false
-    difference-writer   = true
-    db-bootstrap        = true
-    analytics-export    = true
+    cases-consumer     = true
+    history-consumer   = true
+    analytics-consumer = false
+    rules-api          = true
+    cases-api          = true
+    alerts             = true
+    exchange-rates     = false
+    list-loader        = true
+    statement-reader   = false
+    difference-writer  = true
+    db-bootstrap       = true
+    analytics-export   = true
   }
 
   ecr_token = {

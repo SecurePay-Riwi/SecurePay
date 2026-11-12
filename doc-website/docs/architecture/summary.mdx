@@ -41,7 +41,7 @@ The general rule: **pay for capacity where volume is high and pay per use where 
 | **Decision in under 200 ms** at 300 tx/s | Everything the engine reads is in memory; nothing slow on the path. Its own time is estimated at 9 to 22 ms, and it cuts off at 120 ms with the amount-based policy. Measured: met at 50 and 150 tx/s; at 300 tx/s with 10 tasks some minutes go above 200 ms, a known open issue ([Load test](../getting-started/load-test.mdx#known-issue)) |
 | **Keep running if a zone goes down** | Two zones for everything with state: engine, database with a standby replica, replicated cache, one NAT per zone. The 24-task maximum leaves 12 alive, enough for the peak |
 | **A repeated transaction gets the same decision** | Idempotency key in the cache for one hour (already built) |
-| **Change rules without deploying** | Rules are versioned data in PostgreSQL; activating a version sends an event that refreshes the cache at once |
+| **Change rules without deploying** | Rules are versioned data in PostgreSQL; after each change the rules API publishes the new catalog to the cache, and the engine picks it up within a second (`RULES_REFRESH_SECONDS`) |
 | **Security** | Everything in private subnets except the load balancer; encryption in transit and at rest; one least-privilege role per component; passwords in Parameter Store, never in code; no exposed access servers |
 | **Immutable evidence for 10 years** | S3 Object Lock in COMPLIANCE mode, written by the cases API when each case closes |
 | **Reconciliation before 07:00** | Starts at 02:00, with retries per step and an alarm at 06:30 |
