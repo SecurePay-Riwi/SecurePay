@@ -10,7 +10,7 @@ Event-driven microservices, managed services first, in Ohio (`us-east-2`) across
 
 ![PagoSeguro architecture flow on AWS](/img/architecture-flow.jpg)
 
-*The diagram labels are in Spanish; the legend at the bottom explains the colors of each flow. Drawn by `doc-website/diagrams/architecture_flow.py`.* <a href={require('@site/static/img/architecture-flow.jpg').default} target="_blank">Open full size</a>.
+*The diagram labels are in Spanish. The data band in the middle (DynamoDB, Valkey, RDS, the e-mail topic and the Data Lake) is what every zone uses: above it, what happens with each transaction; below it, the daily loads, the rules and cases APIs, the night, the alerts and the dashboard; at the bottom, the order of the one `terraform apply`. The legend explains the colors. Drawn by `doc-website/diagrams/architecture_flow.py`.* <a href={require('@site/static/img/architecture-flow.jpg').default} target="_blank">Open full size</a>.
 
 ## In one paragraph
 
