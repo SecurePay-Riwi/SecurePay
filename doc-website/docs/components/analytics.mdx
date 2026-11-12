@@ -202,6 +202,37 @@ Measured in the AWS rehearsal of November 11: the apply loaded the 70,000 Kaggle
 - The `restricted_list` hits are right by RN-06: the ETL assigns the rows to seed users, and some of them are on the list, which has nothing to do with the dataset's label. They count as false positives only against the Kaggle label.
 - Both datasets are very imbalanced, as the assignment warns. That is why the views give precision and missed amounts per pattern and do not give one accuracy number, which would be close to 100 % while detecting nothing.
 
+## The dashboard over Athena (E-11)
+
+`services/analytics/powerbi/securepay.pbix` has one page per question of the assignment, each reading its view (`q1` to `q6`) in Athena through the ODBC driver (`DataSource = Athena`; the connection is in [Deploy to AWS](../getting-started/deploy-aws-terraform.mdx#power-bi-over-athena)). These screenshots are from the AWS rehearsal of November 11, 2026: the fixture day 2026-10-05 plus the Kaggle replay.
+
+| Question of the assignment | View | Page |
+| :--- | :--- | :--- |
+| Amount and number of transactions by type, currency and channel | `q1` | Transactions |
+| Which rules fire most, their precision and false positive rate | `q2` | Rules |
+| How much fraud was detected and how much escaped | `q3` | Fraud detection |
+| Case resolution time per analyst and how many were escalated | `q4` | Cases |
+| Reconciliation status per partner and age of the pending differences | `q5` | Reconciliation |
+| Which devices or merchants concentrate the most risk | `q6` | Risk |
+
+**The numbers match the control query (CT-10).** On the Transactions page, with every filter on "all", there are 47 transactions, USD 24,964.82 and 10 held or rejected (21.28 %). `sql/control/q1.sql`, run in Athena on the same day, gives the same: 37 `APPROVE`, 7 `HOLD` and 3 `REJECT`, USD 24,964.82. The control query computes the numbers from `fact_decision` without going through the view.
+
+![Transactions page (q1)](/img/powerbi/transactions.png)
+
+![Rules page (q2), every label source](/img/powerbi/rules.png)
+
+![Fraud detection page (q3), every label source](/img/powerbi/fraud-detection.png)
+
+![Fraud detection page (q3), generator only: 7 of 19 detected](/img/powerbi/fraud-detection-generator.png)
+
+![Reconciliation page (q5): the 19 differences of the fixture day](/img/powerbi/reconciliation.png)
+
+![Risk page (q6)](/img/powerbi/risk.png)
+
+The Cases page (`q4`) was empty in this run: the export of the night read the cases database before the demo's stories had opened any case, so `fact_case` had no rows for the day. It fills on the next run of the state machine.
+
+![Cases page (q4), empty in this run](/img/powerbi/cases-empty.png)
+
 ## Simulating a rule version (HU-24)
 
 `simulate.py` replays one day with two catalogs, the current one (or `--against N`) and a candidate, and compares them. Nothing is written: no rules, no catalog versions, no Valkey.
