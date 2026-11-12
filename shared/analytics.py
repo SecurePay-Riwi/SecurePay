@@ -454,6 +454,18 @@ TABLES: dict[str, Table] = {
                     "USD amount of the frauds that got through.",
                 ),
                 _c("top_rule", "string", "Rule that detects most of the pattern."),
+                _c(
+                    "expected",
+                    "int",
+                    "Frauds whose label names an expected_rule: the transaction "
+                    "that completes the scheme, where the rule must act.",
+                ),
+                _c("expected_detected", "int", "Expected frauds detected."),
+                _c(
+                    "expected_detection_rate",
+                    _RATIO,
+                    "expected_detected / expected; null when 0.",
+                ),
             ),
         ),
     )

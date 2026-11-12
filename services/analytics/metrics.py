@@ -13,7 +13,11 @@ a label counts neither as a hit nor as a false positive. The definitions
   detected = decision HOLD or REJECT, or opens_case; missed = the rest;
   detection_rate = detected / frauds; top_rule = the rule that fires
   most among the detected ones (ties: alphabetical; None when none was
-  detected).
+  detected). expected = frauds whose label names an expected_rule (the
+  generator marks every transaction of a scheme as fraud, but expects
+  the rule only on the one that completes it), expected_detected = those
+  detected, expected_detection_rate = expected_detected / expected (None
+  with 0 expected: the Kaggle labels name no rule).
 
 Ratios have 4 decimals, rounded half up. These functions measure a
 replay (the Kaggle history, the simulation of HU-24); the ETL measures
@@ -93,6 +97,9 @@ class PatternCoverage:  # HU-46
     rules_version: str | None = None
     detected_amount_usd: Decimal | None = None  # None without the amounts
     missed_amount_usd: Decimal | None = None
+    expected: int = 0  # frauds whose label names an expected_rule
+    expected_detected: int = 0
+    expected_detection_rate: Decimal | None = None
 
 
 def ratio(numerator: int, denominator: int) -> Decimal | None:
@@ -187,14 +194,19 @@ def pattern_coverage(
     in USD) it also adds how much money was detected and how much got
     through (question 3 of the brief: "how much fraud")."""
     groups: dict[tuple[str, str, str], list[ReplayDecision]] = defaultdict(list)
+    expected_ids: set[str] = set()
     for d, label in _labeled(decisions, labels):
         if label.is_fraud:
             key = (label.pattern or NO_PATTERN, label.source, d.rules_version)
             groups[key].append(d)
+            if label.expected_rule:
+                expected_ids.add(d.transaction_id)
     rows = []
     for (pattern, source, rules_version), frauds in sorted(groups.items()):
         caught = [d for d in frauds if detected(d)]
         escaped = [d for d in frauds if not detected(d)]
+        expected = [d for d in frauds if d.transaction_id in expected_ids]
+        expected_caught = sum(1 for d in expected if detected(d))
         rules = Counter(r for d in caught for r in set(d.rules_triggered))
         rows.append(
             PatternCoverage(
@@ -208,6 +220,9 @@ def pattern_coverage(
                 rules_version=rules_version,
                 detected_amount_usd=_usd(caught, amounts_usd),
                 missed_amount_usd=_usd(escaped, amounts_usd),
+                expected=len(expected),
+                expected_detected=expected_caught,
+                expected_detection_rate=ratio(expected_caught, len(expected)),
             )
         )
     return rows

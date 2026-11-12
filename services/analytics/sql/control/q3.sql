@@ -10,6 +10,7 @@ WITH frauds AS (
         CASE
             WHEN d.decision IN ('HOLD', 'REJECT') OR d.opens_case THEN 1 ELSE 0
         END AS detected,
+        CASE WHEN l.expected_rule IS NOT NULL THEN 1 ELSE 0 END AS expected,
         COALESCE(d.amount_usd, CAST(0 AS DECIMAL(18, 2))) AS amount_usd
     FROM fact_decision d
     JOIN fact_label l ON l.transaction_id = d.transaction_id
@@ -56,7 +57,9 @@ counted AS (
         COUNT(*) AS frauds,
         SUM(detected) AS detected,
         SUM(CASE WHEN detected = 1 THEN amount_usd ELSE 0 END) AS detected_usd,
-        SUM(CASE WHEN detected = 0 THEN amount_usd ELSE 0 END) AS missed_usd
+        SUM(CASE WHEN detected = 0 THEN amount_usd ELSE 0 END) AS missed_usd,
+        SUM(expected) AS expected,
+        SUM(expected * detected) AS expected_detected
     FROM current_catalog
     GROUP BY pattern, label_source
 )
@@ -71,7 +74,13 @@ SELECT
     ) AS DECIMAL(9, 4)) AS detection_rate,
     CAST(c.detected_usd AS DECIMAL(18, 2)) AS detected_amount_usd,
     CAST(c.missed_usd AS DECIMAL(18, 2)) AS missed_amount_usd,
-    r.rule AS top_rule
+    r.rule AS top_rule,
+    CAST(c.expected AS INTEGER) AS expected,
+    CAST(c.expected_detected AS INTEGER) AS expected_detected,
+    CASE WHEN c.expected = 0 THEN CAST(NULL AS DECIMAL(9, 4)) ELSE CAST(ROUND(
+        CAST(c.expected_detected AS DECIMAL(18, 6))
+        / CAST(c.expected AS DECIMAL(18, 6)), 4
+    ) AS DECIMAL(9, 4)) END AS expected_detection_rate
 FROM counted c
 LEFT JOIN ranked r
     ON r.pattern = c.pattern
@@ -87,7 +96,10 @@ SELECT
     p.detection_rate,
     p.detected_amount_usd,
     p.missed_amount_usd,
-    p.top_rule
+    p.top_rule,
+    p.expected,
+    p.expected_detected,
+    p.expected_detection_rate
 FROM pattern_coverage p
 JOIN (
     SELECT label_source, MAX(CAST(rules_version AS INTEGER)) AS v

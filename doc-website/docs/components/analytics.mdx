@@ -175,6 +175,7 @@ The generator's run of `seed 42`, mode `dev`, 400 transactions, 5 % fraud, repla
 - `MULE`: three transfers in and one withdrawal; RN-03 holds the withdrawal, the transfers in are legitimate on their own.
 - `SPLITTING`: RN-05 needs the sum to exceed the limit, so the first splits pass.
 - `expected_rule_hits` in the output says it per rule: every transaction that expects `account_takeover`, `mule`, `restricted_list`, `splitting` or `velocity` got it.
+- View `q3` says the same per pattern: `expected` counts the frauds whose label names a rule (the transaction that completes the scheme), `expected_detected` how many of them were held or rejected, and `expected_detection_rate` their ratio. On the fixture day `detection_rate` is 7 of 19 (36.84 %), and `expected_detection_rate` is 7 of 7 (100 %): every scheme was stopped where the business rule says. The Kaggle labels name no rule, so their `expected` is 0 and the rate is null.
 - `shared_device` is not a fraud pattern: the generator labels its 75 transactions `is_fraud = false` with `expected_rule = shared_device`, and marks a device as shared with more than 1 account, while RN-04 asks for more than 3. The rule fired on 13 of them. Its "false positives" are by design: it only raises `risk_score` (`APPROVE`, score 30) and holds nothing.
 
 #### PaySim and Sparkov (AWS, November 11, 2026)

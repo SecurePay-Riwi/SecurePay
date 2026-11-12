@@ -29,7 +29,7 @@ CONTRACT = {
     "dim_device": "device_id accounts_30d transactions_30d held_or_rejected_30d cases_30d shared risk_level as_of",
     "dim_merchant": "merchant_id transactions_30d held_or_rejected_30d fraud_labeled_30d as_of",
     "rule_metrics": "rule rule_version rules_version label_source hits true_positives false_positives precision false_positive_rate",
-    "pattern_coverage": "pattern label_source rules_version frauds detected missed detection_rate detected_amount_usd missed_amount_usd top_rule",
+    "pattern_coverage": "pattern label_source rules_version frauds detected missed detection_rate detected_amount_usd missed_amount_usd top_rule expected expected_detected expected_detection_rate",
 }
 
 
