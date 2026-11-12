@@ -51,7 +51,7 @@ for z, zx in zones.items():
     area(zx + 12, 925, 536, 155, f"data-{z} · private", f"10.0.2{i}.0/24", "#f2eefa", "#6b4fa8")
 
 C = Card
-internet = C(500, 108, "Internet", "Wallet core, analysts' browsers, Power BI", "realtime", "external", "WWW", w=300, h=58)
+internet = C(500, 108, "Internet", "Wallet core (generator) → the ALB", "realtime", "external", "WWW", w=300, h=58)
 igw = C(500, 262, "Internet Gateway", "securepay-dev-igw · target of rt-public", "admin", "network", "IGW", w=300, h=58)
 alb = C(500, 372, "Application Load Balancer", "443, ACM certificate · public-a and b", "realtime", "network", "ALB", w=300, h=60)
 nat_a = C(110, 538, "NAT Gateway a", "securepay-dev-nat-a + Elastic IP\nExit for app-a", "async", "network", "NAT", w=250, h=62)
@@ -112,13 +112,13 @@ ys = [1420, 1525, 1630]
 out = [
     ("API Gateway + Cognito", "HTTP API: rules and cases routes\nJWT of analista / gerente", "admin", "integration", "API"),
     ("SNS + SQS", "3 topics, 3 queues with DLQ\nAnalytics batches: 1,000 or 60 s", "async", "integration", "SQS"),
-    ("Amazon DynamoDB", "Exchange rates table\nRead by the engine at startup", "analytics", "database", "DDB"),
+    ("Amazon DynamoDB", "Exchange rates table, kept in the\nengine's memory and reloaded", "analytics", "database", "DDB"),
     ("Amazon S3", "datalake, evidence (Object Lock),\nlist-provider, artifacts", "analytics", "storage", "S3"),
     ("Lambdas outside the VPC", "analytics-consumer, statement-reader,\nexchange-rates (Frankfurter)", "batch", "compute", "λ"),
     ("Step Functions + Scheduler", "Nightly reconciliation and analytics\n5 schedules", "batch", "integration", "SF"),
     ("Glue + Athena", "2 Spark jobs (role glue-jobs)\nWorkgroup powerbi, views q1-q6", "batch", "analytics", "GL"),
     ("Amazon ECR", "engine, admin, apis, generator\nPulled through the NAT", "admin", "compute", "ECR"),
-    ("Systems Manager", "Parameter Store: 10 parameters\nSession Manager to the admin task", "admin", "management", "SSM"),
+    ("Systems Manager", "Parameter Store: 10 parameters\nRun Command to the load runner", "admin", "management", "SSM"),
     ("CloudWatch", "Logs, dashboard, alarms\nAlarms to SNS ops-alarms", "admin", "management", "CW"),
     ("IAM + Budgets", "21 roles, GitHub OIDC, powerbi user\nUSD 5 monthly budget", "admin", "security", "IAM"),
 ]
@@ -128,6 +128,10 @@ for i, (t, sub, flow, icon, tag) in enumerate(out):
     cards[t] = c
     s.card(c)
 ddb, s3 = cards["Amazon DynamoDB"], cards["Amazon S3"]
+api, glue = cards["API Gateway + Cognito"], cards["Glue + Athena"]
+people = C(60, 108, "Analysts and Power BI", "Straight to API Gateway and Athena,\nnever into the VPC", "admin", "external", "👤", w=300, h=58)
+s.card(people)
+s.arrow([people.left(), (10, people.cy), (10, 1400), (api.cx, 1400), api.top()], "admin")
 s.arrow([endp.bottom(-60), (endp.cx - 60, 1395), (ddb.cx, 1395), ddb.top()], "analytics", at=1, start_dot=False)
 s.arrow([endp.bottom(60), (s3.cx, 1395), s3.top()], "analytics", start_dot=False)
 
@@ -153,6 +157,7 @@ legend(s, 920, py, 360, 286, [
     ("batch", "Inside the VPC, between security groups", False),
     ("analytics", "To S3 and DynamoDB through the endpoints", False),
     ("replication", "Replication", True),
+    ("admin", "Gray: people to public AWS services", False),
     ("admin", "Dashed card: optional (load_runner)", True),
     ("admin", "The dot marks where the connection starts", False),
 ], "Dev ≈ USD 0.15 an hour · destroy after each session")
