@@ -25,7 +25,7 @@ Every number below depends on these. If an assumption changes, the costs change.
 | Available credit | USD 200 (AWS free credit) | Team account |
 | Idempotency key TTL | 1 hour | Our decision: ~180 thousand keys (~18 MB) |
 | Fargate task size | 0.5 vCPU / 1 GB | Our decision |
-| History retention for rules | 30 days | Assignment, applied with TTL in DynamoDB |
+| History retention for rules | 24 h of outgoing transfers, 60 min of incoming ones and security events, 30 days of devices | Our decision: Valkey keys with TTL ([Decision engine](../components/decision-engine.mdx)); the 30-day account history is PostgreSQL |
 
 In the development scenario, pay-per-use services (Lambda, SQS, DynamoDB, Step Functions, Athena) drop to almost zero. Fixed-cost services (NAT Gateway, RDS instance, cache) only go down if Terraform destroys them between sessions. Storage (S3, RDS disk) does not go down.
 
@@ -58,7 +58,7 @@ Grouped by service, so a service that solves several things is counted once.
 | Amazon ECR | Docker image registry | $0.50 | $0.50 |
 | Public IPv4 addresses | 4 addresses (2 NAT + 2 ALB) at $0.005 an hour | $14.60 | — |
 | Amazon Data Firehose | Removed in Sprint 6: not on AWS's free plan. The analytics queue batches 1,000 decisions per S3 file instead (~$0.65 of S3 PUTs, counted here) | $0.65 | — |
-| IAM, KMS (AWS keys), VPC, Budgets, CloudTrail | Roles, encryption at rest, network, credit alerts, audit | $0.00 | $0.00 |
+| IAM, KMS (AWS keys), VPC, Budgets | Roles, encryption at rest, network, spending alerts ([Budget](#budget)) | $0.00 | $0.00 |
 | Power BI Desktop, GitHub Actions, Frankfurter API | Dashboard, CI/CD, exchange rates | $0.00 | $0.00 |
 | **Total** | | **$337.31** | **≈ $16.28** |
 
@@ -96,22 +96,21 @@ The managed version of C costs more still: Amazon MQ for RabbitMQ as a 3-node `m
 
 ## AWS Pricing Calculator {/* #pricing-calculator */}
 
-The production column is the result of the public [AWS Pricing Calculator](https://calculator.aws), loaded service by service in US East (Ohio) on October 23, 2026, with the rates checked against the official AWS price list for `us-east-2`. The development column was not recalculated. **Shared estimate:** [PagoSeguro Antifraude - Production (us-east-2)](https://calculator.aws/#/estimate?id=a4604e0b2867f1670ede8821269789ab832b8b3d), $346.45 a month and $4,157.44 for 12 months ([PDF export](pathname:///files/aws-pricing-estimate.pdf)). CloudWatch alarms and RDS backups are now inside their service.
+The $337.31 of option A is computed from the official AWS price list for `us-east-2` (November 4, 2026), line by line in the table above. It started from an estimate loaded service by service in the public [AWS Pricing Calculator](https://calculator.aws) on October 23, 2026, which is kept as the baseline: [PagoSeguro Antifraude - Production (us-east-2)](https://calculator.aws/#/estimate?id=a4604e0b2867f1670ede8821269789ab832b8b3d), $346.45 a month and $4,157.44 for 12 months ([PDF export](pathname:///files/aws-pricing-estimate.pdf)). **That link is out of date:** it still has EMR Serverless, Amazon Data Firehose and AWS X-Ray, which the built system does not use. The B and C options were never loaded into the calculator.
 
-What changed against the earlier estimate of $333.21:
+From the calculator's $346.45 to today's $337.31:
 
-| Line | Before | Now | Why |
+| Line | Calculator (Oct 23) | Now | Why |
 | :--- | ---: | ---: | :--- |
-| Public IPv4 addresses | missing | $14.60 | AWS charges every public IPv4 address since 2024; it was not in the table |
-| AWS X-Ray | $4.00 | $9.00 | The free tier is 100,000 traces, not 1 million (the calculator does not subtract it; the real bill would be ~$8.50) |
-| Amazon S3 | $2.60 | $5.26 | Now counts the writes (PUT) of the evidence in Glacier Instant Retrieval and of the raw layer |
-| Amazon Data Firehose | missing | $3.58 | Each record is rounded up to 5 KB, so 10 decisions go in one record; one record per decision would be ~$18.79 |
-| Application Load Balancer | $25.19 | $18.53 | The calculator counts load balancer capacity units by the largest dimension: ~0.36, not 1.5 |
-| AWS Lambda | $40.60 | $35.55 | The admin and scheduled functions were a guess; at 1.2 million calls of 200 ms they cost $2.24 |
-| CloudWatch + alarms | $10.45 | $10.07 | The calculator archives 15 % of the ingested logs |
-| Rest | | ±$0.50 | Rounding (RDS, EMR, DynamoDB, Athena, Glue, NAT) |
+| EMR Serverless → AWS Glue 6.0 | $7.27 | $6.16 | EMR is not on AWS's free plan ([ADR-05](./decisions.mdx#adr-05)): 2 nightly jobs, 2 G.1X workers, ~10 minutes each |
+| Amazon Data Firehose → S3 writes | $3.58 | $0.65 | Firehose is not on the free plan either; the analytics queue writes 1,000 decisions per S3 file |
+| AWS X-Ray | $9.00 | $0.00 | Not built (team decision 2026-11-04); the decision log of HU-59 covers it |
+| Amazon CloudWatch | $10.07 | $13.97 | The alarms, metric filters and dashboard of HU-59 that exist now |
+| **Total** | **$346.45** | **$337.31** | |
 
-After the calculator (Sprint 6, HU-61), four lines changed by hand with the `us-east-2` price list of November 4, 2026: EMR Serverless $7.27 → Glue $6.16, Firehose $3.58 → $0.65 of S3 writes, X-Ray $9.00 → $0.00 (not built) and CloudWatch $10.07 → $13.97 (the alarms that exist now). $346.45 → $337.31.
+Before the calculator, the first estimate was $333.21. The calculator added what it was missing: the public IPv4 addresses ($14.60, charged since 2024), the S3 writes of the evidence and the raw layer, and Firehose; it lowered the load balancer (capacity units by the largest dimension, ~0.36, not 1.5) and Lambda (the scheduled functions, 1.2 million calls of 200 ms, $2.24).
+
+**To load option A into the calculator again:** region US East (Ohio), one service per line of the table above with the value in its "Used for" column; Step Functions, EventBridge Scheduler, Systems Manager, IAM and KMS stay in the free tier at this volume and need no line. Each line should land within about a dollar of the table.
 
 **Evaluated and not applied:** moving to ARM (Graviton) would save ~$24 a month (Fargate, Lambda, RDS `db.t4g.micro`, Glue does not change), but needs `arm64` images. A regional NAT Gateway was also evaluated and rejected; one zonal NAT per zone stays ([ADR-08](./decisions.mdx#adr-08)).
 
@@ -131,6 +130,21 @@ After the calculator (Sprint 6, HU-61), four lines changed by hand with the `us-
 | **Total** | | **~$0.22** |
 
 A full session (apply, push, seed, smoke test, failover test, destroy) takes 1 to 2 hours: under USD 0.50. ECR storage ($0.10 per GB-month) is a few cents and disappears with `destroy`.
+
+## Budget {/* #budget */}
+
+The team pays with the USD 200 of AWS credit, so the budget watches the credit, not an invoice.
+
+| | Development (built) | Production (designed) |
+| :--- | :--- | :--- |
+| AWS Budgets | `securepay-dev-budget`, created by `envs/dev` (`budget_limit_usd`, default USD 5 a month) | One monthly budget over the USD 200 credit |
+| Alerts | An e-mail at every 10 % (`budget_alert_percentages`) to `budget_emails` | 80 % and 100 % |
+| What it counts | Usage before credits (`include_credit = false`): with credits subtracted the spend shows USD 0 and the alert never fires | The same |
+| What to do when it fires | Destroy dev unless a demo is running ([Runbook](../operations/runbook.mdx)) | Review Cost Explorer by service |
+
+**How far the credit goes.** A dev session costs about $0.22 an hour ([Cost of a dev test session](#pricing-calculator)), so USD 200 is roughly 900 hours of dev up; a full session of 1 to 2 hours is under USD 0.50. Production as built (option A, $337.31 a month) would use the whole credit in about 18 days: the credit is for building and showing the system, not for running it.
+
+AWS refreshes costs about three times a day, so a budget e-mail can arrive hours after the spend. The real protection is `terraform destroy` right after each test; the budget is the safety net. Budget alerts are free. Details in [Terraform](./terraform.mdx).
 
 ## How each service is configured
 
@@ -192,8 +206,8 @@ The 128 KB minimum eats most of the saving (Glacier IR would be ~83% cheaper wit
 | Session Manager | Administrative access to the private network, with no public IPs |
 | TLS | HTTPS on ALB and API Gateway, SSL/TLS on RDS, in-transit encryption on the cache |
 | CloudWatch Logs | Only errors, fallbacks and held transactions |
-| Budgets | Alerts at 80% and 100% of the USD 200 credit |
-| Terraform | All the infrastructure, remote state in S3 (in a bucket created separately so `destroy` never deletes it) |
+| Budgets | See [Budget](#budget) |
+| Terraform | All the infrastructure. The state is local and never committed (it holds the RDS passwords), so `apply` and `destroy` run from the same computer ([Terraform](./terraform.mdx)) |
 | GitHub Actions | Lint, tests, secret scanning, build, push to ECR and deploy; blocks the merge if anything fails |
 
 ### Deployment and rollback

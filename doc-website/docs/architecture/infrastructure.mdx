@@ -143,7 +143,7 @@ This is the inventory of what Terraform must create, not of what exists today. D
 | Metric filters | 5 | On the engine log: default, held or rejected, and slow decisions, `EVENTO_NO_PUBLICADO`, fixed exchange rates | Built (HU-59) |
 | CloudWatch alarms | 13 kinds | See [Alarms and thresholds](#alarms) | Built (HU-59) |
 | CloudWatch dashboard | 1 | `securepay-<env>`: engine, queues, database, Lambdas, reconciliation | Built (HU-59) |
-| Budgets | 1 | One monthly budget with two alerts: 80 % and 100 % of the credit | Built in dev |
+| Budgets | 1 | One monthly budget: in dev USD 5 with an e-mail at every 10 %; in production 80 % and 100 % of the USD 200 credit ([Budget](./aws-services-and-costs.mdx#budget)) | Built in dev |
 
 ## Database backup strategy {/* #backups */}
 
@@ -174,7 +174,7 @@ Each threshold comes from a requirement, not from intuition. Built (HU-59): ever
 | 7 | Healthy engine tasks | < 2 in any zone for 5 minutes, or a task failing `/health` for 3 minutes | Below that, losing a zone is no longer tolerable | Check the scaling | `modules/monitoring` (`-engine-healthy-<zone>`, `-engine-unhealthy`) |
 | 8 | Database | CPU > 80% for 15 minutes, or connections > 80% of the maximum | `db.t3.micro` running out | Check queries and connections | `modules/monitoring` (`-db-cpu`, `-db-connections`) |
 | 9 | Cache refreshed by expiry | — | Not needed: the engine reads `{rules}:version` every second, so no rule change event can be lost | — | — |
-| 10 | Budget | 80% and 100% of the $200 credit | Spending control on the team's credit | Review and, if needed, destroy the development environment | `envs/dev` (AWS Budgets) |
+| 10 | Budget | Production: 80% and 100% of the $200 credit. Dev: every 10% of USD 5 | Spending control on the team's credit | Review and, if needed, destroy the development environment | `envs/dev` (AWS Budgets) |
 | 11 | Unpublished events | ≥ 1 log line with `EVENTO_NO_PUBLICADO` in the engine | The engine keeps answering even if SNS fails three times or its in-memory queue fills up; those events never reached the queues | Republish from the log, which keeps the full event | `modules/monitoring` (`-engine-unpublished`) |
 | 12 | Lambda errors | ≥ 1 error in 5 minutes | A consumer, the reader, the writer or the export failed; SQS retries, but someone must look | Check the function's log | `modules/monitoring` (`<function>-errors`); the alerts Lambda alarms on its `ERROR` lines in `modules/lambdas` |
 | 13 | Exchange rates stale | No successful run of the exchange-rates Lambda in 4 days | The engine falls back to the last earlier rate; after 4 days the USD amounts drift | Invoke the Lambda and check Frankfurter | `modules/monitoring` (`-exchange-rates-stale`) |
