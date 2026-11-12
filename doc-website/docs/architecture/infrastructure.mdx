@@ -212,14 +212,14 @@ Some figures in the inventory cannot be known before building and measuring. Eac
 - Expected: ~1 KB per published decision. Confirmed with the real event size.
 - If it comes out different: the fixed NAT cost ($65.70) does not change; every extra 100 GB is $4.50.
 
-**Spark jobs: 4 workers with 2 vCPU and 8 GB, ~10 minutes per job.**
-- Calculation: (4 × 2 × 0.167 h × $0.052624) + (4 × 8 × 0.167 h × $0.0057785) ≈ $0.10 per run, times 72 runs a month ≈ $7.50.
-- **Still to be measured** with the first real runs. It is the weakest figure in the estimate.
-- If it comes out different: the cost is proportional to the time; at 5 minutes per job it drops to ~$4.
+**Spark jobs: AWS Glue 6.0, 2 G.1X workers, ~10 minutes per job.**
+- Calculation: 2 workers × 1 DPU × 0.167 h × $0.308 ≈ $0.10 per job; two jobs a night for 30 nights ≈ $6.16 a month.
+- **Measured:** the whole nightly machine took 7 min 33 s in dev on November 5 (both jobs included), so 10 minutes per job is on the safe side.
+- If it comes out different: the cost is proportional to the time; at 5 minutes per job it drops to ~$3.
 
 **Case consumer on Lambda.**
 - Expected: the case is created in milliseconds (one `INSERT`), far below Lambda's 15-minute limit.
-- **Still to be measured.** If it turned out to be heavy, the alternative is to move it to Fargate (~$30 a month per task).
+- **Measured at demo volume:** in the AWS run of November 11 each case was open 0.4 to 0.6 s after its decision. Not measured at production volume. If it turned out to be heavy, the alternative is to move it to Fargate (~$30 a month per task).
 
 ### Official documentation consulted (October 14, 2026)
 

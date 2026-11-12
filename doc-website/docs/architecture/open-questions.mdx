@@ -13,6 +13,7 @@ Things that are not decided yet, or that are decided but still need a measuremen
 | 🟡 Proposed | Argued recommendation, pending confirmation. |
 | 🔵 To measure | Decided with real data, not estimates. |
 | ❗ Open | Unsolved problem. |
+| ✅ Answered | Measured or decided; kept here to show where the answer is. |
 
 ## 🟡 How much cache memory the engine needs
 
@@ -27,19 +28,19 @@ ElastiCache Serverless for Valkey was chosen ([ADR-03](./decisions.mdx#adr-03)),
 | Restricted list cache (`{restricted}:docs`) | **~3.3 MB, measured** | 50 thousand documents in one set |
 | Active rules | A few KB | — |
 
-With the account history and the reference data of HU-67 the cache would be **~1 GB**. At $0.084 per GB-hour that is about $61 a month of memory, some $40 more than the ~$23 of the cost table (which assumes 300 MB); the cost table does not change until the load test confirms the history part. Ways to bring it down if needed: keep only the accounts with recent activity, or drop `user_id` from `acct:` (the engine does not read it today). To be confirmed with the load test: [Load test the engine](../getting-started/load-test.mdx) records the cache's `BytesUsedForCache` and `ElastiCacheProcessingUnits` after the 300 tx/s step, which closes this question. Also pending: the real latency of the serverless layer and the operations it consumes per transaction.
+With the account history and the reference data of HU-67 the cache would be **~1 GB**. At $0.084 per GB-hour that is about $61 a month of memory, some $40 more than the ~$23 of the cost table (which assumes 300 MB); the cost table does not change until the load test confirms the history part. Ways to bring it down if needed: keep only the accounts with recent activity, or drop `user_id` from `acct:` (the engine does not read it today). Still open: the load test runs did not record it. [Load test the engine](../getting-started/load-test.mdx) says how to read the cache's `BytesUsedForCache` and `ElastiCacheProcessingUnits` after the 300 tx/s step, which closes this question. Also pending: the real latency of the serverless layer and the operations it consumes per transaction.
 
 ## 🔵 Cases consumer: Lambda or Fargate
 
-All three queues are consumed by Lambda. If case processing turns out heavier, that consumer can move to Fargate (~$30/month per task). Decided by measuring, not estimating.
+All three queues are consumed by Lambda. In the AWS run of November 11 each case was open 0.4 to 0.6 s after its decision, with no errors ([AWS run](../components/aws-run.mdx)). The time per batch at production volume is not measured yet: if case processing turned out heavier, that consumer can move to Fargate (~$30/month per task).
 
-## 🔵 Real duration of the two Spark jobs
+## ✅ Real duration of the two Spark jobs
 
-Both run every night on AWS Glue 6.0 with two G.1X workers ($0.308 per DPU-hour, billed per second, 1-minute minimum). The cost table assumes 10 minutes each, about $6.16 a month; the first real run of the nightly machine in dev gives the number (Glue → Job runs → Execution time).
+Both run every night on AWS Glue 6.0 with two G.1X workers ($0.308 per DPU-hour, billed per second, 1-minute minimum). The cost table assumes 10 minutes each, about $6.16 a month. In dev the whole nightly machine (reading the files, both Glue jobs, the differences, the export and the views) took 7 min 33 s on November 5, so each job takes less than the 10 minutes assumed and the estimate is on the safe side.
 
-## 🔵 EKS against Fargate for the decision engine
+## ✅ EKS against Fargate for the decision engine
 
-Measured in week 5 with a short EKS deployment (see [ADR-06](./decisions.mdx#adr-06)): p99 latency at 50, 150 and 300 tx/s, deployment and operation effort, and monthly cost at production size.
+Answered in [ADR-06](./decisions.mdx#adr-06) on November 10: the engine ran on Kubernetes locally with kind, with the same image and variables, and the comparison covers latency, operation and cost (Fargate $72.08 against about $134 a month on EKS). EKS itself was not deployed because it is not on the account's AWS free plan.
 
 ## ❗ p99 above 200 ms at 300 tx/s with 10 tasks {/* #p99-at-300 */}
 
