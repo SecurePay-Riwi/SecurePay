@@ -33,7 +33,8 @@ RAW_SCHEMAS = {
     "pattern_coverage": (
         "pattern string, label_source string, frauds int, detected int, "
         "missed int, detection_rate string, top_rule string, rules_version string, "
-        "detected_amount_usd string, missed_amount_usd string"
+        "detected_amount_usd string, missed_amount_usd string, expected int, "
+        "expected_detected int, expected_detection_rate string"
     ),
 }
 
@@ -51,7 +52,8 @@ def _ratio(numerator, denominator):
 
 def labeled(spark, output: str):
     """One row per decision with a label: transaction_id, rules_version,
-    label_source, is_fraud, pattern, decision, opens_case, amount_usd."""
+    label_source, is_fraud, pattern, expected_rule, decision, opens_case,
+    amount_usd."""
     from pyspark.sql import functions as F
 
     decisions = sp.read(spark, "fact_decision", output).select(
@@ -62,6 +64,7 @@ def labeled(spark, output: str):
         F.col("source").alias("label_source"),
         "is_fraud",
         "pattern",
+        "expected_rule",
     )
     return decisions.join(labels.dropDuplicates(["transaction_id"]), "transaction_id")
 
@@ -140,6 +143,14 @@ def pattern_coverage(spark, output: str):
         F.sum(F.when(F.col("_detected"), 1).otherwise(0)).alias("detected"),
         F.sum(F.when(F.col("_detected"), usd).otherwise(0)).alias("_detected_usd"),
         F.sum(F.when(F.col("_detected"), 0).otherwise(usd)).alias("_missed_usd"),
+        F.sum(F.when(F.col("expected_rule").isNotNull(), 1).otherwise(0)).alias(
+            "expected"
+        ),
+        F.sum(
+            F.when(
+                F.col("expected_rule").isNotNull() & F.col("_detected"), 1
+            ).otherwise(0)
+        ).alias("expected_detected"),
     )
     best = Window.partitionBy(*group).orderBy(F.col("_n").desc(), F.col("rule"))
     top = (
@@ -161,6 +172,11 @@ def pattern_coverage(spark, output: str):
         F.col("_detected_usd").cast("decimal(18,2)").alias("detected_amount_usd"),
         F.col("_missed_usd").cast("decimal(18,2)").alias("missed_amount_usd"),
         "top_rule",
+        "expected",
+        "expected_detected",
+        _ratio(F.col("expected_detected"), F.col("expected")).alias(
+            "expected_detection_rate"
+        ),
     )
 
 

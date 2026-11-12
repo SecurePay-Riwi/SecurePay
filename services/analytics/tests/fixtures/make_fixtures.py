@@ -800,11 +800,16 @@ def expected_q3(day_events, labels):
     for e in day_events.values():
         label = labels.get(str(e["transaction"]["id"]))
         if label and label["is_fraud"]:
-            by_pattern[label["pattern"]].append(e["decision"])
+            by_pattern[label["pattern"]].append(
+                (e["decision"], label["expected_rule"] is not None)
+            )
     rows = []
-    for pattern, decisions in sorted(by_pattern.items()):
+    for pattern, pairs in sorted(by_pattern.items()):
+        decisions = [d for d, _ in pairs]
         detected = [d for d in decisions if _detected(d)]
         missed = [d for d in decisions if not _detected(d)]
+        expected = [d for d, wants_rule in pairs if wants_rule]
+        expected_detected = [d for d in expected if _detected(d)]
         rules = Counter(r for d in detected for r in d["rules_triggered"])
         top = min(rules, key=lambda r: (-rules[r], r)) if rules else None
         rows.append(
@@ -822,6 +827,9 @@ def expected_q3(day_events, labels):
                     sum((Decimal(d["amount_usd"]) for d in missed), Decimal(0))
                 ),
                 "top_rule": top,
+                "expected": len(expected),
+                "expected_detected": len(expected_detected),
+                "expected_detection_rate": ratio(len(expected_detected), len(expected)),
             }
         )
     return rows

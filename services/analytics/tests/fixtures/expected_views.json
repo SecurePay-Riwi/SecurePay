@@ -263,7 +263,10 @@
       "detection_rate": "1.0000",
       "detected_amount_usd": "453.08",
       "missed_amount_usd": "0.00",
-      "top_rule": "account_takeover"
+      "top_rule": "account_takeover",
+      "expected": 1,
+      "expected_detected": 1,
+      "expected_detection_rate": "1.0000"
     },
     {
       "pattern": "MULE",
@@ -274,7 +277,10 @@
       "detection_rate": "0.2500",
       "detected_amount_usd": "950.00",
       "missed_amount_usd": "900.00",
-      "top_rule": "mule"
+      "top_rule": "mule",
+      "expected": 1,
+      "expected_detected": 1,
+      "expected_detection_rate": "1.0000"
     },
     {
       "pattern": "RESTRICTED_LIST",
@@ -285,7 +291,10 @@
       "detection_rate": "1.0000",
       "detected_amount_usd": "75.07",
       "missed_amount_usd": "0.00",
-      "top_rule": "restricted_list"
+      "top_rule": "restricted_list",
+      "expected": 2,
+      "expected_detected": 2,
+      "expected_detection_rate": "1.0000"
     },
     {
       "pattern": "SPLITTING",
@@ -296,7 +305,10 @@
       "detection_rate": "0.3333",
       "detected_amount_usd": "7324.67",
       "missed_amount_usd": "14009.52",
-      "top_rule": "splitting"
+      "top_rule": "splitting",
+      "expected": 2,
+      "expected_detected": 2,
+      "expected_detection_rate": "1.0000"
     },
     {
       "pattern": "VELOCITY",
@@ -307,7 +319,10 @@
       "detection_rate": "0.1667",
       "detected_amount_usd": "6.03",
       "missed_amount_usd": "30.15",
-      "top_rule": "velocity"
+      "top_rule": "velocity",
+      "expected": 1,
+      "expected_detected": 1,
+      "expected_detection_rate": "1.0000"
     }
   ],
   "q4": [

@@ -181,6 +181,36 @@ def test_a_pattern_never_detected_has_no_top_rule():
     )
 
 
+def test_expected_counts_only_the_frauds_where_the_label_expects_a_rule():
+    # A velocity burst: the generator labels the six transfers as fraud but
+    # expects the rule only on the 6th, which completes the scheme.
+    decisions = [decision(t) for t in "abcde"] + [decision("f", "HOLD", ["velocity"])]
+    labels = [label(t, True, "VELOCITY") for t in "abcde"] + [
+        Label("f", "generator", "VELOCITY", True, "velocity")
+    ]
+
+    [row] = metrics.pattern_coverage(decisions, labels)
+
+    assert (row.frauds, row.detected, row.detection_rate) == (6, 1, Decimal("0.1667"))
+    assert (row.expected, row.expected_detected, row.expected_detection_rate) == (
+        1,
+        1,
+        Decimal("1.0000"),
+    )
+
+
+def test_without_expected_rules_the_expected_rate_is_null():
+    [row] = metrics.pattern_coverage(
+        [decision("a", "HOLD", ["mule"])], [label("a", True, "MULE", "paysim")]
+    )
+
+    assert (row.expected, row.expected_detected, row.expected_detection_rate) == (
+        0,
+        0,
+        None,
+    )
+
+
 def test_legitimate_labels_have_no_pattern_row():
     rows = metrics.pattern_coverage(
         [decision("a"), decision("b", "HOLD", ["velocity"])],
