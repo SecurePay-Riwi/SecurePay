@@ -49,7 +49,7 @@ zone(s, 30, TOP, 620, 254, "1 · Decisión en tiempo real (≤ 200 ms)", "realti
 zone(s, 670, TOP, 970, 254, "2 · Después de responder (asíncrono)", "async")
 zone(s, 1660, TOP, 910, 254, "Avisos y operación", "admin")
 
-core = card(50, R1, "Core de la billetera", "Envía cada transacción\n50 tx/s · pico de 300", "realtime", "external", "TX")
+core = card(50, R1, "Core de la billetera", "Lo simula securepay-generator\n50 tx/s · pico de 300", "realtime", "external", "TX")
 alb = card(50, R2, "Application Load Balancer", "HTTPS 443 · reparte en 2 zonas", "realtime", "network", "ALB")
 engine = card(360, R2, "Fargate · motor (ECS)", "2 a 4 tareas en dev (4 a 24 en carga)\nSi tarda, decide según el monto", "realtime", "compute", "ECS")
 
