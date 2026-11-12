@@ -60,7 +60,7 @@ This is the inventory of what Terraform must create, not of what exists today. D
 
 ![SecurePay network on AWS: VPC, two zones, subnets, NAT Gateways, load balancer and cache at VPC level, gateway endpoints and the services outside the VPC](/img/network-diagram.png)
 
-*The network that Terraform creates in `infra/terraform/envs/dev`, with the English names it uses in AWS (see [Terraform](./terraform.mdx#names-in-aws)). Dashed cards were added in later sprints and are built now.* <a href={require('@site/static/img/network-diagram.png').default} target="_blank">Open full size</a>.
+*The network that Terraform creates in `infra/terraform/envs/dev`, with the English names it uses in AWS (see [Terraform](./terraform.mdx#names-in-aws)). The dashed card is the load test's EC2, created only with `load_runner = true`. Drawn by `doc-website/diagrams/network.py`.* <a href={require('@site/static/img/network-diagram.png').default} target="_blank">Open full size</a>.
 
 | Resource | Name | Qty. | Configuration | Status |
 | :--- | :--- | :--- | :--- | :--- |

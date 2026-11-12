@@ -226,7 +226,7 @@ Change from version 1.0: the evidence is stored by the cases API when the case i
 | `s3:PutObject`, `s3:PutObjectRetention`, `s3:GetObject` | `pagoseguro-prod-evidencia/*` | Retry the evidence of resolved cases whose archive failed (`archive_pending()`, Sprint 4) |
 | `sns:Publish` | `tema:alarmas-operacion` | At 06:30 Bogota, warn the team when last night's reconciliation is not done (Sprint 5, HU-36) |
 
-To review the transactions approved by fallback it calls the engine over HTTPS through the load balancer; it needs no IAM permission for that.
+It never calls the engine.
 
 **11. `rol-tasas`** · own logs (outside the VPC)
 

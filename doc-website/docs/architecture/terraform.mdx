@@ -79,7 +79,7 @@ With one `apply` (the default, `envs/dev/up.tf`) the first `plan` must say <code
 
 ![SecurePay network on AWS](/img/network-diagram.png)
 
-*Network, subnets, routes and security groups as created in dev. Dashed cards (load balancer, Fargate, Lambdas, cache and the other services of later sprints) were added after the first apply and are built now.* <a href={require('@site/static/img/network-diagram.png').default} target="_blank">Open full size</a>.
+*Network, subnets, routes and security groups as created in dev. The dashed card is the load test's EC2, created only with `load_runner = true`. Drawn by `doc-website/diagrams/network.py`.* <a href={require('@site/static/img/network-diagram.png').default} target="_blank">Open full size</a>.
 
 | Module | Resources | Detail |
 | :--- | :--- | :--- |
