@@ -79,10 +79,12 @@ Tables, keys and paths in detail: [Data model](../reference/data-model.mdx).
 **The nightly reconciliation, step by step.**
 
 1. At 02:00 **EventBridge Scheduler** starts the **Step Functions** state machine.
-2. A **Lambda** finds and reads the day's files of the four partners in `raw/extractos/`, and validates them.
+2. A **Lambda** finds and reads the day's files of the four partners in `raw/extractos/`, and validates them. The partners put the files there; nothing in AWS goes to fetch them (in dev the `apply` uploads the fixture day).
 3. A **Spark** job on AWS Glue 6.0 compares them with the decisions of the day, with the tolerances for rounding and time zones, and writes the differences to the `curated` layer.
-4. A second **Lambda** classifies the differences, stores them in PostgreSQL and sends treasury the result.
-5. Each step retries on its own. If the process has not finished at 06:30, an alarm fires, which leaves half an hour before the 07:00 deadline.
+4. A second **Lambda** classifies the differences and stores them in PostgreSQL.
+5. A third **Lambda** (`-analytics-export`) copies the cases and the reconciliation from PostgreSQL to `raw/`, and in a second call replays the Kaggle history through the rules (`MeasureKaggle`, E-16). The Glue job `-analytics` builds the model and Athena refreshes the views; if this part fails it only warns `ops-alarms`.
+6. SNS sends treasury the result of the day.
+7. Each step retries on its own. If the process has not finished at 06:30, an alarm fires, which leaves half an hour before the 07:00 deadline.
 
 ## 7. From the Data Lake to the dashboard {/* #dashboard */}
 

@@ -64,7 +64,7 @@ loader = card(1, 4, "Lambda · carga de lista", "Diaria (01:00 Bogotá): cuentas
 sqs = card(2, 1, "Amazon SQS · 3 colas + DLQ", "Casos · historial · analítica", "async", "integration", "SQS")
 consumers = card(2, 2, "Lambda ×3 · consumidores", "Casos e historial en lotes de 10;\nanalítica en lotes de 1.000 o 60 s", "async", "compute", "λ")
 raw = card(2, 3, "S3 · capa cruda (raw)", "Decisiones, extractos, Kaggle,\nexport de casos y diferencias", "batch", "storage", "S3")
-partners = card(2, 4, "Extractos de socios", "4 socios · un archivo diario", "batch", "external", "TXT")
+partners = card(2, 4, "Socios · extractos diarios", "Cada socio deja su archivo en S3\n(en la demo lo sube el apply)", "batch", "external", "TXT")
 kaggle = card(2, 5, "Históricos de Kaggle", "PaySim y Sparkov etiquetados", "batch", "external", "CSV")
 
 # Column 3: schedules, alerts, the database and the APIs.
@@ -73,23 +73,25 @@ alerts = card(3, 1, "Lambda · alertas", "Cada 5 min: escala casos de 4 h,\nresu
 rds = card(3, 2, "Amazon RDS PostgreSQL", "Usuarios, reglas, casos, historial\n30 días y conciliación · Multi-AZ", "admin", "database", "RDS")
 api = card(3, 3, "API Gateway + Lambda", "API de reglas y API de casos\nToken de Cognito (analista/gerente)", "admin", "integration", "API")
 people = card(3, 4, "Analistas y gerente de riesgo", "Revisan casos y versionan reglas\n(consolas web de las APIs)", "admin", "external", "👤")
-admin = card(3, 5, "Tarea admin + db-bootstrap", "Tablas y usuarios, seed de la BD\ny ETL de Kaggle (en el apply)", "batch", "compute", "ECS")
+admin = card(3, 5, "Fargate · tarea admin", "Seed de la BD y ETL de Kaggle\n(imagen del seed, en el apply)", "batch", "compute", "ECS")
+dbboot = card(3, 6, "Lambda · db-bootstrap", "Crea tablas, usuarios y permisos\n(única con la clave maestra)", "batch", "compute", "λ")
 
 # Column 4: the nightly pipeline.
-sfn = card(4, 2, "Step Functions · cada noche", "Extractos → match → diferencias →\nexport → Kaggle → ETL → vistas", "batch", "integration", "SF")
+sfn = card(4, 1, "Step Functions · cada noche", "Extractos → match → diferencias →\nexport → Kaggle → ETL → vistas", "batch", "integration", "SF")
+night = card(4, 2, "Lambda ×3 · pasos de la noche", "Lee extractos · guarda diferencias\nexporta RDS → S3 y mide Kaggle", "batch", "compute", "λ")
 glue = card(4, 3, "AWS Glue 6.0 · Spark", "Match de conciliación y ETL\nde analítica (2 workers G.1X)", "batch", "analytics", "GL")
 curated = card(4, 4, "S3 · capa curada (curated)", "Limpia y tipada · Parquet", "batch", "storage", "S3")
 model = card(4, 5, "S3 · capa analítica (analytics)", "Modelo dimensional · 13 tablas\nParticionado por fecha", "analytics", "storage", "S3")
 
 # Columns 5 and 6: notices, evidence and the dashboard.
-mails = card(5, 1, "Amazon SNS · correos", "Cumplimiento, supervisor, tesorería\ny alarmas al equipo", "async", "integration", "SNS")
+mails = card(5, 1, "Amazon SNS · correos", "Tesorería (desde la noche), supervisor,\ncumplimiento y alarmas al equipo", "async", "integration", "SNS")
 evidence = card(5, 3, "S3 · evidencia de casos", "Object Lock 10 años (COMPLIANCE)\nGlacier Instant Retrieval", "admin", "storage", "S3")
 catalog = card(5, 5, "AWS Glue Data Catalog", "Esquema de las tablas\n(desde shared/analytics.py)", "analytics", "analytics", "GL")
 athena = card(6, 5, "Amazon Athena", "Vistas q1 a q6 · workgroup powerbi", "analytics", "analytics", "ATH")
 pbi = card(6, 6, "Power BI Desktop", "6 páginas · driver ODBC de Athena", "analytics", "external", "BI")
 
 cards = [core, alb, rates, rates_fn, frank, sns_dec, engine, cache, loader, sqs, consumers, raw,
-         partners, kaggle, sched, alerts, rds, api, people, admin, sfn, glue, curated, model,
+         partners, kaggle, sched, alerts, rds, api, people, admin, dbboot, sfn, night, glue, curated, model,
          mails, evidence, catalog, athena, pbi]
 
 # Real time (orange).
@@ -113,13 +115,16 @@ s.arrow([rates_fn.top(), rates.bottom()], "batch", "guarda")
 s.arrow([loader.top(), cache.bottom()], "batch", "reemplaza la lista")
 s.arrow([rds.left(18), (lane(2) + 14, rds.cy + 18), (lane(2) + 14, gap(3) + 14), (loader.cx + 60, gap(3) + 14), loader.top(60)], "batch", "lee", at=2, lx=60)
 s.arrow([alerts.bottom(), rds.top()], "batch", "escala y purga")
-s.arrow([alerts.right(), mails.left()], "async", "supervisor y cumplimiento", ly=-12)
-s.arrow([partners.top(), raw.bottom()], "batch", "archivo diario")
+s.arrow([alerts.top(100), (alerts.cx + 100, gap(0)), (mails.cx, gap(0)), mails.top()], "async", "supervisor y cumplimiento", at=1, lx=60)
+s.arrow([partners.top(), raw.bottom()], "batch", "suben el archivo")
 s.arrow([kaggle.right(), admin.left()], "batch")
 s.arrow([admin.right(), (lane(3) + 12, admin.cy), (lane(3) + 12, rds.cy + 18), rds.right(18)], "batch", "seed y Kaggle", at=1, ly=200)
-s.arrow([sfn.left(-14), rds.right(-14)], "batch", both=True)
-s.arrow([sfn.right(), (mails.cx, sfn.cy), mails.bottom()], "batch", "a tesorería", at=1)
-s.arrow([sfn.bottom(), glue.top()], "batch", "dispara (.sync)")
+s.arrow([dbboot.right(), (lane(3) + 12, dbboot.cy), (lane(3) + 12, rds.cy + 18), rds.right(18)], "batch")
+s.arrow([sfn.bottom(), night.top()], "batch", "invoca")
+s.arrow([night.left(-14), rds.right(-14)], "batch", both=True)
+s.arrow([sfn.right(), mails.left()], "batch")
+s.arrow([sfn.right(18), (lane(4) - 10, sfn.cy + 18), (lane(4) - 10, glue.cy), glue.right()], "batch", "dispara (.sync)", at=1, ly=50)
+s.arrow([raw.right(-16), (lane(2) - 6, raw.cy - 16), (lane(2) - 6, gap(2) - 8), (night.cx - 110, gap(2) - 8), night.bottom(-110)], "batch", both=True)
 s.arrow([raw.right(-16), (lane(2) - 6, raw.cy - 16), (lane(2) - 6, gap(2) - 8), (lane(3) - 12, gap(2) - 8), (lane(3) - 12, glue.cy - 14), glue.left(-14)], "batch")
 s.arrow([glue.bottom(), curated.top()], "batch", "limpia")
 s.arrow([curated.bottom(), model.top()], "analytics", "modela")
