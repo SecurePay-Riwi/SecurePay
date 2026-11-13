@@ -213,7 +213,7 @@ Some figures in the inventory cannot be known before building and measuring. Eac
 - If it comes out different: the fixed NAT cost ($65.70) does not change; every extra 100 GB is $4.50.
 
 **Spark jobs: AWS Glue 6.0, 2 G.1X workers, ~10 minutes per job.**
-- Calculation: 2 workers × 1 DPU × 0.167 h × $0.308 ≈ $0.10 per job; two jobs a night for 30 nights ≈ $6.16 a month.
+- Calculation: 2 workers × 1 DPU × 0.167 h × $0.308 (Glue 6.0) ≈ $0.10 per job; two jobs a night for 30 nights ≈ $6.16 a month.
 - **Measured:** the whole nightly machine took 7 min 33 s in dev on November 5 (both jobs included), so 10 minutes per job is on the safe side.
 - If it comes out different: the cost is proportional to the time; at 5 minutes per job it drops to ~$3.
 

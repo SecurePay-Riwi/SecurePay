@@ -45,22 +45,22 @@ Grouped by service, so a service that solves several things is counted once.
 | Amazon EventBridge Scheduler | Reconciliation, exchange rates, 5-minute alerts | $0.00 | $0.00 |
 | AWS Step Functions | Reconciliation orchestration | $0.00 | $0.00 |
 | Amazon DynamoDB | Exchange rates table. The estimate still counts the device–account pairs of the first design, which were not created: about $0.80 of margin | $0.90 | $0.10 |
-| AWS Glue 6.0 | 2 Spark jobs every night: the reconciliation match and the analytics ETL, 2 G.1X workers, ~10 minutes each at $0.308 per DPU-hour (was EMR Serverless, $7.27: not on AWS's free plan, [ADR-05](./decisions.mdx#adr-05)) | $6.16 | $0.10 |
+| AWS Glue 6.0 | 2 Spark jobs every night: the reconciliation match and the analytics ETL, 2 G.1X workers, ~10 minutes each at $0.308 per DPU-hour for Glue 6.0 (was EMR Serverless, $7.27: not on AWS's free plan, [ADR-05](./decisions.mdx#adr-05)) | $6.16 | $0.10 |
 | AWS Systems Manager | Session Manager + Parameter Store | $0.00 | $0.00 |
 | Amazon RDS PostgreSQL | Multi-AZ instance + storage + backups: users, rules, cases | $31.35 | $5.50 |
 | NAT Gateway (×2) | Outbound traffic from private subnets to AWS services | $72.52 | $2.28 |
 | Data transfer | Cross-AZ + internet egress | ~$2.60 | ~$0.20 |
-| Amazon CloudWatch | Logs, metrics, the alarms and dashboard of HU-59 (about 40 alarm metrics at $0.10 after the 10 free, 6 custom metrics from log filters at $0.30) | $13.97 | $1.50 |
+| Amazon CloudWatch | Logs, metrics, the alarms and dashboard of HU-59 (40 alarm metrics at $0.10, which the calculator charges without subtracting the 10 free; 6 custom metrics from log filters at $0.30; the one dashboard is inside the 3 free) | $13.37 | $1.50 |
 | AWS X-Ray | Transaction tracing: designed, not built (the decision log of HU-59 covers it); $9.00 if it is added | $0.00 | $0.00 |
 | Amazon S3 | Data Lake + immutable evidence for 10 years (storage and writes) | $5.26 | $0.50 |
 | Amazon Athena | SQL over S3 | $1.43 | $0.15 |
 | AWS Glue Data Catalog | Table catalog for Athena | $0.01 | $0.00 |
 | Amazon ECR | Docker image registry | $0.50 | $0.50 |
 | Public IPv4 addresses | 4 addresses (2 NAT + 2 ALB) at $0.005 an hour | $14.60 | — |
-| Amazon Data Firehose | Removed in Sprint 6: not on AWS's free plan. The analytics queue batches 1,000 decisions per S3 file instead (~$0.65 of S3 PUTs, counted here) | $0.65 | — |
+| Amazon Data Firehose | Removed in Sprint 6: not on AWS's free plan. The analytics queue batches 1,000 decisions per S3 file instead; those writes (~$0.65) fit inside the S3 line, which was estimated with 1 % of the transactions opening a case | $0.00 | — |
 | IAM, KMS (AWS keys), VPC, Budgets | Roles, encryption at rest, network, spending alerts ([Budget](#budget)) | $0.00 | $0.00 |
 | Power BI Desktop, GitHub Actions, Frankfurter API | Dashboard, CI/CD, exchange rates | $0.00 | $0.00 |
-| **Total** | | **$337.31** | **≈ $16.28** |
+| **Total** | | **$336.06** | **≈ $16.28** |
 
 The total is option A of [Three options](#options). It assumes 300 MB of cache memory. At 150 MB it would be about $43 less; at 1 GB, about $10 more. See [Open questions](./open-questions.mdx).
 
@@ -75,7 +75,7 @@ The assignment asks for the final cost with at least two alternatives (E-07). Th
 | Messaging | SNS + SQS | SNS + SQS | RabbitMQ (3 replicas, on EKS) |
 | Orchestration | Step Functions + EventBridge Scheduler | Step Functions + EventBridge Scheduler | Airflow with Celery (on EKS, metadata in a second RDS) |
 | Spark | AWS Glue | AWS Glue | Spark on our own containers (on EKS) |
-| **Monthly** | **$337.31** | **$408.41** | **$664.89** |
+| **Monthly** | **$336.06** | **$407.16** | **$663.64** |
 
 **How B is computed:** A without Lambda ($35.55) and API Gateway ($1.10), plus 12 tasks × $0.0123 an hour × 730 hours = $107.75 ([ADR-02](./decisions.mdx#adr-02)).
 
@@ -96,21 +96,19 @@ The managed version of C costs more still: Amazon MQ for RabbitMQ as a 3-node `m
 
 ## AWS Pricing Calculator {/* #pricing-calculator */}
 
-The $337.31 of option A is computed from the official AWS price list for `us-east-2` (November 4, 2026), line by line in the table above. It started from an estimate loaded service by service in the public [AWS Pricing Calculator](https://calculator.aws) on October 23, 2026, which is kept as the baseline: [PagoSeguro Antifraude - Production (us-east-2)](https://calculator.aws/#/estimate?id=a4604e0b2867f1670ede8821269789ab832b8b3d), $346.45 a month and $4,157.44 for 12 months ([PDF export](pathname:///files/aws-pricing-estimate.pdf)). **That link is out of date:** it still has EMR Serverless, Amazon Data Firehose and AWS X-Ray, which the built system does not use. The B and C options were never loaded into the calculator.
+Option A is loaded service by service in the public [AWS Pricing Calculator](https://calculator.aws), US East (Ohio), on November 12, 2026: **[PagoSeguro Antifraude - Production (us-east-2) - Nov 2026](https://calculator.aws/#/estimate?id=188d992ae27550f187adcd0420d474504fba4b33), $336.06 a month and $4,032.76 for 12 months** (including $0.04 upfront). Every line of the table above is one service of that estimate; Step Functions, EventBridge, Cognito, KMS and Systems Manager are in it at $0.00. The B and C options are computed from the price list, not loaded into the calculator.
 
-From the calculator's $346.45 to today's $337.31:
+It is the estimate of October 23, 2026 ([link](https://calculator.aws/#/estimate?id=a4604e0b2867f1670ede8821269789ab832b8b3d), [PDF export](pathname:///files/aws-pricing-estimate.pdf), $346.45), updated to what was built:
 
-| Line | Calculator (Oct 23) | Now | Why |
+| Line | Oct 23 | Nov 12 | Why |
 | :--- | ---: | ---: | :--- |
-| EMR Serverless → AWS Glue 6.0 | $7.27 | $6.16 | EMR is not on AWS's free plan ([ADR-05](./decisions.mdx#adr-05)): 2 nightly jobs, 2 G.1X workers, ~10 minutes each |
-| Amazon Data Firehose → S3 writes | $3.58 | $0.65 | Firehose is not on the free plan either; the analytics queue writes 1,000 decisions per S3 file |
-| AWS X-Ray | $9.00 | $0.00 | Not built (team decision 2026-11-04); the decision log of HU-59 covers it |
-| Amazon CloudWatch | $10.07 | $13.97 | The alarms, metric filters and dashboard of HU-59 that exist now |
-| **Total** | **$346.45** | **$337.31** | |
+| EMR Serverless → AWS Glue 6.0 | $7.27 | $6.16 | EMR is not on AWS's free plan ([ADR-05](./decisions.mdx#adr-05)). 2 nightly jobs × 2 DPU × 10 minutes × 30 days = 20 DPU-hours; the calculator's "Glue version 6.0 and later" rate |
+| Amazon Data Firehose | $3.58 | removed | Not on the free plan either; the analytics queue writes 1,000 decisions per S3 file |
+| AWS X-Ray | $9.00 | removed | Not built (team decision 2026-11-04); the decision log of HU-59 covers it |
+| Amazon CloudWatch | $10.07 | $13.37 | 40 alarm metrics (was 10) and 6 custom metrics (was 5): the alarms and filters of HU-59 |
+| **Total** | **$346.45** | **$336.06** | |
 
 Before the calculator, the first estimate was $333.21. The calculator added what it was missing: the public IPv4 addresses ($14.60, charged since 2024), the S3 writes of the evidence and the raw layer, and Firehose; it lowered the load balancer (capacity units by the largest dimension, ~0.36, not 1.5) and Lambda (the scheduled functions, 1.2 million calls of 200 ms, $2.24).
-
-**To load option A into the calculator again:** region US East (Ohio), one service per line of the table above with the value in its "Used for" column; Step Functions, EventBridge Scheduler, Systems Manager, IAM and KMS stay in the free tier at this volume and need no line. Each line should land within about a dollar of the table.
 
 **Evaluated and not applied:** moving to ARM (Graviton) would save ~$24 a month (Fargate, Lambda, RDS `db.t4g.micro`, Glue does not change), but needs `arm64` images. A regional NAT Gateway was also evaluated and rejected; one zonal NAT per zone stays ([ADR-08](./decisions.mdx#adr-08)).
 
@@ -142,7 +140,7 @@ The team pays with the USD 200 of AWS credit, so the budget watches the credit, 
 | What it counts | Usage before credits (`include_credit = false`): with credits subtracted the spend shows USD 0 and the alert never fires | The same |
 | What to do when it fires | Destroy dev unless a demo is running ([Runbook](../operations/runbook.mdx)) | Review Cost Explorer by service |
 
-**How far the credit goes.** A dev session costs about $0.22 an hour ([Cost of a dev test session](#pricing-calculator)), so USD 200 is roughly 900 hours of dev up; a full session of 1 to 2 hours is under USD 0.50. Production as built (option A, $337.31 a month) would use the whole credit in about 18 days: the credit is for building and showing the system, not for running it.
+**How far the credit goes.** A dev session costs about $0.22 an hour ([Cost of a dev test session](#pricing-calculator)), so USD 200 is roughly 900 hours of dev up; a full session of 1 to 2 hours is under USD 0.50. Production as built (option A, $336.06 a month) would use the whole credit in about 18 days: the credit is for building and showing the system, not for running it.
 
 AWS refreshes costs about three times a day, so a budget e-mail can arrive hours after the spend. The real protection is `terraform destroy` right after each test; the budget is the safety net. Budget alerts are free. Details in [Terraform](./terraform.mdx).
 
