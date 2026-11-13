@@ -110,7 +110,7 @@ Every alarm e-mails `securepay-dev-ops-alarms`, and its description says what to
    terraform destroy
    ```
 
-   Expected: `Destroy complete!` with everything the state had ({plan.oneApplyWithKaggle} after one `apply`, {plan.oneApply} without the Kaggle CSVs, {plan.stepByStep} step by step). If only the evidence bucket fails, its lock has not passed yet: wait and run it again. If the EKS session of [Run the engine on Kubernetes](../getting-started/kubernetes.mdx) ran, delete that cluster first: it uses dev's subnets.
+   Expected: `Destroy complete!` with everything the state had ({plan.oneApplyWithKaggle} after one `apply`, {plan.oneApply} without the Kaggle CSVs, {plan.stepByStep} step by step). It takes about 25 minutes: the demo environment of November 11, 2026 destroyed 352 resources in 24 min 05 s (it was deployed from the code before the two unused IAM roles were removed, so it had more than today's count). If only the evidence bucket fails, its lock has not passed yet: wait and run it again. If the EKS session of [Run the engine on Kubernetes](../getting-started/kubernetes.mdx) ran, delete that cluster first: it uses dev's subnets.
 
 2. Check that nothing is left charging. The first command must print nothing:
 

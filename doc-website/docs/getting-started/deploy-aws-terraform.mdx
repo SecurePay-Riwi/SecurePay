@@ -701,7 +701,7 @@ Delete the local `test.txt` so it does not end up in a commit.
 
 ## 12. Destroy it
 
-Once the lock of the last uploaded version has passed, destroy everything and type `yes`. RDS takes another 10 to 15 minutes:
+Once the lock of the last uploaded version has passed, destroy everything and type `yes`. It takes about 25 minutes, RDS most of them (the demo environment of November 11, 2026: 352 resources in 24 min 05 s, deployed from the code before the two unused IAM roles were removed):
 
 ```powershell
 terraform destroy

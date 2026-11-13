@@ -1,170 +1,215 @@
 """Architecture flow on AWS: doc-website/static/img/architecture-flow.jpg.
 
-Labels in Spanish, like the first version of the diagram (the pages say
-so under the image). Run from the repository root:
+Drawn from what Terraform creates (infra/terraform/modules, envs/dev). The
+labels are in Spanish, like the first version of the diagram (the pages say
+so under the image). The picture has a data band in the middle (DynamoDB,
+Valkey, RDS, the SNS topic of the e-mails and the Data Lake) and the zones
+that use it above (what happens per transaction) and below (what runs on a
+schedule, the APIs, the night and the dashboard), plus the order of the one
+`terraform apply` at the bottom. Run from the repository root:
 
-    uv run --group load python doc-website/diagrams/architecture_flow.py
+    python3 doc-website/diagrams/architecture_flow.py
 
-(any environment with Playwright works; the image needs Chromium).
-Change it when a service, a flow or the monthly cost changes.
+(Node's Playwright with Chromium draws the image). Change it when a
+service, a flow or the monthly cost changes.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from common import Card, Svg, legend, panel, render
+from common import FLOW, MUTED, Card, Svg, legend, panel, render
 
-W, H = 2350, 1210
-CW, CH = 280, 66
-
-
-def x(c: int) -> float:
-    return 40 + c * 330
+W, H = 2600, 1372
+CW, CH = 270, 62
 
 
-def y(r: int) -> float:
-    return 110 + r * 118
+def zone(s: Svg, x, y, w, h, title, flow, bottom=False):
+    """A white area with a colored bar; the title goes at the bottom when
+    arrows come in from above."""
+    s.box(x, y, w, h, fill="#ffffff", stroke="#cdd6e3", rx=12)
+    bar = y + h - 6 if bottom else y
+    s.add(f'<rect x="{x}" y="{bar}" width="{w}" height="6" rx="3" fill="{FLOW[flow]}"/>')
+    s.text(x + 16, y + h - 16 if bottom else y + 30, title, size=14, weight="bold", color=FLOW[flow])
 
 
-def lane(c: int) -> float:
-    """Vertical lane between column c and c+1."""
-    return x(c) + CW + 25
-
-
-def gap(r: int) -> float:
-    """Horizontal lane between row r and r+1."""
-    return y(r) + CH + 26
-
-
-def card(c, r, title, sub, flow, icon, tag, **kw) -> Card:
-    return Card(x(c), y(r), title, sub, flow, icon, tag, w=CW, h=CH, **kw)
+def card(x, y, title, sub, flow, icon, tag, w=CW, h=CH, **kw) -> Card:
+    return Card(x, y, title, sub, flow, icon, tag, w=w, h=h, **kw)
 
 
 s = Svg(W, H)
-s.text(40, 44, "PagoSeguro Antifraude · diagrama de flujo de la arquitectura en AWS", size=24, weight="bold")
-s.text(40, 68, "Lo construido con Terraform (noviembre de 2026) · el color de cada tarjeta y de cada flecha dice a qué flujo pertenece", size=13, color="#5b6676")
-s.box(W - 330, 30, 290, 30, fill="#e3eaf5", stroke="#cdd6e3", rx=15)
-s.text(W - 185, 50, "us-east-2 (Ohio) · 2 zonas de disponibilidad", size=12, weight="bold", anchor="middle")
+s.text(40, 44, "PagoSeguro Antifraude · arquitectura en AWS y cómo se comunica", size=24, weight="bold")
+s.text(40, 68, "Lo que crea Terraform (noviembre de 2026). Arriba: lo que pasa con cada transacción · en el centro: dónde viven los datos · abajo: lo programado, las APIs, la noche y el tablero", size=13, color=MUTED)
+s.box(W - 330, 26, 290, 30, fill="#e3eaf5", stroke="#cdd6e3", rx=15)
+s.text(W - 185, 46, "us-east-2 (Ohio) · 2 zonas de disponibilidad", size=12, weight="bold", anchor="middle")
 
-# Column 0: the wallet's entry and the exchange rates.
-core = card(0, 0, "Core de la billetera", "Generador del stream\n50 tx/s · pico de 300", "realtime", "external", "TX")
-alb = card(0, 2, "Application Load Balancer", "HTTPS 443 · reparte entre 2 zonas", "realtime", "network", "ALB")
-rates = card(0, 3, "Amazon DynamoDB", "Tasas de cambio del día", "batch", "database", "DDB")
-rates_fn = card(0, 4, "Lambda · tasas de cambio", "Una vez al día (11:00 Bogotá)", "batch", "compute", "λ")
-frank = card(0, 5, "API de Frankfurter", "Tasas públicas · 4 monedas", "batch", "external", "FX")
+# ---- Top band: per transaction --------------------------------------------
+TOP, R1, R2 = 86, 140, 260
+zone(s, 30, TOP, 620, 254, "1 · Decisión en tiempo real (≤ 200 ms)", "realtime")
+zone(s, 670, TOP, 970, 254, "2 · Después de responder (asíncrono)", "async")
+zone(s, 1660, TOP, 910, 254, "Avisos y operación", "admin")
 
-# Column 1: the engine and its cache.
-sns_dec = card(1, 1, "Amazon SNS · decisiones", "Copia cada decisión a 3 colas", "async", "integration", "SNS")
-engine = card(1, 2, "Fargate · motor de decisión", "4 a 24 tareas · responde en ≤ 200 ms\nSi tarda, decide según el monto", "realtime", "compute", "ECS")
-cache = card(1, 3, "ElastiCache Serverless (Valkey)", "Idempotencia, historial, reglas,\ncuentas, comercios y lista", "realtime", "database", "VK")
-loader = card(1, 4, "Lambda · carga de lista", "Diaria (01:00 Bogotá): cuentas,\ncomercios y lista restrictiva", "batch", "compute", "λ")
+core = card(50, R1, "Core de la billetera", "Lo simula securepay-generator\n50 tx/s · pico de 300", "realtime", "external", "TX")
+alb = card(50, R2, "Application Load Balancer", "HTTPS 443 · reparte en 2 zonas", "realtime", "network", "ALB")
+engine = card(360, R2, "Fargate · motor (ECS)", "2 a 4 tareas en dev (4 a 24 en carga)\nSi tarda, decide según el monto", "realtime", "compute", "ECS")
 
-# Column 2: the asynchronous path and the raw layer.
-sqs = card(2, 1, "Amazon SQS · 3 colas + DLQ", "Casos · historial · analítica", "async", "integration", "SQS")
-consumers = card(2, 2, "Lambda ×3 · consumidores", "Casos e historial en lotes de 10;\nanalítica en lotes de 1.000 o 60 s", "async", "compute", "λ")
-raw = card(2, 3, "S3 · capa cruda (raw)", "Decisiones, extractos, Kaggle,\nexport de casos y diferencias", "batch", "storage", "S3")
-partners = card(2, 4, "Extractos de socios", "4 socios · un archivo diario", "batch", "external", "TXT")
-kaggle = card(2, 5, "Históricos de Kaggle", "PaySim y Sparkov etiquetados", "batch", "external", "CSV")
+sns_dec = card(690, R1, "SNS · decisiones", "Copia cada decisión a 3 colas", "async", "integration", "SNS")
+sqs = card(1000, R1, "SQS · 3 colas + 3 DLQ", "casos · historial · analítica\n5 intentos, luego a la DLQ", "async", "integration", "SQS")
+consumers = card(1310, R1, "Lambda ×3 · consumidores", "casos y reportes de lista · historial\n30 días · analítica (lotes de 1.000)", "async", "compute", "λ", w=310)
 
-# Column 3: schedules, alerts, the database and the APIs.
-sched = card(3, 0, "EventBridge Scheduler", "5 horarios: conciliación, chequeo,\nalertas, carga de lista, tasas", "batch", "management", "EB")
-alerts = card(3, 1, "Lambda · alertas", "Cada 5 min: escala casos de 4 h,\nresumen a cumplimiento, purga", "batch", "compute", "λ")
-rds = card(3, 2, "Amazon RDS PostgreSQL", "Usuarios, reglas, casos, historial\n30 días y conciliación · Multi-AZ", "admin", "database", "RDS")
-api = card(3, 3, "API Gateway + Lambda", "API de reglas y API de casos\nToken de Cognito (analista/gerente)", "admin", "integration", "API")
-people = card(3, 4, "Analistas y gerente de riesgo", "Revisan casos y versionan reglas\n(consolas web de las APIs)", "admin", "external", "👤")
-admin = card(3, 5, "Tarea admin + db-bootstrap", "Tablas y usuarios, seed de la BD\ny ETL de Kaggle (en el apply)", "batch", "compute", "ECS")
+cw = card(1680, R1, "CloudWatch", "Logs, dashboard, filtros y alarmas", "admin", "management", "CW")
+sns_ops = card(1980, R1, "SNS · ops-alarms", "Alarmas al equipo", "admin", "integration", "SNS")
+mails = card(2280, R1, "Correos", "Equipo · supervisor\ncumplimiento · tesorería", "admin", "external", "@", h=182)
+deploy = card(1680, R2, "GitHub Actions + ECR", "En cada merge: imagen por commit,\nactualiza el motor y las Lambdas", "admin", "management", "GH")
 
-# Column 4: the nightly pipeline.
-sfn = card(4, 2, "Step Functions · cada noche", "Extractos → match → diferencias →\nexport → Kaggle → ETL → vistas", "batch", "integration", "SF")
-glue = card(4, 3, "AWS Glue 6.0 · Spark", "Match de conciliación y ETL\nde analítica (2 workers G.1X)", "batch", "analytics", "GL")
-curated = card(4, 4, "S3 · capa curada (curated)", "Limpia y tipada · Parquet", "batch", "storage", "S3")
-model = card(4, 5, "S3 · capa analítica (analytics)", "Modelo dimensional · 13 tablas\nParticionado por fecha", "analytics", "storage", "S3")
+# ---- Data band --------------------------------------------------------------
+zone(s, 30, 372, 2540, 150, "Datos y mensajería", "admin")
+DY = 430
+ddb = card(50, DY, "DynamoDB · tasas", "Tasas de cambio por día", "batch", "database", "DDB")
+valkey = card(360, DY, "ElastiCache (Valkey)", "Idempotencia, historial, catálogo,\ncuentas, comercios y lista", "realtime", "database", "VK")
+rds = card(670, DY, "RDS PostgreSQL 16 · Multi-AZ", "Usuarios, cuentas, comercios, lista restrictiva, reglas y sus versiones,\ncasos y reportes, historial de 30 días, conciliación · un usuario por componente", "admin", "database", "RDS", w=1030)
+sns_biz = card(1740, DY, "SNS · business-alerts", "Un correo por audiencia (filtro)", "async", "integration", "SNS")
+lake = card(2050, DY, "S3 · Data Lake", "raw/ (decisiones, extractos, Kaggle, export)\ncurated/ · analytics/ (Parquet) · athena-results/", "batch", "storage", "S3", w=510)
 
-# Columns 5 and 6: notices, evidence and the dashboard.
-mails = card(5, 1, "Amazon SNS · correos", "Cumplimiento, supervisor, tesorería\ny alarmas al equipo", "async", "integration", "SNS")
-evidence = card(5, 3, "S3 · evidencia de casos", "Object Lock 10 años (COMPLIANCE)\nGlacier Instant Retrieval", "admin", "storage", "S3")
-catalog = card(5, 5, "AWS Glue Data Catalog", "Esquema de las tablas\n(desde shared/analytics.py)", "analytics", "analytics", "GL")
-athena = card(6, 5, "Amazon Athena", "Vistas q1 a q6 · workgroup powerbi", "analytics", "analytics", "ATH")
-pbi = card(6, 6, "Power BI Desktop", "6 páginas · driver ODBC de Athena", "analytics", "external", "BI")
+# ---- Bottom band --------------------------------------------------------------
+BOT, B1, B2, B3 = 556, 612, 724, 836
+zone(s, 30, BOT, 620, 384, "3 · Cargas diarias (EventBridge)", "batch", bottom=True)
+zone(s, 670, BOT, 620, 384, "4 · Reglas, casos y evidencia", "admin", bottom=True)
+zone(s, 1310, BOT, 410, 384, "5 · Cada noche (EventBridge 02:00)", "batch", bottom=True)
+zone(s, 1740, BOT, 290, 384, "Alertas", "batch", bottom=True)
+zone(s, 2050, BOT, 520, 384, "6 · Tablero y archivos de socios", "analytics", bottom=True)
 
-cards = [core, alb, rates, rates_fn, frank, sns_dec, engine, cache, loader, sqs, consumers, raw,
-         partners, kaggle, sched, alerts, rds, api, people, admin, sfn, glue, curated, model,
-         mails, evidence, catalog, athena, pbi]
+rates_fn = card(50, B1, "Lambda · tasas de cambio", "11:00 Bogotá (imagen de securepay-apis)", "batch", "compute", "λ")
+frank = card(50, B3, "API de Frankfurter", "Tasas públicas · 4 monedas", "batch", "external", "FX")
+loader = card(360, B1, "Lambda · list-loader", "01:00 Bogotá: cuentas, comercios\ny lista restrictiva", "batch", "compute", "λ")
 
-# Real time (orange).
+apis = card(690, B1, "Lambda · API de reglas y de casos", "Versiona reglas, simula, asigna y resuelve\ncasos, conciliación para tesorería", "admin", "compute", "λ", w=340)
+evidence = card(1050, B1, "S3 · evidencia", "Object Lock 10 años\n(COMPLIANCE), al resolver", "admin", "storage", "S3", w=220)
+gw = card(690, B2, "API Gateway + Cognito", "Token JWT · grupos analista y gerente\nsolo gerente cambia reglas (403)", "admin", "integration", "API", w=340)
+people = card(690, B3, "Analistas, gerente y tesorería", "Páginas /rules-api y /cases-api", "admin", "external", "👤", w=340)
+
+sfn = card(1330, B1, "Step Functions · la noche", "Orquesta los pasos en orden;\nsi falla la conciliación, alarma", "batch", "integration", "SF", w=370)
+SW = 180
+step = [
+    card(1330, B2, "1 · Lambda", "lee los extractos", "batch", "compute", "λ", w=SW, h=50),
+    card(1520, B2, "2 · Glue (Spark)", "cruce con decisiones", "batch", "analytics", "GL", w=SW, h=50),
+    card(1330, B2 + 62, "3 · Lambda", "diferencias → RDS", "batch", "compute", "λ", w=SW, h=50),
+    card(1520, B2 + 62, "4 · Lambda", "export y Kaggle", "batch", "compute", "λ", w=SW, h=50),
+    card(1330, B2 + 124, "5 · Glue (Spark)", "modelo dimensional", "batch", "analytics", "GL", w=SW, h=50),
+    card(1520, B2 + 124, "6 · Athena", "vistas q1 a q6", "batch", "analytics", "ATH", w=SW, h=50),
+]
+
+alerts = card(1752, B1, "Lambda · alertas", "Cada 5 min: escala casos de 4 h,\ncumplimiento, purga · 06:30 chequeo", "batch", "compute", "λ", w=268)
+
+catalog = card(2070, B1, "Glue Data Catalog", "13 tablas · por fecha", "analytics", "analytics", "GL", w=230)
+athena = card(2070, B2, "Athena · powerbi", "Vistas q1 a q6", "analytics", "analytics", "ATH", w=230)
+pbi = card(2070, B3, "Power BI Desktop", "6 páginas · ODBC", "analytics", "external", "BI", w=230)
+partners = card(2320, B1, "Socios (4)", "Dejan su extracto diario\nen raw/extractos/", "batch", "external", "TXT", w=230)
+
+cards = [core, alb, engine, sns_dec, sqs, consumers, cw, sns_ops, mails, deploy, ddb, valkey, rds, sns_biz,
+         lake, rates_fn, frank, loader, apis, evidence, gw, people, sfn, *step, alerts, catalog, athena,
+         pbi, partners]
+
+# ---- Arrows -------------------------------------------------------------------
+# Real time.
 s.arrow([core.bottom(), alb.top()], "realtime", "HTTPS")
 s.arrow([alb.right(), engine.left()], "realtime")
-s.arrow([engine.bottom(), cache.top()], "realtime", "4 viajes por decisión", both=True)
-s.arrow([rates.right(-14), (lane(0), rates.cy - 14), (lane(0), engine.cy + 18), engine.left(18)], "realtime", "tasa del día", at=1, dashed=True, lx=0, ly=8)
+s.arrow([engine.bottom(-60), valkey.top(-60)], "realtime", "4 viajes", both=True, lx=0)
+s.arrow([ddb.top(110), (ddb.x + 250, alb.y + alb.h + 30), (engine.x - 18, alb.y + alb.h + 30), (engine.x - 18, engine.cy + 16), engine.left(16)], "realtime", "tasa del día", at=1, dashed=True, ly=-12)
 
-# Asynchronous (blue).
-s.arrow([engine.top(), sns_dec.bottom()], "async", "publica la decisión")
+# Asynchronous.
+s.arrow([engine.top(), (engine.cx, sns_dec.cy), sns_dec.left()], "async", "publica la decisión", at=1, lx=-20, ly=-12)
 s.arrow([sns_dec.right(), sqs.left()], "async")
-s.arrow([sqs.bottom(), consumers.top()], "async")
-s.arrow([consumers.right(-14), rds.left(-14)], "async")
-s.arrow([consumers.bottom(), raw.top()], "async", "analítica")
+s.arrow([sqs.right(), consumers.left()], "async")
+s.arrow([consumers.bottom(-60), (consumers.cx - 60, rds.y)], "async", "casos e historial", ly=-6)
+s.arrow([consumers.right(14), (1650, consumers.cy + 14), (1650, 352), (lake.x + 440, 352), lake.top(185)], "async", "raw/decisiones", at=2, lx=-200)
 
-# Batch and the night (green).
-s.arrow([sched.bottom(), alerts.top()], "batch", "cada 5 min y 06:30")
-s.arrow([sched.right(), (sfn.cx, sched.cy), sfn.top()], "batch", "02:00 Bogotá", at=1, ly=-30)
+# Notices.
+s.arrow([cw.right(), sns_ops.left()], "admin")
+s.arrow([sns_ops.right(), (mails.x, sns_ops.cy)], "admin")
+s.arrow([sns_biz.top(), (sns_biz.cx, 362), (mails.cx - 60, 362), mails.bottom(-60)], "async", "por audiencia", at=1, lx=60)
+
+# Daily loads.
 s.arrow([frank.top(), rates_fn.bottom()], "batch", "trae las tasas")
-s.arrow([rates_fn.top(), rates.bottom()], "batch", "guarda")
-s.arrow([loader.top(), cache.bottom()], "batch", "reemplaza la lista")
-s.arrow([rds.left(18), (lane(2) + 14, rds.cy + 18), (lane(2) + 14, gap(3) + 14), (loader.cx + 60, gap(3) + 14), loader.top(60)], "batch", "lee", at=2, lx=60)
-s.arrow([alerts.bottom(), rds.top()], "batch", "escala y purga")
-s.arrow([alerts.right(), mails.left()], "async", "supervisor y cumplimiento", ly=-12)
-s.arrow([partners.top(), raw.bottom()], "batch", "archivo diario")
-s.arrow([kaggle.right(), admin.left()], "batch")
-s.arrow([admin.right(), (lane(3) + 12, admin.cy), (lane(3) + 12, rds.cy + 18), rds.right(18)], "batch", "seed y Kaggle", at=1, ly=200)
-s.arrow([sfn.left(-14), rds.right(-14)], "batch", both=True)
-s.arrow([sfn.right(), (mails.cx, sfn.cy), mails.bottom()], "batch", "a tesorería", at=1)
-s.arrow([sfn.bottom(), glue.top()], "batch", "dispara (.sync)")
-s.arrow([raw.right(-16), (lane(2) - 6, raw.cy - 16), (lane(2) - 6, gap(2) - 8), (lane(3) - 12, gap(2) - 8), (lane(3) - 12, glue.cy - 14), glue.left(-14)], "batch")
-s.arrow([glue.bottom(), curated.top()], "batch", "limpia")
-s.arrow([curated.bottom(), model.top()], "analytics", "modela")
-s.arrow([model.right(), catalog.left()], "analytics")
-s.arrow([catalog.right(), athena.left()], "analytics")
-s.arrow([athena.bottom(), pbi.top()], "analytics", "al tablero")
+s.arrow([rates_fn.top(), ddb.bottom()], "batch")
+s.arrow([loader.top(-40), valkey.bottom(-40)], "batch", "reemplaza")
+s.arrow([rds.left(16), (652, rds.cy + 16), (652, loader.cy), loader.right()], "batch", "lee", at=1, lx=-22, ly=70)
 
-# Management (gray).
-s.arrow([people.top(), api.bottom()], "admin", "HTTPS + Cognito")
-s.arrow([api.top(), rds.bottom()], "admin", "reglas y casos")
-s.arrow([api.left(14), (lane(2) + 6, api.cy + 14), (lane(2) + 6, gap(3) - 4), (lane(1) - 6, gap(3) - 4), (lane(1) - 6, cache.cy + 14), cache.right(14)], "admin", "publica el catálogo", at=2)
-s.arrow([api.right(14), (lane(3), api.cy + 14), (lane(3), gap(3)), (lane(4), gap(3)), (lane(4), evidence.cy + 14), evidence.left(14)], "admin", "evidencia al resolver", at=2)
+# Rules, cases and evidence.
+s.arrow([people.top(), gw.bottom()], "admin", "HTTPS")
+s.arrow([gw.top(), apis.bottom()], "admin", "X-User = correo")
+s.arrow([apis.top(80), (apis.cx + 80, rds.y + rds.h)], "admin", "lee y escribe", both=True, ly=4)
+s.arrow([apis.left(-14), (672, apis.cy - 14), (672, 540), (valkey.x + 230, 540), valkey.bottom(95)], "admin", "publica el catálogo", at=2, ly=14)
+s.arrow([apis.right(), evidence.left()], "admin")
+
+# The night.
+s.arrow([sfn.top(-100), (sfn.cx - 100, rds.y + rds.h)], "batch", "pasos 3 y 4", ly=4)
+s.arrow([sfn.bottom(), (sfn.cx, step[0].y - 6)], "batch", start_dot=False)
+s.arrow([sfn.right(-14), (1728, sfn.cy - 14), (1728, 538), (lake.x + 40, 538), lake.bottom(-215)], "batch", "lee y escribe el lago", at=2, ly=-12)
+s.arrow([sfn.top(130), (sfn.cx + 130, 548), (sns_biz.cx - 60, 548), sns_biz.bottom(-60)], "batch", "tesorería", at=1, lx=0, ly=10)
+
+# Alerts.
+s.arrow([alerts.top(40), sns_biz.bottom(40)], "batch", "supervisor y cumplimiento", ly=-30)
+s.arrow([alerts.top(-90), (alerts.cx - 90, 520), (rds.x + rds.w - 20, 520), rds.bottom(rds.w / 2 - 20)], "batch")
+
+# Dashboard and partners.
+s.arrow([lake.bottom(-140), catalog.top()], "analytics", "analytics/")
+s.arrow([catalog.bottom(), athena.top()], "analytics")
+s.arrow([athena.bottom(), pbi.top()], "analytics", "al tablero")
+s.arrow([partners.top(), (partners.cx, lake.y + lake.h)], "batch", "suben el archivo")
 
 for c in cards:
     s.card(c)
 
-# Bottom panels.
-py = 960
-panel(s, 40, py, 560, 236, "Red y seguridad", [
-    ("network", "VPC", "Amazon VPC · 2 zonas", "Subredes públicas, de aplicación y de datos"),
-    ("network", "NAT", "NAT Gateway ×2 · endpoints S3 y DynamoDB", "Salida de las subredes privadas, una por zona"),
-    ("security", "IAM", "IAM · KMS · Systems Manager", "Un rol por componente, cifrado, claves en Parameter Store"),
-    ("security", "COG", "Amazon Cognito", "Inicio de sesión de analistas (analista) y gerente (gerente)"),
+# ---- The one apply --------------------------------------------------------------
+AY = 962
+zone(s, 30, AY, 2540, 130, "7 · Montaje de dev: un terraform apply, en este orden (desde el contenedor deployer)", "admin")
+seq = [
+    ("TF", "management", "Terraform", "Red, seguridad, datos,\nservicios y alarmas"),
+    ("ECR", "compute", "Imágenes a ECR", "Motor, seed y APIs,\ntag = commit"),
+    ("λ", "compute", "Lambda · db-bootstrap", "Tablas, usuarios y permisos\n(única con la clave maestra)"),
+    ("ECS", "compute", "Fargate · tarea admin", "Seed de la BD y ETL de\nKaggle (imagen del seed)"),
+    ("λ", "compute", "Invoca list-loader y tasas", "Valkey y DynamoDB listos\npara el motor"),
+    ("S3", "storage", "Sube el día de demo", "Extractos, decisiones y\nKaggle; arranca la noche"),
+]
+sw, gx = 390, 32
+prev = None
+for i, (tag, icon, title, sub) in enumerate(seq):
+    c = card(50 + i * (sw + gx), AY + 50, f"{i + 1} · {title}", sub, "admin", icon, tag, w=sw)
+    if prev:
+        s.arrow([prev.right(), c.left()], "admin", start_dot=False)
+    s.card(c)
+    prev = c
+
+# ---- Panels -------------------------------------------------------------------
+py = 1118
+panel(s, 40, py, 600, 236, "Red y seguridad", [
+    ("network", "VPC", "VPC · 2 zonas · subredes pública, app y datos", "NAT ×2; endpoints de S3 y DynamoDB"),
+    ("security", "SG", "Grupos de seguridad por componente", "El motor no llega a RDS; caché por red y TLS"),
+    ("security", "IAM", "IAM: un rol por componente", "Deploy por OIDC, sin llaves en GitHub"),
+    ("security", "SSM", "Claves en Parameter Store", "Una por usuario de BD; datos cifrados en reposo"),
 ])
-panel(s, 620, py, 560, 236, "Despliegue y pruebas", [
-    ("compute", "ECR", "Amazon ECR", "Imágenes del motor, admin y APIs, tag = commit"),
-    ("management", "TF", "Terraform · un solo apply", "Construye, siembra y carga los datos de la demo"),
-    ("management", "GH", "GitHub Actions", "CI (lint, pruebas, imagen, Terraform) y Deploy con OIDC"),
-    ("compute", "EC2", "EC2 · Locust en la VPC", "Prueba de carga a 50, 150 y 300 tx/s (opcional)"),
+panel(s, 660, py, 600, 236, "Lambdas (12)", [
+    ("compute", "λ", "Consumidores: casos, historial, analítica", "Leen las 3 colas SQS"),
+    ("compute", "λ", "Programadas: alertas, list-loader, tasas", "EventBridge Scheduler"),
+    ("compute", "λ", "Noche: statement-reader, difference-writer,", "analytics-export (Step Functions)"),
+    ("compute", "λ", "APIs: rules-api, cases-api · db-bootstrap", "API Gateway · invocada por Terraform"),
 ])
-panel(s, 1200, py, 560, 236, "Observabilidad y costo", [
-    ("management", "CW", "CloudWatch", "Logs, dashboard, filtros del log de decisiones"),
-    ("management", "AL", "Alarmas → SNS alarmas operativas", "Motor, colas DLQ, conciliación, tasas, analítica"),
-    ("management", "CT", "CloudTrail y AWS Budgets", "Auditoría y alerta de gasto (USD 5 en dev)"),
-    ("database", "PG", "Un usuario de BD por componente", "Solo db-bootstrap tiene la clave maestra"),
+panel(s, 1280, py, 600, 236, "Pruebas y costo", [
+    ("compute", "EC2", "EC2 · Locust dentro de la VPC (opcional)", "Carga a 50, 150 y 300 tx/s"),
+    ("management", "K8S", "kind y EKS solo para comparar (ADR-06)", "La plataforma es ECS"),
+    ("management", "$", "AWS Budgets", "Alerta de gasto (USD 5 en dev)"),
+    ("database", "≈", "≈ $346/mes en producción", "≈ $17/mes en desarrollo"),
 ])
-legend(s, 1780, py, 530, 236, [
+legend(s, 1900, py, 660, 236, [
     ("realtime", "Decisión en tiempo real (≤ 200 ms)", False),
-    ("async", "Procesamiento asíncrono, después de responder", False),
-    ("batch", "Procesos programados y Data Lake", False),
+    ("async", "Asíncrono, después de responder", False),
+    ("batch", "Programado: cargas diarias, alertas y la noche", False),
     ("analytics", "Analítica y tablero", False),
-    ("admin", "Administración de reglas y casos", False),
-    ("realtime", "Punteada: lectura en memoria, no en cada decisión", True),
+    ("admin", "Gestión, avisos y montaje", False),
+    ("realtime", "Punteada: el motor tiene las tasas en memoria", True),
     ("admin", "El punto marca dónde nace la flecha", False),
-], "≈ $346 al mes en producción · ≈ $17 en desarrollo")
+], "≈ Los horarios son de Bogotá; EventBridge Scheduler los dispara")
 
 if __name__ == "__main__":
     out = Path(__file__).resolve().parents[1] / "static" / "img" / "architecture-flow.jpg"
