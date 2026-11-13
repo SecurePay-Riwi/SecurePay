@@ -100,7 +100,7 @@ Every alarm e-mails `securepay-dev-ops-alarms`, and its description says what to
 | 11. Unpublished events | Engine log lines `EVENTO_NO_PUBLICADO`, each with the whole event | Once SNS works, publish each event again to the decisions topic |
 | Lambda errors | `/aws/lambda/<function>` | A queue consumer retries by itself (alarm 3 if it keeps failing); a scheduled one runs again at its next time, or invoke it by hand |
 | Exchange rates stale or fixed rates | `/aws/lambda/securepay-dev-exchange-rates` | Invoke it by hand (section 1.4). If Frankfurter is down, the engine keeps using the last earlier rate |
-| Budget at 80 % or 100 % | **Billing → Cost Explorer**, by service | Destroy dev now (section 4) unless a demo is running |
+| Budget e-mail (dev: every 10 % of USD 5) | **Billing → Cost Explorer**, by service | Destroy dev now (section 4) unless a demo is running |
 
 ## 4. Take dev down
 

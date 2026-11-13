@@ -36,7 +36,7 @@ All three queues are consumed by Lambda. In the AWS run of November 11 each case
 
 ## ✅ Real duration of the two Spark jobs
 
-Both run every night on AWS Glue 6.0 with two G.1X workers ($0.308 per DPU-hour, billed per second, 1-minute minimum). The cost table assumes 10 minutes each, about $6.16 a month. In dev the whole nightly machine (reading the files, both Glue jobs, the differences, the export and the views) took 7 min 33 s on November 5, so each job takes less than the 10 minutes assumed and the estimate is on the safe side.
+Both run every night on AWS Glue 6.0 with two G.1X workers ($0.308 per DPU-hour for Glue 6.0, billed per second, 1-minute minimum). The cost table assumes 10 minutes each, about $6.16 a month. In dev the whole nightly machine (reading the files, both Glue jobs, the differences, the export and the views) took 7 min 33 s on November 5, so each job takes less than the 10 minutes assumed and the estimate is on the safe side.
 
 ## ✅ EKS against Fargate for the decision engine
 

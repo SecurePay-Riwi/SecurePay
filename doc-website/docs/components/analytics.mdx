@@ -175,6 +175,7 @@ The generator's run of `seed 42`, mode `dev`, 400 transactions, 5 % fraud, repla
 - `MULE`: three transfers in and one withdrawal; RN-03 holds the withdrawal, the transfers in are legitimate on their own.
 - `SPLITTING`: RN-05 needs the sum to exceed the limit, so the first splits pass.
 - `expected_rule_hits` in the output says it per rule: every transaction that expects `account_takeover`, `mule`, `restricted_list`, `splitting` or `velocity` got it.
+- View `q3` says the same per pattern: `expected` counts the frauds whose label names a rule (the transaction that completes the scheme), `expected_detected` how many of them were held or rejected, and `expected_detection_rate` their ratio. On the fixture day `detection_rate` is 7 of 19 (36.84 %), and `expected_detection_rate` is 7 of 7 (100 %): every scheme was stopped where the business rule says. The Kaggle labels name no rule, so their `expected` is 0 and the rate is null.
 - `shared_device` is not a fraud pattern: the generator labels its 75 transactions `is_fraud = false` with `expected_rule = shared_device`, and marks a device as shared with more than 1 account, while RN-04 asks for more than 3. The rule fired on 13 of them. Its "false positives" are by design: it only raises `risk_score` (`APPROVE`, score 30) and holds nothing.
 
 #### PaySim and Sparkov (AWS, November 11, 2026)
@@ -223,7 +224,9 @@ Measured in the AWS rehearsal of November 11: the apply loaded the 70,000 Kaggle
 
 ![Fraud detection page (q3), every label source](/img/powerbi/fraud-detection.png)
 
-![Fraud detection page (q3), generator only: 7 of 19 detected](/img/powerbi/fraud-detection-generator.png)
+![Fraud detection page (q3), generator only: 7 of 19 transactions (36.84 %), 7 of 7 schemes (100 %)](/img/powerbi/fraud-detection-generator.png)
+
+The page shows both readings of question 3: *Detection per Transaction* (`detected / frauds`) and *Detection per Scheme* (`expected_detected / expected`, the transactions where the label expects a rule). On the generator they are 36.84 % and 100 %: the 12 transactions that got through are the earlier steps of the 7 schemes, which RN-02, RN-03 and RN-05 let pass by design. The Kaggle labels name no rule, so with every source *Detection per Scheme* stays 100 % and *Detection per Transaction* falls to 0.42 %.
 
 ![Reconciliation page (q5): the 19 differences of the fixture day](/img/powerbi/reconciliation.png)
 

@@ -677,6 +677,21 @@
         "name": "top_rule",
         "type": "string",
         "comment": "Rule that detects most of the pattern."
+      },
+      {
+        "name": "expected",
+        "type": "int",
+        "comment": "Frauds whose label names an expected_rule: the transaction that completes the scheme, where the rule must act."
+      },
+      {
+        "name": "expected_detected",
+        "type": "int",
+        "comment": "Expected frauds detected."
+      },
+      {
+        "name": "expected_detection_rate",
+        "type": "decimal(9,4)",
+        "comment": "expected_detected / expected; null when 0."
       }
     ]
   }
