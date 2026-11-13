@@ -43,19 +43,14 @@ Kaggle rows ──(metrics --kaggle; in AWS MeasureKaggle)──► raw/metrics/
 
 ## Star schema
 
-```text
-                         dim_date (day)
-                              │
- dim_rule (rule, rule_version)│            dim_merchant (merchant_id, as_of)
-          │                   │                   │
-   fact_rule_hit ──── transaction_id ──── fact_decision ──── device_id ──── dim_device (device_id, as_of)
-                              │                   │
-                         fact_label          fact_case (transaction_id)
-                     (transaction_id)
+![Star schema of the analytics lake: fact_decision in the center with dim_date, dim_rule, dim_merchant and dim_device around it; fact_rule_hit, fact_label and fact_case joined by transaction_id; fact_difference and fact_reconciliation_match joined to dim_partner; the aggregates rule_metrics and pattern_coverage apart](/img/analytics-star-schema.png)
 
- fact_difference (run_day, partner) ──── dim_partner (partner) ──── fact_reconciliation_match (run_day, partner)
- rule_metrics, pattern_coverage: fact_decision + fact_label + fact_rule_hit (and the Kaggle replay, C5), by rule or pattern and label source
-```
+*Facts in blue, dimensions in green, aggregates in purple. Each card shows the keys (PK), the columns that point at another table (FK), the partition column and a few measures; the tables below list every column. Every arrow is a join of the builders or the views, pointing at the key; the dashed one is logical only (a `MISSING_IN_PAGOSEGURO` difference has no decision). Drawn by `doc-website/diagrams/star_schema.py` from `TABLES`: the script fails if a key it draws is not a column there.* <a href={require('@site/static/img/analytics-star-schema.png').default} target="_blank">Open full size</a>.
+
+- **`fact_decision`** is the center: one row per transaction, by `day` to `dim_date`, by `rules_version` to the catalog in `dim_rule`, and by `device_id` / `merchant_id` plus `day = as_of` to the 30-day snapshots of `dim_device` and `dim_merchant`.
+- **`fact_rule_hit`, `fact_label` and `fact_case`** join it by `transaction_id`; `fact_rule_hit` takes decision and score from `dim_rule` by `(rule, rule_version)`.
+- **Reconciliation:** `fact_difference` and `fact_reconciliation_match` join `dim_partner` by `partner` and `dim_date` by `run_day`; a difference's `reference` is PagoSeguro's `transaction_id` when the transaction exists.
+- **`rule_metrics` and `pattern_coverage`** are rebuilt every run from `fact_decision` + `fact_label` + `fact_rule_hit` (and the Kaggle replay, C5), by rule or pattern and label source.
 
 ## Tables
 
