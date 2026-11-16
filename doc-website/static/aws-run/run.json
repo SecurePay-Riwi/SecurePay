@@ -2,13 +2,13 @@
   "format_version": 1,
   "generated_from": "services/analytics/aws_run.py",
   "run": {
-    "recorded_at": "2026-11-11T02:43:05.729224Z",
+    "recorded_at": "2026-11-16T23:18:38.161787Z",
     "environment": "securepay-dev",
     "region": "us-east-2",
     "engine_tasks": 2,
     "window": {
-      "from": "2026-11-11T02:43:05.729224Z",
-      "to": "2026-11-11T02:44:42.162483Z"
+      "from": "2026-11-16T23:18:38.161787Z",
+      "to": "2026-11-16T23:20:15.576505Z"
     },
     "scenarios": [
       {
@@ -25,7 +25,7 @@
         "steps": [
           {
             "label": "P2P of USD 28",
-            "ms": 303.4,
+            "ms": 340.3,
             "decision": "APPROVE"
           }
         ],
@@ -33,7 +33,7 @@
           {
             "label": "Engine answered",
             "at_ms": 0,
-            "detail": "APPROVE in 303.4 ms at the client"
+            "detail": "APPROVE in 340.3 ms at the client"
           },
           {
             "label": "Account history written",
@@ -58,7 +58,7 @@
         "steps": [
           {
             "label": "P2P of USD 75 from an account not in the cache",
-            "ms": 108.8,
+            "ms": 103.8,
             "decision": "HOLD"
           }
         ],
@@ -66,7 +66,7 @@
           {
             "label": "Engine answered",
             "at_ms": 0,
-            "detail": "HOLD in 108.8 ms at the client"
+            "detail": "HOLD in 103.8 ms at the client"
           }
         ]
       },
@@ -86,7 +86,7 @@
         "steps": [
           {
             "label": "P2P of USD 120 to a listed owner",
-            "ms": 95.2,
+            "ms": 104.8,
             "decision": "REJECT"
           }
         ],
@@ -94,7 +94,7 @@
           {
             "label": "Engine answered",
             "at_ms": 0,
-            "detail": "REJECT in 95.2 ms at the client"
+            "detail": "REJECT in 104.8 ms at the client"
           },
           {
             "label": "Account history written",
@@ -103,8 +103,8 @@
           },
           {
             "label": "Case opened",
-            "at_ms": 407,
-            "detail": "cases consumer, RDS, due in 4 h (83129dfc-b5bc-4c4a-a2b4-064567498437)"
+            "at_ms": 429,
+            "detail": "cases consumer, RDS, due in 4 h (2a1b1f0c-3586-404e-966b-a44928c32aeb)"
           }
         ]
       },
@@ -124,32 +124,32 @@
         "steps": [
           {
             "label": "Transfer 1 of 6, USD 15",
-            "ms": 119.9,
+            "ms": 101.3,
             "decision": "APPROVE"
           },
           {
             "label": "Transfer 2 of 6, USD 15",
-            "ms": 92.5,
-            "decision": "APPROVE"
+            "ms": 103.9,
+            "decision": "HOLD"
           },
           {
             "label": "Transfer 3 of 6, USD 15",
-            "ms": 92.3,
-            "decision": "APPROVE"
+            "ms": 101.9,
+            "decision": "HOLD"
           },
           {
             "label": "Transfer 4 of 6, USD 15",
-            "ms": 92.3,
-            "decision": "APPROVE"
+            "ms": 104.3,
+            "decision": "HOLD"
           },
           {
             "label": "Transfer 5 of 6, USD 15",
-            "ms": 106.9,
-            "decision": "APPROVE"
+            "ms": 101.9,
+            "decision": "HOLD"
           },
           {
             "label": "Transfer 6 of 6, USD 15",
-            "ms": 92.8,
+            "ms": 105.3,
             "decision": "HOLD"
           }
         ],
@@ -157,7 +157,7 @@
           {
             "label": "Engine answered",
             "at_ms": 0,
-            "detail": "HOLD in 92.8 ms at the client"
+            "detail": "HOLD in 105.3 ms at the client"
           },
           {
             "label": "Account history written",
@@ -182,22 +182,22 @@
         "steps": [
           {
             "label": "Sender 1 transfers USD 300",
-            "ms": 94.1,
+            "ms": 103.1,
             "decision": "APPROVE"
           },
           {
             "label": "Sender 2 transfers USD 300",
-            "ms": 95.2,
+            "ms": 107.4,
             "decision": "APPROVE"
           },
           {
             "label": "Sender 3 transfers USD 300",
-            "ms": 93.0,
+            "ms": 103.3,
             "decision": "APPROVE"
           },
           {
             "label": "Withdraws USD 765 of USD 900",
-            "ms": 95.8,
+            "ms": 107.6,
             "decision": "HOLD"
           }
         ],
@@ -205,7 +205,7 @@
           {
             "label": "Engine answered",
             "at_ms": 0,
-            "detail": "HOLD in 95.8 ms at the client"
+            "detail": "HOLD in 107.6 ms at the client"
           },
           {
             "label": "Account history written",
@@ -214,18 +214,18 @@
           },
           {
             "label": "Case opened",
-            "at_ms": 576,
-            "detail": "cases consumer, RDS, due in 4 h (e473f930-43e6-4d90-b5bc-3c9f691c4d11)"
+            "at_ms": 568,
+            "detail": "cases consumer, RDS, due in 4 h (f1648af2-bae6-40cf-babe-54001c0c9b52)"
           },
           {
             "label": "Analyst resolved it",
-            "at_ms": 93410,
+            "at_ms": 94303,
             "detail": "LEGITIMATE, final decision APPROVE"
           },
           {
             "label": "Evidence locked",
             "at_ms": null,
-            "detail": "s3://…/cases/2026/11/e473f930-43e6-4d90-b5bc-3c9f691c4d11.json, Object Lock COMPLIANCE until 2026-11-11T02:49:42Z"
+            "detail": "s3://…/cases/2026/11/f1648af2-bae6-40cf-babe-54001c0c9b52.json, Object Lock COMPLIANCE until 2026-11-16T23:25:10Z"
           }
         ]
       },
@@ -245,22 +245,22 @@
         "steps": [
           {
             "label": "Account 1 pays USD 12 from the same tablet",
-            "ms": 93.2,
+            "ms": 101.3,
             "decision": "APPROVE"
           },
           {
             "label": "Account 2 pays USD 12 from the same tablet",
-            "ms": 93.5,
+            "ms": 103.0,
             "decision": "APPROVE"
           },
           {
             "label": "Account 3 pays USD 12 from the same tablet",
-            "ms": 92.1,
+            "ms": 100.4,
             "decision": "APPROVE"
           },
           {
             "label": "Account 4 pays USD 12 from the same tablet",
-            "ms": 92.4,
+            "ms": 108.3,
             "decision": "APPROVE"
           }
         ],
@@ -268,7 +268,7 @@
           {
             "label": "Engine answered",
             "at_ms": 0,
-            "detail": "APPROVE in 92.4 ms at the client"
+            "detail": "APPROVE in 108.3 ms at the client"
           },
           {
             "label": "Account history written",
@@ -293,17 +293,17 @@
         "steps": [
           {
             "label": "Withdrawal 1 of 3, USD 4,000",
-            "ms": 93.8,
+            "ms": 105.0,
             "decision": "APPROVE"
           },
           {
             "label": "Withdrawal 2 of 3, USD 4,000",
-            "ms": 94.4,
+            "ms": 107.1,
             "decision": "APPROVE"
           },
           {
             "label": "Withdrawal 3 of 3, USD 4,000",
-            "ms": 94.7,
+            "ms": 104.6,
             "decision": "HOLD"
           }
         ],
@@ -311,7 +311,7 @@
           {
             "label": "Engine answered",
             "at_ms": 0,
-            "detail": "HOLD in 94.7 ms at the client"
+            "detail": "HOLD in 104.6 ms at the client"
           },
           {
             "label": "Account history written",
@@ -320,8 +320,8 @@
           },
           {
             "label": "Case opened",
-            "at_ms": 575,
-            "detail": "cases consumer, RDS, due in 4 h (05d5d7a0-21db-4832-921c-f76b7f32302f)"
+            "at_ms": 606,
+            "detail": "cases consumer, RDS, due in 4 h (1eb67a15-694a-417f-aef7-fa8098a49ac7)"
           }
         ]
       },
@@ -341,17 +341,17 @@
         "steps": [
           {
             "label": "Device changed",
-            "ms": 88.9,
+            "ms": 99.6,
             "decision": null
           },
           {
             "label": "Password changed",
-            "ms": 88.7,
+            "ms": 98.4,
             "decision": null
           },
           {
             "label": "P2P of USD 350 from the new phone",
-            "ms": 94.7,
+            "ms": 107.2,
             "decision": "HOLD"
           }
         ],
@@ -359,7 +359,7 @@
           {
             "label": "Engine answered",
             "at_ms": 0,
-            "detail": "HOLD in 94.7 ms at the client"
+            "detail": "HOLD in 107.2 ms at the client"
           },
           {
             "label": "Account history written",
@@ -378,11 +378,11 @@
         "rules_triggered": [],
         "risk_score": 0,
         "by_default": false,
-        "amount_usd": "28.99",
+        "amount_usd": "28.62",
         "steps": [
           {
             "label": "P2P of COP 95,000",
-            "ms": 93.6,
+            "ms": 102.4,
             "decision": "APPROVE"
           }
         ],
@@ -390,7 +390,7 @@
           {
             "label": "Engine answered",
             "at_ms": 0,
-            "detail": "APPROVE in 93.6 ms at the client"
+            "detail": "APPROVE in 102.4 ms at the client"
           },
           {
             "label": "Account history written",
@@ -403,9 +403,9 @@
     "skipped": [],
     "metrics": {
       "latency_ms": {
-        "p50": 7.4,
-        "p95": 9.3,
-        "p99": 12.0
+        "p50": 8.7,
+        "p95": 12.4,
+        "p99": 12.6
       },
       "requests": 24,
       "fallback_decisions": 1,
@@ -420,19 +420,19 @@
           "errors": 0
         },
         "securepay-dev-analytics-consumer": {
-          "invocations": 4,
+          "invocations": 5,
           "errors": 0
         },
         "securepay-dev-analytics-export": {
-          "invocations": 0,
+          "invocations": 1,
           "errors": 0
         },
         "securepay-dev-cases-api": {
-          "invocations": 25,
+          "invocations": 18,
           "errors": 0
         },
         "securepay-dev-cases-consumer": {
-          "invocations": 16,
+          "invocations": 22,
           "errors": 0
         },
         "securepay-dev-db-bootstrap": {
@@ -444,7 +444,7 @@
           "errors": 0
         },
         "securepay-dev-history-consumer": {
-          "invocations": 19,
+          "invocations": 22,
           "errors": 0
         },
         "securepay-dev-list-loader": {
@@ -463,51 +463,80 @@
     }
   },
   "load_test": {
-    "source": "documented",
-    "label": "Run 5, November 5, 2026, 21:28 UTC, 10 engine tasks (docs/getting-started/load-test.mdx)",
+    "source": "recorded",
+    "label": "Recorded 2026-11-16 23:06 UTC",
     "limit_ms": 200,
     "steps": [
       {
         "rate": 50,
-        "requests": 14967,
-        "p50": 12,
-        "p95": 18,
-        "p99": 50,
-        "default_pct": 0.02,
-        "http_5xx": 1,
-        "cpu_avg": 4.5,
-        "cpu_max": 6.6
-      },
-      {
-        "rate": 150,
-        "requests": 44723,
-        "p50": 22,
-        "p95": 36,
-        "p99": 85,
-        "default_pct": 0.07,
-        "http_5xx": 1,
-        "cpu_avg": 13.1,
-        "cpu_max": 16.7
-      },
-      {
-        "rate": 300,
-        "requests": 89796,
-        "p50": 32,
-        "p95": 106,
-        "p99": 229,
-        "default_pct": 0.4,
-        "http_5xx": 2,
-        "cpu_avg": 26.6,
-        "cpu_max": 40.8
+        "requests": 27000,
+        "p50": 33.4,
+        "p95": 164.0,
+        "p99": 474.7,
+        "default_pct": 1.22,
+        "http_5xx": 0,
+        "cpu_avg": 21.9,
+        "cpu_max": 26.5
       }
     ],
     "client": {
-      "requests": 149486,
-      "failures": 4,
-      "p50": 29,
-      "p99": 170
+      "requests": 29812,
+      "failures": 0,
+      "p50": 130.0,
+      "p99": 590.0
     },
-    "series": [],
-    "notes": "At 300 tx/s the p99 per minute was under 200 ms in 2 of the 5 minutes and above in 3. Run 7 (November 7, 23:42 UTC) kept it at about 200 to 215 ms per minute; the once-a-minute stall between the engine and the cache is still being looked into."
+    "series": [
+      {
+        "minute": "2026-11-16T23:06:00Z",
+        "p99": 429.2,
+        "rate": null
+      },
+      {
+        "minute": "2026-11-16T23:07:00Z",
+        "p99": 313.6,
+        "rate": 50
+      },
+      {
+        "minute": "2026-11-16T23:08:00Z",
+        "p99": 437.1,
+        "rate": 50
+      },
+      {
+        "minute": "2026-11-16T23:09:00Z",
+        "p99": 298.1,
+        "rate": 50
+      },
+      {
+        "minute": "2026-11-16T23:10:00Z",
+        "p99": 701.9,
+        "rate": 50
+      },
+      {
+        "minute": "2026-11-16T23:11:00Z",
+        "p99": 369.6,
+        "rate": 50
+      },
+      {
+        "minute": "2026-11-16T23:12:00Z",
+        "p99": 489.3,
+        "rate": 50
+      },
+      {
+        "minute": "2026-11-16T23:13:00Z",
+        "p99": 402.6,
+        "rate": 50
+      },
+      {
+        "minute": "2026-11-16T23:14:00Z",
+        "p99": 734.7,
+        "rate": 50
+      },
+      {
+        "minute": "2026-11-16T23:15:00Z",
+        "p99": 575.3,
+        "rate": 50
+      }
+    ],
+    "notes": null
   }
 }
