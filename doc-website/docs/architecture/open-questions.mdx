@@ -15,7 +15,7 @@ Things that are not decided yet, or that are decided but still need a measuremen
 | ❗ Open | Unsolved problem. |
 | ✅ Answered | Measured or decided; kept here to show where the answer is. |
 
-## 🟡 How much cache memory the engine needs
+## 🔵 How much cache memory the engine needs
 
 ElastiCache Serverless for Valkey was chosen ([ADR-03](./decisions.mdx#adr-03)), but its memory is the estimate we trust the least:
 
@@ -28,11 +28,15 @@ ElastiCache Serverless for Valkey was chosen ([ADR-03](./decisions.mdx#adr-03)),
 | Restricted list cache (`{restricted}:docs`) | **~3.3 MB, measured** | 50 thousand documents in one set |
 | Active rules | A few KB | — |
 
-With the account history and the reference data of HU-67 the cache would be **~1 GB**. At $0.084 per GB-hour that is about $61 a month of memory, some $40 more than the ~$23 of the cost table (which assumes 300 MB); the cost table does not change until the load test confirms the history part. Ways to bring it down if needed: keep only the accounts with recent activity, or drop `user_id` from `acct:` (the engine does not read it today). Still open: the load test runs did not record it. [Load test the engine](../getting-started/load-test.mdx) says how to read the cache's `BytesUsedForCache` and `ElastiCacheProcessingUnits` after the 300 tx/s step, which closes this question. Also pending: the real latency of the serverless layer and the operations it consumes per transaction.
+With the account history and the reference data of HU-67 the cache would be **~1 GB**. At $0.084 per GB-hour (about $61 per GB a month) that is some $43 a month more than the cost table, which assumes 300 MB. Ways to bring it down if needed: keep only the accounts with recent activity, or drop `user_id` from `acct:` (the engine does not read it today).
+
+**Already measured in the load test** ([Load test the engine](../getting-started/load-test.mdx#result)): the cache's speed and use. Read p99 of 3.6 ms, a peak of 14,430 ECPU/s at 300 tx/s with no throttled commands once its limit was 20,000 ECPU/s, and about 33 to 48 ECPUs per decision.
+
+**Still to measure: the memory itself.** The load test runs did not record `BytesUsedForCache`, so the 300 MB of the cost table is still an estimate. [Load test the engine](../getting-started/load-test.mdx) says how to read it after the 300 tx/s step; the next run in AWS closes this question.
 
 ## 🔵 Cases consumer: Lambda or Fargate
 
-All three queues are consumed by Lambda. In the AWS run of November 11 each case was open 0.4 to 0.6 s after its decision, with no errors ([AWS run](../components/aws-run.mdx)). The time per batch at production volume is not measured yet: if case processing turned out heavier, that consumer can move to Fargate (~$30/month per task).
+All three queues are consumed by Lambda. In the AWS run of November 11 each case was open 0.4 to 0.6 s after its decision, with no errors ([AWS run](../components/aws-run.mdx)). The time per batch at production volume is not measured yet: if case processing turned out heavier, that consumer can move to Fargate (about $18 a month per task of 0.5 vCPU and 1 GB).
 
 ## ✅ Real duration of the two Spark jobs
 
