@@ -873,3 +873,15 @@
     font-size: 0.58rem;
   }
 }
+
+.heroImage {
+  display: block;
+  width: 100%;
+  max-width: 560px;
+  height: auto;
+  margin: 0 auto;
+  /* Fade the edges into the hero and let its dark areas take the page's color. */
+  -webkit-mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 55%, transparent 100%);
+  mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 55%, transparent 100%);
+  mix-blend-mode: lighten;
+}
