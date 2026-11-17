@@ -173,7 +173,7 @@ Everything runs in AWS (dev, region `us-east-2`) from one command. On a Windows 
 
 Run the commands in PowerShell.
 
-**1. AWS user (once, in the console).** Sign in to the [AWS console](https://console.aws.amazon.com/) and go to **IAM → Users → Create user**. Name it `<your-name>-terraform`, attach **`PowerUserAccess`**, then add an inline policy named `securepay-terraform-iam` with the whole [`infra/terraform/terraform-user-policy.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/terraform-user-policy.json). In **Security credentials → Create access key → Command Line Interface**, create a key. Each step in detail: [Deploy to AWS, steps 2 and 3](./getting-started/deploy-aws-terraform.mdx#2-create-an-iam-user-for-terraform).
+**1. AWS user (once, in the console).** Sign in to the [AWS console](https://console.aws.amazon.com/) and go to **IAM → Users → Create user**. Name it `<your-name>-terraform`, attach **`PowerUserAccess`**, then add an inline policy named `securepay-terraform-iam` with the whole [`infra/terraform/terraform-user-policy.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/terraform-user-policy.json). In **Security credentials → Create access key → Command Line Interface**, create a key. Each step in detail: [Deploy to AWS, steps 2 and 3](./operations/deploy-aws-terraform.mdx#2-create-an-iam-user-for-terraform).
 
 **2. Clone the four repositories side by side.**
 
@@ -229,7 +229,7 @@ $bucket = (docker compose -f compose.aws.yml run --rm -T deployer output -json b
 Add-OdbcDsn -Name "securepay-athena" -DriverName "Amazon Athena ODBC (x64)" -DsnType "User" -Platform "64-bit" -SetPropertyValue @("AwsRegion=us-east-2", "Catalog=AwsDataCatalog", "Schema=securepay_dev_analytics", "Workgroup=securepay-dev-powerbi", "OutputLocation=s3://$bucket/athena-results/powerbi/", "AuthenticationType=Default Credentials", "AwsProfile=securepay-powerbi")
 ```
 
-Open `services\analytics\powerbi\securepay.pbix`. In **Transform data → Manage parameters**, set `DataSource` to `Athena`, then **Close & Apply**. About 10 minutes after the apply, once the treasury e-mail of 2026-10-05 has arrived, **Refresh** shows the six pages from Athena. Details: [Power BI over Athena](./getting-started/deploy-aws-terraform.mdx#power-bi-over-athena).
+Open `services\analytics\powerbi\securepay.pbix`. In **Transform data → Manage parameters**, set `DataSource` to `Athena`, then **Close & Apply**. About 10 minutes after the apply, once the treasury e-mail of 2026-10-05 has arrived, **Refresh** shows the six pages from Athena. Details: [Power BI over Athena](./operations/deploy-aws-terraform.mdx#power-bi-over-athena).
 
 **8. Take it down.** Run this after every session: the NAT Gateways and the database cost money even when idle. Answer `yes`.
 
@@ -237,4 +237,4 @@ Open `services\analytics\powerbi\securepay.pbix`. In **Transform data → Manage
 docker compose -f compose.aws.yml run --rm deployer destroy
 ```
 
-The Terraform state stays in `infra\terraform\envs\dev\terraform.tfstate` on this computer. Apply and destroy always from the same computer, and never share that file: it holds the database passwords. To work without the container (Terraform, the AWS CLI and uv installed), the same steps are in [Deploy to AWS](./getting-started/deploy-aws-terraform.mdx).
+The Terraform state stays in `infra\terraform\envs\dev\terraform.tfstate` on this computer. Apply and destroy always from the same computer, and never share that file: it holds the database passwords. To work without the container (Terraform, the AWS CLI and uv installed), the same steps are in [Deploy to AWS](./operations/deploy-aws-terraform.mdx).

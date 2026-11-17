@@ -496,3 +496,219 @@ There is no order yet; we have a list of what the client wants:
 - PR #92 merged: precision and false positives per rule (view `q2`) and fraud detected against missed per pattern (view `q3`), measured in Python over a replay and in Spark over the lake (HU-44 to HU-46, Habith).
 - PR #93 merged: `POST /rules/simulations` and `python -m services.analytics.simulate` replay one day with a candidate catalog and compare it with the current one, without writing anything. Over the fixture day, splitting back to `APPROVE` lets USD 7,324.67 through (HU-24, Habith).
 - PR #94 merged: the CI of the four source repositories on the Contributing and Testing pages (MAG-246).
+- PR #95 merged: the Sprint 4 to 6 PRs recorded in this logbook (Habith).
+- PR #96 merged: the exchange-rates Lambda runs securepay-apis' image every day at 11:00 Bogotá, deployed by that repository with its own role (MAG-359, Jorge).
+- PR #97 merged: Firehose and EMR removed; the analytics queue sends batches of up to 1,000 decisions, one S3 file each (MAG-360, Jorge).
+- PR #98 merged: one database user per component; only the `db-bootstrap` Lambda has the master password and creates the tables (MAG-361, Jorge).
+- PR #99 merged: analytics contract v1.1 for the six questions of the brief: amounts in q3, q4 by analyst, matched rows in q5 (Habith).
+
+---
+
+**11/04/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Sprint 6 analytics, monitoring, Kubernetes, load test and costs  
+
+**Description:**  
+- PR #100 merged: the cases, reconciliation and device builders, views q4 to q6 and the Power BI report with six pages (HU-51, HU-52, HU-47, Yulianis).
+- PR #101 merged: the state machine as a JSON template checked by a test, and the data quality checks of every analytics table (HU-66, Jorge).
+- PR #102 merged: the analytics run every night after the reconciliation: export, Glue job and the Athena views (HU-66, Jorge).
+- PR #103 merged: the dashboard, alarms, metric filters and the decision log line (HU-59, Jorge).
+- PR #104 merged: the engine on Kubernetes (kind and EKS) to compare with Fargate (HU-58, Jorge).
+- PR #105 merged: the load test of the engine with Locust at 50, 150 and 300 tx/s (HU-60, Jorge).
+- PR #106 merged: the three cost options and the runbook (HU-61, Jorge).
+- PR #107 merged: the team decision to leave X-Ray out (MAG-341, Jorge).
+- PR #108 merged: the rules read only the newest 100 outgoing movements of an account; dev is seeded with 10,000 users (HU-60, Jorge).
+
+---
+
+**11/05/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** First AWS test session and its fixes  
+
+**Description:**  
+- PR #109 merged: the rules and cases APIs deployed as Lambdas behind API Gateway with Cognito (HU-61, Jorge).
+- PR #110 merged: one `terraform apply` builds and pushes the images, seeds RDS and loads the cache and the rates (HU-61, Jorge).
+- PR #111 merged: the load test runs from an EC2 machine inside the VPC (HU-60, Jorge).
+- PR #112 merged: the match runs with one join and sized partitions, 20.16 s to 7.66 s (E-13, Habith).
+- PR #113 merged: the fixes found in the AWS test: the 19 differences of the demo day, Power BI over Athena, the log example (Jorge).
+- PR #114 merged: the apply also creates the demo users, uploads the demo day and starts its reconciliation (HU-61, Jorge).
+- PRs #115 to #117 merged: fixes for the apply on Windows, the Terraform state out of the engine image and the listed account of the 10,000-user seed (Jorge).
+- PRs #118 to #121 merged: under load, a late decision is cancelled, the cache can take 300 tx/s, and a decision makes four round trips to Valkey (HU-60, Jorge).
+
+---
+
+**11/06/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Load test diagnosis  
+
+**Description:**  
+- PR #122 merged: a late decision logs where it spent its time (HU-60, Jorge).
+- PR #123 merged: the destroy can remove the `powerbi` user (HU-61, Jorge).
+
+---
+
+**11/07/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Load test runs 6 to 8 and the web demo  
+
+**Description:**  
+- PRs #124 and #131 merged: load test runs 6, 7 and 8 recorded, with the once-a-minute pause as a known issue (HU-60, Jorge).
+- PR #125 merged: Valkey socket timeouts and keepalive, and the connections counted in the late decision line (HU-60, Jorge).
+- PR #126 merged: Power BI over Athena from zero on the deploy page (HU-53, Yulianis).
+- PR #128 merged: an optional node-based Valkey cluster instead of Serverless, off by default (HU-60, Jorge).
+- PRs #127, #129 and #130 merged: the `/demo` page, the map of the AWS path and the page recorded on AWS (Yulianis).
+
+---
+
+**11/08/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Known issue, API contract and the live demo  
+
+**Description:**  
+- PR #132 merged: the docs say the p99 limit at 300 tx/s is met in most minutes, not every minute, and link the known issue (HU-60, Yulianis).
+- PR #133 merged: the OpenAPI files of the three APIs on the site and the Bruno collection (E-05, Yulianis).
+- PR #135 merged: the web demo pages (`/demo`, `/aws-run`) and the live AWS frontend.
+
+---
+
+**11/09/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Power BI on Athena, one-container deploy and the API pages  
+
+**Description:**  
+- PRs #136 and #137 merged: native design of the Power BI pages and one `DataSource` parameter to read the views locally or from Athena (HU-48 to HU-50, HU-53, Yulianis).
+- PR #134 merged: Docker image size before and after (topic 3, Yulianis).
+- PR #138 merged: the rules measured on the Kaggle datasets in AWS every night (MAG-312, Habith).
+- PR #139 merged: the apply writes the Power BI key to its AWS CLI profile (HU-61, Jorge).
+- PR #140 merged: dev comes up with only Git and Docker through the deployer container (HU-61, Jorge).
+- PR #141 merged: `GET /cases/{case_id}/senders`, the senders behind a case (CA-02, Habith).
+- PR #142 merged: every documented endpoint is called in the Bruno collection (E-05, Habith).
+- PR #143 merged: the restricted list pages say what the code does: the engine never calls the provider (HU-67, Habith).
+- PRs #144 and #145 merged: only `gerente` changes the rules, CORS for the site, and the `/rules-api` and `/cases-api` pages (Habith).
+- PRs #146 and #147 merged: the apply reads tool output as UTF-8 on Windows, and every API route answers its preflight (Habith).
+
+---
+
+**11/10/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Kubernetes result and the AWS run  
+
+**Description:**  
+- PR #148 merged: ADR-06 records the kind run against Compose, with screenshots (HU-58, Jorge).
+- PR #149 merged: the `/aws-run` page shows the run of November 11 on dev (Habith).
+
+---
+
+**11/11/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Docs match what is built  
+
+**Description:**  
+- PR #150 merged: the docs match `main`: no device–account DynamoDB table, no rule-changed topic, no Firehose or EMR (Habith).
+
+---
+
+**11/12/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Expected detection and the budget  
+
+**Description:**  
+- PRs #151 and #152 merged: q3 and the dashboard show detection per scheme, the frauds a rule was expected to catch (HU-46, Habith).
+- PR #153 merged: the costs with the November calculator estimate and the budget (HU-61, Habith).
+
+---
+
+**11/13/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Diagrams  
+
+**Description:**  
+- PR #154 merged: the analytics star schema as a diagram (Habith).
+- PR #155 merged: the architecture diagrams redrawn (Habith).
+
+---
+
+**11/16/2026**  
+**Leader:** Habith  
+**Minion-1:** Yulianis  
+**Minion-2:** Jorge  
+**Daily:** No  
+**Meeting:** No  
+**Asynchronous:** Yes  
+**Time:** —  
+
+**Activity:** Final docs before the presentation  
+
+**Description:**  
+- PR #156 merged: the cache memory open question closed with the load test numbers (Habith).
+- PR #157 merged: the AWS, Kubernetes and load test pages moved from Getting started to Operations, with redirects from the old links; the configuration reference checked against the code (Habith).

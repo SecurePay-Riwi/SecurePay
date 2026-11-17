@@ -464,7 +464,7 @@
   },
   "load_test": {
     "source": "documented",
-    "label": "Run 5, November 5, 2026, 21:28 UTC, 10 engine tasks (docs/getting-started/load-test.mdx)",
+    "label": "Run 5, November 5, 2026, 21:28 UTC, 10 engine tasks (docs/operations/load-test.mdx)",
     "limit_ms": 200,
     "steps": [
       {

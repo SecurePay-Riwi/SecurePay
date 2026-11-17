@@ -30,9 +30,9 @@ ElastiCache Serverless for Valkey was chosen ([ADR-03](./decisions.mdx#adr-03)),
 
 With the account history and the reference data of HU-67 the cache would be **~1 GB**. At $0.084 per GB-hour (about $61 per GB a month) that is some $43 a month more than the cost table, which assumes 300 MB. Ways to bring it down if needed: keep only the accounts with recent activity, or drop `user_id` from `acct:` (the engine does not read it today).
 
-**Already measured in the load test** ([Load test the engine](../getting-started/load-test.mdx#result)): the cache's speed and use. Read p99 of 3.6 ms, a peak of 14,430 ECPU/s at 300 tx/s with no throttled commands once its limit was 20,000 ECPU/s, and about 33 to 48 ECPUs per decision.
+**Already measured in the load test** ([Load test the engine](../operations/load-test.mdx#result)): the cache's speed and use. Read p99 of 3.6 ms, a peak of 14,430 ECPU/s at 300 tx/s with no throttled commands once its limit was 20,000 ECPU/s, and about 33 to 48 ECPUs per decision.
 
-**Still to measure: the memory itself.** The load test runs did not record `BytesUsedForCache`, so the 300 MB of the cost table is still an estimate. [Load test the engine](../getting-started/load-test.mdx) says how to read it after the 300 tx/s step; the next run in AWS closes this question.
+**Still to measure: the memory itself.** The load test runs did not record `BytesUsedForCache`, so the 300 MB of the cost table is still an estimate. [Load test the engine](../operations/load-test.mdx) says how to read it after the 300 tx/s step; the next run in AWS closes this question.
 
 ## 🔵 Cases consumer: Lambda or Fargate
 
@@ -48,7 +48,7 @@ Answered in [ADR-06](./decisions.mdx#adr-06) on November 10: the engine ran on K
 
 ## ❗ p99 above 200 ms at 300 tx/s with 10 tasks {/* #p99-at-300 */}
 
-RNF-01 and CA-09 ask for a decision p99 of 200 ms or less at 300 tx/s. The load test meets it at 50 and 150 tx/s, and at 300 tx/s in most minutes, on the client's p99 and with 20 tasks. With 10 tasks of 0.5 vCPU it is **not met end to end**: the load balancer's p99 goes above 200 ms in some minutes (run 5: 229 ms over the step; runs 7 and 8: 205 to 215 ms). The cause is an engine task pausing 100 to 300 ms about once a minute, not the CPU or the cache. Not proven: blocking log writes to CloudWatch or garbage collector pauses. Next check, after the delivery (team decision of 2026-11-08): the `awslogs` driver in non-blocking mode with `uvicorn --no-access-log`, and the GC pauses measured in the same run. Details in [Load test the engine](../getting-started/load-test.mdx#known-issue).
+RNF-01 and CA-09 ask for a decision p99 of 200 ms or less at 300 tx/s. The load test meets it at 50 and 150 tx/s, and at 300 tx/s in most minutes, on the client's p99 and with 20 tasks. With 10 tasks of 0.5 vCPU it is **not met end to end**: the load balancer's p99 goes above 200 ms in some minutes (run 5: 229 ms over the step; runs 7 and 8: 205 to 215 ms). The cause is an engine task pausing 100 to 300 ms about once a minute, not the CPU or the cache. Not proven: blocking log writes to CloudWatch or garbage collector pauses. Next check, after the delivery (team decision of 2026-11-08): the `awslogs` driver in non-blocking mode with `uvicorn --no-access-log`, and the GC pauses measured in the same run. Details in [Load test the engine](../operations/load-test.mdx#known-issue).
 
 ## 🟡 Where the Kaggle history lives in production
 
