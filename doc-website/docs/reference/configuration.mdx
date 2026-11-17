@@ -120,15 +120,25 @@ Sprint 6: `python -m services.analytics` (the ETL to the dimensional model and t
 | Variable | Default | What it does |
 | :--- | :--- | :--- |
 | `AWS_ENDPOINT_URL` | `http://localhost:4566` | Sends every AWS call to LocalStack. **Not set in AWS.** |
-| `AWS_DEFAULT_REGION` | `us-east-2` | Region. |
+| `AWS_DEFAULT_REGION` | `us-east-2` | Region. In a Lambda, the database password is read in `AWS_REGION`, which AWS sets itself, and `AWS_DEFAULT_REGION` only when it is missing. |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | `test` / `test` | Fake on purpose: LocalStack accepts anything. In AWS the IAM role is used instead. |
-| `SNS_DECISIONES_TOPIC_ARN` | `arn:aws:sns:us-east-2:000000000000:decisiones` | Topic where decisions are published. If empty, every event is logged as not published. |
+| `SNS_DECISIONES_TOPIC_ARN` | empty (`.env.example` and Compose: `arn:aws:sns:us-east-2:000000000000:decisiones`, LocalStack's) | Topic where decisions are published. If empty, every event is logged as not published. In AWS Terraform sets the ARN of `securepay-<env>-decisions`. |
 | `DATALAKE_BUCKET` | `pagoseguro-datalake` | Bucket for the `raw/` layer. |
 | `PUBLISH_BATCH_WAIT_MS` | `500` | Max wait to fill a batch of 10. |
 | `PUBLISH_BUFFER_SIZE` | `10000` | In-memory events allowed while SNS does not answer. |
 | `PUBLISH_RETRIES` | `3` | Retries per batch. |
 
 See [Messaging](../components/messaging.mdx).
+
+## Load test
+
+In `SecurePay` (`infra/load/locustfile.py`, HU-60). Not in `.env.example`: they are set on the command line or by the EC2 load runner. See [Load test](../operations/load-test.mdx).
+
+| Variable | Default | What it does |
+| :--- | :--- | :--- |
+| `LOAD_STEPS` | `50,150,300` | Transactions per second of each step, separated by commas. |
+| `LOAD_STEP_SECONDS` | `300` | Seconds each step lasts. |
+| `LOAD_VERIFY_TLS` | `false` | `true` checks the load balancer's certificate; dev's is self-signed. |
 
 ## Kaggle datasets
 

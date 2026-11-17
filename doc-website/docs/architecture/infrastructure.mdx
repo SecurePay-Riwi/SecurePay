@@ -79,7 +79,7 @@ This is the inventory of what Terraform must create, not of what exists today. D
 | ACM certificate | | 1 | For the load balancer; free. Self-signed in dev unless `domain_name` is set | Built in dev |
 | Application Load Balancer | `pagoseguro-prod-alb` | 1 | Public, in the two public subnets. Listener on 443 with TLS; one target group on port 8080 with a health check on `/health` | Built in dev |
 | ECS cluster | `pagoseguro-prod` | 1 | Fargate only | Built in dev |
-| ECS service for the engine | `motor` | 1 | 0.5 vCPU / 1 GB per task; minimum 4, maximum 24 in prod (dev: 2 and 4 by default, `engine_min_tasks` / `engine_max_tasks`), spread across the two zones; scales on CPU (60 %) and on requests per task on the load balancer (`engine_requests_per_task`, 1,800 a minute = 30 per second); deployment circuit breaker with automatic rollback | Built in dev; the requests per task were measured in the [load test](../getting-started/load-test.mdx#result) |
+| ECS service for the engine | `motor` | 1 | 0.5 vCPU / 1 GB per task; minimum 4, maximum 24 in prod (dev: 2 and 4 by default, `engine_min_tasks` / `engine_max_tasks`), spread across the two zones; scales on CPU (60 %) and on requests per task on the load balancer (`engine_requests_per_task`, 1,800 a minute = 30 per second); deployment circuit breaker with automatic rollback | Built in dev; the requests per task were measured in the [load test](../operations/load-test.mdx#result) |
 | Task definitions | `motor`, `admin` | 2 | Image tagged with the commit, never just `latest`. `admin` is the seed image: it seeds RDS and loads the Kaggle sample on demand | Built in dev |
 | ECR repositories | `engine`, `admin` (the seed), `apis` (securepay-apis), `generator` | 4 | Image scanning on push; lifecycle rule that keeps the last 10 | Built in dev |
 | Lambda functions | see the next table | 12 | Python 3.12; 512 MB and 60 s except where the table says otherwise | Built in dev |
@@ -180,7 +180,7 @@ Each threshold comes from a requirement, not from intuition. Built (HU-59): ever
 | 13 | Exchange rates stale | No successful run of the exchange-rates Lambda in 4 days | The engine falls back to the last earlier rate; after 4 days the USD amounts drift | Invoke the Lambda and check Frankfurter | `modules/monitoring` (`-exchange-rates-stale`) |
 | 14 | Fixed exchange rates | ≥ 1 log line "using the fixed" in the engine | The table has no rate for the day or any day before it | Invoke the exchange-rates Lambda | `modules/monitoring` (`-engine-fixed-rates`) |
 
-Alarm 10 is an AWS Budgets alert; the others are CloudWatch alarms. The engine alarms (1, 2, 6, 7, 11, 14) exist only once the engine is deployed (`engine_image_tag`). The easiest one to show live is number 3: a message the consumer cannot process is sent on purpose, it lands in the dead-letter queue and the alarm sends the email (step by step in [Deploy to AWS](../getting-started/deploy-aws-terraform.mdx)).
+Alarm 10 is an AWS Budgets alert; the others are CloudWatch alarms. The engine alarms (1, 2, 6, 7, 11, 14) exist only once the engine is deployed (`engine_image_tag`). The easiest one to show live is number 3: a message the consumer cannot process is sent on purpose, it lands in the dead-letter queue and the alarm sends the email (step by step in [Deploy to AWS](../operations/deploy-aws-terraform.mdx)).
 
 **E-mails only when an alarm fires.** No alarm of `modules/monitoring` e-mails on its way back to OK. Every new alarm goes from no data to OK as soon as it is created, so an `apply` used to send about ten OK e-mails that said nothing. Healthy tasks per zone also waits 5 minutes and ignores missing data, so the first tasks can register without an alarm. The console shows when an alarm is OK again.
 
@@ -194,7 +194,7 @@ Some figures in the inventory cannot be known before building and measuring. Eac
 
 **Engine tasks: minimum 4, maximum 24.**
 - Calculation: with two zones, losing one takes half the tasks. For the 2 surviving tasks to handle the sustained 50 tx/s, each task must serve 50 ÷ 2 = 25 requests per second. For the peak: 300 ÷ 25 = 12 live tasks, and 12 × 2 = 24 so that 12 survive if a zone goes down (see [ADR-07](./decisions.mdx#adr-07)).
-- Expected: 25 requests per second per 0.5 vCPU task. **Measured** in the [load test](../getting-started/load-test.mdx#result): at 30 per task (10 tasks at 300 tx/s) the CPU stays under 41 % but the p99 goes above 200 ms in some minutes, because of a pause once a minute, not the load ([known issue](../getting-started/load-test.mdx#known-issue)); at 15 per task (20 tasks) the p99 was 129 ms. The 25 stays unconfirmed until the pause is fixed.
+- Expected: 25 requests per second per 0.5 vCPU task. **Measured** in the [load test](../operations/load-test.mdx#result): at 30 per task (10 tasks at 300 tx/s) the CPU stays under 41 % but the p99 goes above 200 ms in some minutes, because of a pause once a minute, not the load ([known issue](../operations/load-test.mdx#known-issue)); at 15 per task (20 tasks) the p99 was 129 ms. The 25 stays unconfirmed until the pause is fixed.
 - If it comes out different: at 20 per task it would be 6 and 30; at 15, 8 and 40.
 
 **Memory of the consumer Lambdas: 512 MB.**

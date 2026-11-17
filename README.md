@@ -37,7 +37,7 @@ Everything runs in AWS (dev, region `us-east-2`) from one command. On a Windows 
 
 Run the commands in PowerShell.
 
-**1. AWS user (once, in the console).** Sign in to the [AWS console](https://console.aws.amazon.com/) and go to **IAM → Users → Create user**. Name it `<your-name>-terraform`, attach **`PowerUserAccess`**, then add an inline policy named `securepay-terraform-iam` with the whole [`infra/terraform/terraform-user-policy.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/terraform-user-policy.json). In **Security credentials → Create access key → Command Line Interface**, create a key. Each step in detail: [Deploy to AWS, steps 2 and 3](https://securepay-riwi.github.io/SecurePay/docs/getting-started/deploy-aws-terraform#2-create-an-iam-user-for-terraform).
+**1. AWS user (once, in the console).** Sign in to the [AWS console](https://console.aws.amazon.com/) and go to **IAM → Users → Create user**. Name it `<your-name>-terraform`, attach **`PowerUserAccess`**, then add an inline policy named `securepay-terraform-iam` with the whole [`infra/terraform/terraform-user-policy.json`](https://github.com/SecurePay-Riwi/SecurePay/blob/main/infra/terraform/terraform-user-policy.json). In **Security credentials → Create access key → Command Line Interface**, create a key. Each step in detail: [Deploy to AWS, steps 2 and 3](https://securepay-riwi.github.io/SecurePay/docs/operations/deploy-aws-terraform#2-create-an-iam-user-for-terraform).
 
 **2. Clone the four repositories side by side.**
 
@@ -72,7 +72,7 @@ copy infra\terraform\envs\dev\terraform.tfvars.example infra\terraform\envs\dev\
 notepad infra\terraform\envs\dev\terraform.tfvars
 ```
 
-**6. Bring it up.** Answer `yes`. It creates a few hundred resources (the exact count, kept in one place: [Deploy to AWS, "Create the environment"](https://securepay-riwi.github.io/SecurePay/docs/getting-started/deploy-aws-terraform#4-create-the-environment)); it takes a while. The apply does all of this:
+**6. Bring it up.** Answer `yes`. It creates a few hundred resources (the exact count, kept in one place: [Deploy to AWS, "Create the environment"](https://securepay-riwi.github.io/SecurePay/docs/operations/deploy-aws-terraform#4-create-the-environment)); it takes a while. The apply does all of this:
 
 - builds and pushes the images;
 - creates the network, the engine, the Lambdas, the APIs with their Cognito users, the database, the cache, the data lake, Glue and Athena;
@@ -93,7 +93,7 @@ $bucket = (docker compose -f compose.aws.yml run --rm -T deployer output -json b
 Add-OdbcDsn -Name "securepay-athena" -DriverName "Amazon Athena ODBC (x64)" -DsnType "User" -Platform "64-bit" -SetPropertyValue @("AwsRegion=us-east-2", "Catalog=AwsDataCatalog", "Schema=securepay_dev_analytics", "Workgroup=securepay-dev-powerbi", "OutputLocation=s3://$bucket/athena-results/powerbi/", "AuthenticationType=Default Credentials", "AwsProfile=securepay-powerbi")
 ```
 
-Open `services\analytics\powerbi\securepay.pbix`. In **Transform data → Manage parameters**, set `DataSource` to `Athena`, then **Close & Apply**. About 10 minutes after the apply, once the treasury e-mail of 2026-10-05 has arrived, **Refresh** shows the six pages from Athena. Details: [Power BI over Athena](https://securepay-riwi.github.io/SecurePay/docs/getting-started/deploy-aws-terraform#power-bi-over-athena).
+Open `services\analytics\powerbi\securepay.pbix`. In **Transform data → Manage parameters**, set `DataSource` to `Athena`, then **Close & Apply**. About 10 minutes after the apply, once the treasury e-mail of 2026-10-05 has arrived, **Refresh** shows the six pages from Athena. Details: [Power BI over Athena](https://securepay-riwi.github.io/SecurePay/docs/operations/deploy-aws-terraform#power-bi-over-athena).
 
 **8. Take it down.** Run this after every session: the NAT Gateways and the database cost money even when idle. Answer `yes`.
 
@@ -101,7 +101,7 @@ Open `services\analytics\powerbi\securepay.pbix`. In **Transform data → Manage
 docker compose -f compose.aws.yml run --rm deployer destroy
 ```
 
-The Terraform state stays in `infra\terraform\envs\dev\terraform.tfstate` on this computer. Apply and destroy always from the same computer, and never share that file: it holds the database passwords. To work without the container (Terraform, the AWS CLI and uv installed), the same steps are in [Deploy to AWS](https://securepay-riwi.github.io/SecurePay/docs/getting-started/deploy-aws-terraform).
+The Terraform state stays in `infra\terraform\envs\dev\terraform.tfstate` on this computer. Apply and destroy always from the same computer, and never share that file: it holds the database passwords. To work without the container (Terraform, the AWS CLI and uv installed), the same steps are in [Deploy to AWS](https://securepay-riwi.github.io/SecurePay/docs/operations/deploy-aws-terraform).
 
 ### Librería común: `securepay-shared`
 
@@ -782,7 +782,7 @@ En el workflow de GitHub Actions, la validación de arranque y health checks de 
 
 ## Infraestructura en AWS (Terraform)
 
-`infra/terraform/` crea en AWS la red, los security groups, los roles IAM, los buckets S3, RDS, los repositorios de ECR, la cache (ElastiCache Serverless) y el motor en ECS Fargate detrás del balanceador del diseño. Los nombres van en inglés con el prefijo `securepay-<ambiente>-`. Qué crea y por qué está en `doc-website/docs/architecture/terraform.mdx`; el paso a paso (instalar la CLI de AWS y Terraform, crear el usuario IAM y su llave, crear, revisar y destruir) está en `doc-website/docs/getting-started/deploy-aws-terraform.mdx`.
+`infra/terraform/` crea en AWS la red, los security groups, los roles IAM, los buckets S3, RDS, los repositorios de ECR, la cache (ElastiCache Serverless) y el motor en ECS Fargate detrás del balanceador del diseño. Los nombres van en inglés con el prefijo `securepay-<ambiente>-`. Qué crea y por qué está en `doc-website/docs/architecture/terraform.mdx`; el paso a paso (instalar la CLI de AWS y Terraform, crear el usuario IAM y su llave, crear, revisar y destruir) está en `doc-website/docs/operations/deploy-aws-terraform.mdx`.
 
 Necesitas Terraform 1.9 o más reciente, la CLI de AWS y un usuario IAM (nunca root) con `PowerUserAccess` más la política `infra/terraform/terraform-user-policy.json`. No se guardan credenciales en archivos. Desde `infra/terraform/envs/dev`:
 
@@ -804,12 +804,12 @@ Un solo `terraform apply` construye y sube las imágenes del motor, del seed y d
 
 **Nightly reconciliation (HU-36, Sprint 5).** With `lambda_image_tag` Terraform adds the Lambdas `-statement-reader` and `-difference-writer`, the AWS Glue 6.0 job `securepay-dev-reconciliation-match` (Spark 4.1.1; EMR is not available on AWS's free account plan, Glue is; Terraform zips and uploads the job's code itself, no build step), the state machine `securepay-dev-reconciliation` (02:00 Bogotá), the 06:30 check and the failure alarm; `treasury_emails` gets the result of each night. The test with the fixture day is section 8 of `deploy-aws-terraform.mdx`.
 
-**Kubernetes (HU-58).** `infra/k8s/` runs the same engine on kind (local, free) and on EKS (one session in dev, deleted the same day) to compare it with Fargate (ADR-06): `kind create cluster --name securepay --config infra/k8s/overlays/kind/kind.yaml`, `kubectl apply -k infra/k8s/overlays/kind` and `uv run python infra/k8s/latency.py http://127.0.0.1:8000 http://127.0.0.1:8080`. Steps: `doc-website/docs/getting-started/kubernetes.mdx`.
+**Kubernetes (HU-58).** `infra/k8s/` runs the same engine on kind (local, free) and on EKS (one session in dev, deleted the same day) to compare it with Fargate (ADR-06): `kind create cluster --name securepay --config infra/k8s/overlays/kind/kind.yaml`, `kubectl apply -k infra/k8s/overlays/kind` and `uv run python infra/k8s/latency.py http://127.0.0.1:8000 http://127.0.0.1:8080`. Steps: `doc-website/docs/operations/kubernetes.mdx`.
 
 **Image size (topic 3).** `infra/docker/measure-image-sizes.ps1` builds the five images with and without the optimizations; the result (68 % to 92 % smaller) is in `doc-website/docs/getting-started/local-setup.mdx`.
 
 **API contract (E-05).** `uv run python -m infra.api.openapi` exports the OpenAPI of the engine, the rules API and the cases API to `doc-website/static/openapi/`; `infra/api/bruno/` is a Bruno collection with the happy and error cases against the local stack (`bru run --env local`). Steps: `doc-website/docs/getting-started/testing.mdx`.
 
-**Load test (HU-60).** `uv sync --group load`, then `uv run --group load locust -f infra/load/locustfile.py --headless --host https://<ALB>`: 50, 150 and 300 tx/s against the engine in dev, 5 minutes each. Steps and how to read the result: `doc-website/docs/getting-started/load-test.mdx`.
+**Load test (HU-60).** `uv sync --group load`, then `uv run --group load locust -f infra/load/locustfile.py --headless --host https://<ALB>`: 50, 150 and 300 tx/s against the engine in dev, 5 minutes each. Steps and how to read the result: `doc-website/docs/operations/load-test.mdx`.
 
 El estado (`terraform.tfstate`) y `terraform.tfvars` quedan en tu equipo y git los ignora. El estado guarda las contraseñas de RDS, así que no se comparte. Corre `apply` y `destroy` siempre desde el mismo equipo.

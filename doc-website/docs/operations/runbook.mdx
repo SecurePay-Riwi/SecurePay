@@ -1,5 +1,5 @@
 ---
-sidebar_position: 1
+sidebar_position: 2
 title: Runbook
 description: Bring dev up, run the demo, answer each alarm and take it down, with the exact commands (E-12, CT-05).
 ---
@@ -12,7 +12,7 @@ What the team does in AWS, in order, with the commands. Each step links to the p
 
 | Who | What they need |
 | :--- | :--- |
-| Whoever runs it | The AWS profile of [Deploy to AWS](../getting-started/deploy-aws-terraform.mdx), steps 1 to 3, and the `terraform.tfvars` of that computer: the state lives there, so apply and destroy always run from the same one |
+| Whoever runs it | The AWS profile of [Deploy to AWS](./deploy-aws-terraform.mdx), steps 1 to 3, and the `terraform.tfvars` of that computer: the state lives there, so apply and destroy always run from the same one |
 | The team | The e-mails of `budget_emails`, `supervisor_emails`, `compliance_emails` and `treasury_emails`, each subscription confirmed |
 
 ## 1. Bring dev up
@@ -26,7 +26,7 @@ About 30 minutes, about USD 0.22 an hour from here on.
    terraform apply
    ```
 
-2. Push the images and set the tags ([step 6](../getting-started/deploy-aws-terraform.mdx#6-deploy-the-engine-on-fargate)). Set `engine_image_tag`, `admin_image_tag` and `lambda_image_tag` to the short commit, and `apis_image_tag` to the one of securepay-apis ([step 9](../getting-started/deploy-aws-terraform.mdx#9-load-the-daily-exchange-rates)). Then apply again. Expected: `97 to add`. `db-bootstrap` runs during this apply and creates the tables and the database users.
+2. Push the images and set the tags ([step 6](./deploy-aws-terraform.mdx#6-deploy-the-engine-on-fargate)). Set `engine_image_tag`, `admin_image_tag` and `lambda_image_tag` to the short commit, and `apis_image_tag` to the one of securepay-apis ([step 9](./deploy-aws-terraform.mdx#9-load-the-daily-exchange-rates)). Then apply again. Expected: `97 to add`. `db-bootstrap` runs during this apply and creates the tables and the database users.
 
    ```powershell
    terraform apply
@@ -55,7 +55,7 @@ About 30 minutes, about USD 0.22 an hour from here on.
    aws iam get-role --role-name securepay-dev-deploy-apis --query Role.Arn --output text
    ```
 
-   Set them as the repository variable `AWS_DEPLOY_ROLE_ARN` of SecurePay and of securepay-apis (**Settings → Secrets and variables → Actions → Variables**). Then **Actions → Deploy → Run workflow** on `main` in SecurePay, so the engine and the Lambdas run what is in `main`. A later `terraform apply` puts the tags of `terraform.tfvars` back, so run Deploy again after it. See [Automatic deploys](../getting-started/deploy-aws-terraform.mdx#automatic-deploys-from-github-actions).
+   Set them as the repository variable `AWS_DEPLOY_ROLE_ARN` of SecurePay and of securepay-apis (**Settings → Secrets and variables → Actions → Variables**). Then **Actions → Deploy → Run workflow** on `main` in SecurePay, so the engine and the Lambdas run what is in `main`. A later `terraform apply` puts the tags of `terraform.tfvars` back, so run Deploy again after it. See [Automatic deploys](./deploy-aws-terraform.mdx#automatic-deploys-from-github-actions).
 
 6. Check it:
 
@@ -72,13 +72,13 @@ About 30 minutes, about USD 0.22 an hour from here on.
 | Part | Command or place | Expected |
 | :--- | :--- | :--- |
 | A decision | `curl.exe -k -X POST "https://$ALB/transactions" -H "Content-Type: application/json" --data-binary "@smoke-transaction.json"` | `APPROVE`, no `by_default` |
-| Restricted list, case and compliance | Same with `@restricted-transaction.json` ([step 7](../getting-started/deploy-aws-terraform.mdx#7-run-the-consumers-and-the-alerts-task-as-lambdas)) | `REJECT`; the case and its report in seconds; the compliance e-mail within 5 minutes |
-| Nightly reconciliation and analytics | Upload the fixture days and start `reconciliation-day.json` ([step 8](../getting-started/deploy-aws-terraform.mdx#8-run-the-nightly-reconciliation)) | `Succeeded` with every state green; the treasury e-mail; the views in the `securepay-dev-powerbi` workgroup |
-| Power BI | The `.pbix` over the Athena ODBC driver, with the `powerbi` user's key in an AWS CLI profile ([Power BI over Athena](../getting-started/deploy-aws-terraform.mdx#power-bi-over-athena)) | The six pages refresh from Athena |
-| Load | [Load test the engine](../getting-started/load-test.mdx) | p99 in AWS ≤ 200 ms at 300 tx/s. Not met yet with 10 tasks: some minutes go above 200 ms ([known issue](../getting-started/load-test.mdx#known-issue)) |
-| Provoked failure (CT-09) | [Step 10](../getting-started/deploy-aws-terraform.mdx#10-watch-the-platform-and-provoke-an-alarm-hu-59): `aws lambda invoke --function-name securepay-dev-analytics-export --payload '{\"day\": \"not-a-day\"}' --cli-binary-format raw-in-base64-out export-error.json` | Within 5 minutes, the alarm `securepay-dev-analytics-export-errors` e-mails `ops-alarms`; it goes back to OK on its own, nothing to revert |
+| Restricted list, case and compliance | Same with `@restricted-transaction.json` ([step 7](./deploy-aws-terraform.mdx#7-run-the-consumers-and-the-alerts-task-as-lambdas)) | `REJECT`; the case and its report in seconds; the compliance e-mail within 5 minutes |
+| Nightly reconciliation and analytics | Upload the fixture days and start `reconciliation-day.json` ([step 8](./deploy-aws-terraform.mdx#8-run-the-nightly-reconciliation)) | `Succeeded` with every state green; the treasury e-mail; the views in the `securepay-dev-powerbi` workgroup |
+| Power BI | The `.pbix` over the Athena ODBC driver, with the `powerbi` user's key in an AWS CLI profile ([Power BI over Athena](./deploy-aws-terraform.mdx#power-bi-over-athena)) | The six pages refresh from Athena |
+| Load | [Load test the engine](./load-test.mdx) | p99 in AWS ≤ 200 ms at 300 tx/s. Not met yet with 10 tasks: some minutes go above 200 ms ([known issue](./load-test.mdx#known-issue)) |
+| Provoked failure (CT-09) | [Step 10](./deploy-aws-terraform.mdx#10-watch-the-platform-and-provoke-an-alarm-hu-59): `aws lambda invoke --function-name securepay-dev-analytics-export --payload '{\"day\": \"not-a-day\"}' --cli-binary-format raw-in-base64-out export-error.json` | Within 5 minutes, the alarm `securepay-dev-analytics-export-errors` e-mails `ops-alarms`; it goes back to OK on its own, nothing to revert |
 | Record the web page "Recorded on AWS" | `terraform -chdir=infra/terraform/envs/dev output -json > outputs.json`, then `uv run python -m services.analytics.aws_run --outputs outputs.json --user <analyst e-mail> --password <password> --allow-self-signed` (add `--load-test s3://<artifacts>/load-tests` after a load test). Details: [Recorded on AWS](../components/aws-run.mdx) | About 5 minutes; `doc-website/static/aws-run/run.json` rewritten. Commit it before `terraform destroy` |
-| Immutable evidence | [Step 11](../getting-started/deploy-aws-terraform.mdx#11-prove-that-evidence-cannot-be-deleted) | Deleting the locked version fails with `AccessDenied` |
+| Immutable evidence | [Step 11](./deploy-aws-terraform.mdx#11-prove-that-evidence-cannot-be-deleted) | Deleting the locked version fails with `AccessDenied` |
 
 Test the provoked failure once before the demo. The e-mail takes 5 to 6 minutes, so start it before you present that part.
 
@@ -110,7 +110,7 @@ Every alarm e-mails `securepay-dev-ops-alarms`, and its description says what to
    terraform destroy
    ```
 
-   Expected: `Destroy complete!` with everything the state had ({plan.oneApplyWithKaggle} after one `apply`, {plan.oneApply} without the Kaggle CSVs, {plan.stepByStep} step by step). It takes about 25 minutes: the demo environment of November 11, 2026 destroyed 352 resources in 24 min 05 s (it was deployed from the code before the two unused IAM roles were removed, so it had more than today's count). If only the evidence bucket fails, its lock has not passed yet: wait and run it again. If the EKS session of [Run the engine on Kubernetes](../getting-started/kubernetes.mdx) ran, delete that cluster first: it uses dev's subnets.
+   Expected: `Destroy complete!` with everything the state had ({plan.oneApplyWithKaggle} after one `apply`, {plan.oneApply} without the Kaggle CSVs, {plan.stepByStep} step by step). It takes about 25 minutes: the demo environment of November 11, 2026 destroyed 352 resources in 24 min 05 s (it was deployed from the code before the two unused IAM roles were removed, so it had more than today's count). If only the evidence bucket fails, its lock has not passed yet: wait and run it again. If the EKS session of [Run the engine on Kubernetes](./kubernetes.mdx) ran, delete that cluster first: it uses dev's subnets.
 
 2. Check that nothing is left charging. The first command must print nothing:
 

@@ -1,5 +1,5 @@
 ---
-sidebar_position: 2
+sidebar_position: 4
 title: Performance report
 description: Measured optimizations of the Spark match and of the decision engine, before and after, with timings, shuffle and execution plans (E-13).
 ---
@@ -109,7 +109,7 @@ AdaptiveSparkPlan
 
 ## The decision engine
 
-The first load test in AWS (November 5, 2026) failed at 150 tx/s: 73 % default decisions and a p99 of 3 to 6 s ([Load test](../getting-started/load-test.mdx#result)). The cause was reproduced locally: one core, 150 tx/s, about 600 outgoing movements per account. Each change was measured on that same case:
+The first load test in AWS (November 5, 2026) failed at 150 tx/s: 73 % default decisions and a p99 of 3 to 6 s ([Load test](./load-test.mdx#result)). The cause was reproduced locally: one core, 150 tx/s, about 600 outgoing movements per account. Each change was measured on that same case:
 
 | Step | p50 per decision | Default decisions |
 | :--- | ---: | ---: |
@@ -118,7 +118,7 @@ The first load test in AWS (November 5, 2026) failed at 150 tx/s: 73 % default d
 | Plus the newest 100 movements only (`HISTORY_OUT_LIMIT`) | **11 ms** | **0 %** |
 | Plus 9,820 accounts instead of 98 | 15 ms | 0 % |
 
-The profile before the change put about 70 % of the time in parsing Valkey's replies in Python. Each decision read and parsed the account's whole day, about 600 members. The limit is a team decision ([Team decisions](../architecture/team-decisions.mdx)). The repeated load test in AWS, run from the EC2 machine inside the VPC, fills in the table of [Load test](../getting-started/load-test.mdx#result).
+The profile before the change put about 70 % of the time in parsing Valkey's replies in Python. Each decision read and parsed the account's whole day, about 600 members. The limit is a team decision ([Team decisions](../architecture/team-decisions.mdx)). The repeated load test in AWS, run from the EC2 machine inside the VPC, fills in the table of [Load test](./load-test.mdx#result).
 
 ### Fewer round trips to Valkey
 
@@ -131,4 +131,4 @@ The reads and writes that do not depend on each other now share a pipeline: the 
 | One command at a time | 8.4 | 16.8 ms | 20.9 ms | 24.6 ms |
 | Two pipelines | **4.0** | **9.5 ms** | **12.6 ms** | **16.4 ms** |
 
-Both runs had 0 % default decisions. The engine's tests also pass against a local three-node Valkey cluster (`VALKEY_CLUSTER=true`), the protocol ElastiCache Serverless speaks (except `test_reference_data.py`'s reads, which use database 15 of a single node). In the fifth load test in AWS, with 10 tasks, the p95 at 300 tx/s went from 164 to 106 ms and the default decisions from 1.79 % to 0.40 %; the p99 (229 ms) is still above the limit because of a stall once a minute ([Load test](../getting-started/load-test.mdx#result)). Runs 6 to 8 did not remove it: with 10 tasks the p99 at 300 tx/s is still above 200 ms in some minutes. It is a known open issue, left for after the delivery ([Known issue](../getting-started/load-test.mdx#known-issue)).
+Both runs had 0 % default decisions. The engine's tests also pass against a local three-node Valkey cluster (`VALKEY_CLUSTER=true`), the protocol ElastiCache Serverless speaks (except `test_reference_data.py`'s reads, which use database 15 of a single node). In the fifth load test in AWS, with 10 tasks, the p95 at 300 tx/s went from 164 to 106 ms and the default decisions from 1.79 % to 0.40 %; the p99 (229 ms) is still above the limit because of a stall once a minute ([Load test](./load-test.mdx#result)). Runs 6 to 8 did not remove it: with 10 tasks the p99 at 300 tx/s is still above 200 ms in some minutes. It is a known open issue, left for after the delivery ([Known issue](./load-test.mdx#known-issue)).

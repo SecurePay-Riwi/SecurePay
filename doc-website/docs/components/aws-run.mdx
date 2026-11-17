@@ -36,7 +36,7 @@ The times on the page come from AWS's clocks: "Case opened +1.5 s" is the case's
 
 ## Recording the load test
 
-After a [load test](../getting-started/load-test.mdx) from the EC2 runner, its CSV files are in `s3://<artifacts>/load-tests/`:
+After a [load test](../operations/load-test.mdx) from the EC2 runner, its CSV files are in `s3://<artifacts>/load-tests/`:
 
 ```bash
 uv run python -m services.analytics.aws_run --outputs outputs.json --user ... --password ... \

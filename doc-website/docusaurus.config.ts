@@ -53,6 +53,22 @@ const config: Config = {
     ],
   ],
 
+  plugins: [
+    [
+      '@docusaurus/plugin-client-redirects',
+      {
+        // The AWS, Kubernetes and load test pages moved from Getting started
+        // to Operations (2026-11-17); the old links keep working.
+        redirects: ['deploy-aws-terraform', 'kubernetes', 'load-test'].map(
+          (page) => ({
+            from: `/docs/getting-started/${page}`,
+            to: `/docs/operations/${page}`,
+          }),
+        ),
+      },
+    ],
+  ],
+
   themeConfig: {
     image: 'img/securepay-logo.png',
     colorMode: {
